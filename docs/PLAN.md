@@ -88,7 +88,7 @@ lib/
   widgets/
     status_card/  rich_text/  pic_grid/
 android/app/src/main/kotlin/.../CookieBridge.kt   # 平台通道（Android）
-ios/Runner/CookieBridge.swift                      # 平台通道（iOS）
+ios/Runner/AppDelegate.swift                       # 平台通道（iOS；Runner 用传统文件分组，放在已有文件里免改 pbxproj）
 test/  (fixtures/ 下只放合成数据)
 ```
 
