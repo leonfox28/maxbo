@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/net/weibo_exception.dart';
 import '../core/paging/paged_controller.dart';
+import '../features/webview/web_page.dart';
 
 /// The message to show for a failed load.
 String loadErrorMessage(Object? error) =>
@@ -44,6 +45,7 @@ class PagedSliverList<T> extends StatelessWidget {
     required this.onRetry,
     required this.onLoadMore,
     this.emptyText = '暂无内容',
+    this.dividerIndent = 58,
   });
 
   final AsyncValue<PagedState<T>> value;
@@ -52,16 +54,16 @@ class PagedSliverList<T> extends StatelessWidget {
   final VoidCallback onLoadMore;
   final String emptyText;
 
+  /// Lines items up with the text of a comment-like tile by default.
+  final double dividerIndent;
+
   @override
   Widget build(BuildContext context) {
     final state = value.value;
     if (state == null) {
       return SliverToBoxAdapter(
         child: value.hasError
-            ? ErrorRetry(
-                message: loadErrorMessage(value.error),
-                onRetry: onRetry,
-              )
+            ? ErrorRetry(error: value.error, onRetry: onRetry)
             : const Padding(
                 padding: EdgeInsets.all(32),
                 child: Center(child: CircularProgressIndicator()),
@@ -87,13 +89,13 @@ class PagedSliverList<T> extends StatelessWidget {
     }
     return SliverList.separated(
       itemCount: items.length + 1,
-      separatorBuilder: (_, _) => const Divider(height: 1, indent: 58),
+      separatorBuilder: (_, _) => Divider(height: 1, indent: dividerIndent),
       itemBuilder: (context, i) => i < items.length
           ? itemBuilder(context, items[i])
           : LoadMoreFooter(
               loading: state.loadingMore,
               hasMore: state.hasMore,
-              error: state.loadMoreError?.message,
+              error: state.loadMoreError,
               onLoadMore: onLoadMore,
             ),
     );
@@ -115,7 +117,7 @@ class LoadMoreFooter extends StatelessWidget {
   final bool loading;
   final bool hasMore;
   final VoidCallback onLoadMore;
-  final String? error;
+  final WeiboException? error;
   final String endText;
 
   @override
@@ -131,8 +133,14 @@ class LoadMoreFooter extends StatelessWidget {
     } else if (error != null) {
       child = Column(
         children: [
-          Text(error, style: theme.textTheme.bodySmall),
-          TextButton(onPressed: onLoadMore, child: const Text('重试')),
+          Text(error.message, style: theme.textTheme.bodySmall),
+          if (error case CaptchaRequiredException(:final url))
+            TextButton(
+              onPressed: () => _verifyThenRetry(context, url, onLoadMore),
+              child: const Text('去验证'),
+            )
+          else
+            TextButton(onPressed: onLoadMore, child: const Text('重试')),
         ],
       );
     } else if (hasMore) {
@@ -154,11 +162,12 @@ class LoadMoreFooter extends StatelessWidget {
   }
 }
 
-/// A failure message with a retry button, in place of content.
+/// A failure in place of content, with a retry button; when Weibo wants a
+/// security check first, a button to take it.
 class ErrorRetry extends StatelessWidget {
-  const ErrorRetry({super.key, required this.message, required this.onRetry});
+  const ErrorRetry({super.key, required this.error, required this.onRetry});
 
-  final String message;
+  final Object? error;
   final VoidCallback onRetry;
 
   @override
@@ -169,12 +178,29 @@ class ErrorRetry extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text(message, textAlign: TextAlign.center),
+            Text(loadErrorMessage(error), textAlign: TextAlign.center),
             const SizedBox(height: 16),
-            FilledButton.tonal(onPressed: onRetry, child: const Text('重试')),
+            if (error case CaptchaRequiredException(:final url))
+              FilledButton(
+                onPressed: () => _verifyThenRetry(context, url, onRetry),
+                child: const Text('去验证'),
+              )
+            else
+              FilledButton.tonal(onPressed: onRetry, child: const Text('重试')),
           ],
         ),
       ),
     );
   }
+}
+
+/// Lets the user take Weibo's security check at [url] in the in-app browser
+/// (never automatically, PLAN §2), then calls [retry].
+Future<void> _verifyThenRetry(
+  BuildContext context,
+  Uri url,
+  VoidCallback retry,
+) async {
+  await openWebPage(context, url);
+  retry();
 }

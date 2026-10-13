@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../core/session/session_controller.dart';
 import '../../data/models/account.dart';
+import '../../data/models/weibo_user.dart';
 import '../auth/login_prompt.dart';
 
 class MePage extends ConsumerWidget {
@@ -66,6 +67,14 @@ class _AccountView extends ConsumerWidget {
           leading: const CircleAvatar(child: Icon(Icons.person)),
           title: Text(account.screenName ?? '微博用户'),
           subtitle: Text('UID ${account.uid}'),
+          trailing: const Icon(Icons.chevron_right),
+          onTap: () => context.push(
+            '/u/${account.uid}',
+            extra: switch (account.screenName) {
+              final name? => WeiboUser(id: account.uid, screenName: name),
+              null => null,
+            },
+          ),
         ),
         const Divider(),
         ListTile(

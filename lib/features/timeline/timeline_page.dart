@@ -32,7 +32,7 @@ class _Timeline extends ConsumerWidget {
     return switch (ref.watch(timelineProvider)) {
       AsyncData(:final value) => _StatusList(timeline: value),
       AsyncError(:final error) => ErrorRetry(
-        message: loadErrorMessage(error),
+        error: error,
         onRetry: () => ref.invalidate(timelineProvider),
       ),
       AsyncLoading() => const Center(child: CircularProgressIndicator()),
@@ -84,7 +84,7 @@ class _StatusList extends ConsumerWidget {
                     : LoadMoreFooter(
                         loading: timeline.loadingMore,
                         hasMore: timeline.hasMore,
-                        error: timeline.loadMoreError?.message,
+                        error: timeline.loadMoreError,
                         onLoadMore: () =>
                             ref.read(timelineProvider.notifier).loadMore(),
                       ),

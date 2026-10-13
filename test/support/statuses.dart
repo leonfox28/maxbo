@@ -189,3 +189,83 @@ Map<String, Object?> repostsPageJson(
   'total_number': total ?? reposts.length,
   'max_page': maxPage,
 };
+
+/// The `data` of a profile/info response for [user] (see [userJson]).
+Map<String, Object?> profileDataJson({
+  Map<String, Object?>? user,
+  Map<String, Object?> extra = const {},
+}) => {
+  'user': {
+    ...user ?? userJson(),
+    'description': '这是一段简介',
+    'location': '上海 浦东新区',
+    'gender': 'f',
+    'followers_count': 123456,
+    'followers_count_str': '12.3万',
+    'friends_count': 321,
+    'statuses_count': 4567,
+    'following': true,
+    'follow_me': false,
+    'cover_image_phone': 'https://ww1.sinaimg.cn/crop.0.0.640.640.640/cover1.jpg;https://ww1.sinaimg.cn/crop.0.0.640.640.640/cover2.jpg',
+    ...extra,
+  },
+  'tabList': [
+    {'name': 'home', 'tabName': '精选'},
+  ],
+  'blockText': '',
+};
+
+/// A mymblog response; an empty [sinceId] marks the last page.
+Map<String, Object?> userStatusesJson(
+  List<Map<String, Object?>> statuses, {
+  String sinceId = '5100000000000000kp2',
+  int total = 100,
+}) => {
+  'ok': 1,
+  'data': {
+    'since_id': sinceId,
+    'list': statuses,
+    'status_visible': 0,
+    'bottom_tips_visible': false,
+    'bottom_tips_text': '',
+    'topicList': [],
+    'total': total,
+  },
+};
+
+/// A side/hotSearch entry. Ranked entries have [realpos]; entries Weibo
+/// inserts don't.
+Map<String, Object?> hotItemJson(
+  String word, {
+  int? realpos,
+  int num = 1234567,
+  String? scheme,
+  String? icon,
+  String? smallIcon,
+  String color = '#ff9406',
+  int? isAd,
+}) => {
+  'word': word,
+  'note': word,
+  'word_scheme': scheme ?? '#$word#',
+  'num': num,
+  'rank': (realpos ?? 1) - 1,
+  'realpos': ?realpos,
+  'label_name': icon ?? '',
+  'icon_desc': ?icon,
+  'icon_desc_color': ?(icon == null ? null : color),
+  'small_icon_desc': smallIcon ?? icon ?? '',
+  'small_icon_desc_color': (smallIcon ?? icon) == null ? '' : color,
+  'flag': 1,
+  'is_ad': ?isAd,
+};
+
+/// A side/hotSearch response.
+Map<String, Object?> hotSearchJson({
+  List<Map<String, Object?>> realtime = const [],
+  List<Map<String, Object?>> hotgovs = const [],
+  Map<String, Object?>? hotgov,
+}) => {
+  'ok': 1,
+  'data': {'realtime': realtime, 'hotgovs': hotgovs, 'hotgov': ?hotgov},
+};

@@ -7,19 +7,18 @@ import '../../data/models/status.dart';
 import '../../widgets/rich_text/status_text_parser.dart';
 import '../../widgets/status_card/status_card.dart';
 import '../media_viewer/image_viewer_page.dart';
+import '../webview/web_page.dart';
 
 /// What tapping parts of a status card (or a comment) does throughout the
 /// app.
 StatusCardActions statusCardActions(BuildContext context) {
-  void notYet(String message) {
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(content: Text(message)));
-  }
-
   Future<void> openExternally(Uri url) async {
     final opened = await launchUrl(url, mode: LaunchMode.externalApplication);
-    if (!opened) notYet('无法打开链接');
+    if (!opened && context.mounted) {
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(const SnackBar(content: Text('无法打开链接')));
+    }
   }
 
   void openStatus(Status status) =>
@@ -34,13 +33,19 @@ StatusCardActions statusCardActions(BuildContext context) {
     onOpen: openStatus,
     onLink: (link) => switch (link) {
       WebLink(:final url) => openExternally(url),
-      MentionLink() => notYet('用户主页将在 M4 实现'),
-      TopicLink() => notYet('话题搜索将在 M4 实现'),
+      // Mentions carry only the name.
+      MentionLink(:final screenName) => context.push(
+        '/n/${Uri.encodeComponent(screenName)}',
+      ),
+      TopicLink(:final topic) => openWebPage(
+        context,
+        weiboSearchUrl('#$topic#'),
+      ),
       ImageLink(:final url) when url.host.endsWith('.sinaimg.cn') =>
         viewPictures([PicInfo.fromUrl('$url')], 0),
       ImageLink(:final url) => openExternally(url),
     },
-    onUser: (_) => notYet('用户主页将在 M4 实现'),
+    onUser: (user) => context.push('/u/${user.id}', extra: user),
     // The detail page has the full text of long posts.
     onExpand: openStatus,
     onPicture: viewPictures,

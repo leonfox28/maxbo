@@ -3,12 +3,15 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
+import 'package:flutter_riverpod/misc.dart';
 import 'package:maxbo/core/net/cookie_jar.dart';
 import 'package:maxbo/core/net/request_throttle.dart';
 import 'package:maxbo/core/net/weibo_dio.dart';
 import 'package:maxbo/core/session/cookie_bridge.dart';
+import 'package:maxbo/core/session/session_controller.dart';
 import 'package:maxbo/core/session/session_storage.dart';
 import 'package:maxbo/data/api/weibo_api.dart';
+import 'package:maxbo/data/models/account.dart';
 
 /// Answers every request with [handler] and records what was sent.
 class FakeAdapter implements HttpClientAdapter {
@@ -41,6 +44,27 @@ WeiboApi fakeApi(FakeAdapter adapter) => WeiboApi(
     throttle: RequestThrottle(minInterval: Duration.zero),
   )..httpClientAdapter = adapter,
 );
+
+/// Provider overrides for an app signed in as uid 7, whose API requests
+/// [adapter] answers.
+List<Override> signedInOverrides(FakeAdapter adapter) => [
+  sessionStorageProvider.overrideWithValue(InMemorySessionStorage()),
+  cookieBridgeProvider.overrideWithValue(FakeCookieBridge()),
+  restoredSessionProvider.overrideWithValue(
+    const StoredSession(
+      account: Account(uid: '7'),
+      cookies: {
+        'weibo.com': {'SUB': 'x'},
+      },
+    ),
+  ),
+  weiboDioFactoryProvider.overrideWithValue(
+    (WeiboCookieJar jar) => createWeiboDio(
+      jar: jar,
+      throttle: RequestThrottle(minInterval: Duration.zero),
+    )..httpClientAdapter = adapter,
+  ),
+];
 
 ResponseBody jsonBody(
   Object json, {

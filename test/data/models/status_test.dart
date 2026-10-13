@@ -175,6 +175,14 @@ void main() {
       expect(s.pageCard?.description, '一段描述');
       expect(s.pageCard?.imageUrl, 'https://wx2.sinaimg.cn/large/topic.jpg');
     });
+
+    test('reads whether it is pinned to its profile', () {
+      final pinned = Status.tryFromJson(
+        statusJson(extra: {'isTop': 1, 'mblogtype': 2}),
+      )!;
+      expect(pinned.pinned, isTrue);
+      expect(Status.tryFromJson(statusJson())!.pinned, isFalse);
+    });
   });
 
   group('PicInfo', () {

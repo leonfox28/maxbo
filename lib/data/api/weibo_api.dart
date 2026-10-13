@@ -10,8 +10,10 @@ import '../../core/util/json_shape.dart';
 import '../models/account.dart';
 import '../models/comment.dart';
 import '../models/feed_page.dart';
+import '../models/hot_search.dart';
 import '../models/paged.dart';
 import '../models/status.dart';
+import '../models/user_profile.dart';
 import 'page_config.dart';
 
 final weiboApiProvider = Provider<WeiboApi>((ref) {
@@ -177,6 +179,50 @@ class WeiboApi {
       nextCursor: reposts.isEmpty || page >= maxPage ? null : '${page + 1}',
       total: readInt(json['total_number']),
     );
+  }
+
+  /// The profile of the user with [uid], or else named [screenName] (all
+  /// that mentions in a status carry).
+  Future<UserProfile> fetchProfile({String? uid, String? screenName}) async {
+    assert(uid != null || screenName != null);
+    final json = await getJson(
+      '$_web/ajax/profile/info',
+      query: uid != null ? {'uid': uid} : {'screen_name': screenName},
+    );
+    // An unknown name still gets ok=1, with no `data` but an empty `user`.
+    final profile = UserProfile.tryFromJson(json['data']);
+    if (profile == null) throw const WeiboApiException('找不到这个用户');
+    return profile;
+  }
+
+  /// Page [page] (from 1) of the statuses of user [uid], newest first after
+  /// any pinned ones.
+  Future<Paged<Status>> fetchUserStatuses({
+    required String uid,
+    int page = 1,
+  }) async {
+    final json = await getJson(
+      '$_web/ajax/statuses/mymblog',
+      query: {'uid': uid, 'page': page, 'feature': 0},
+    );
+    final data = readMap(json['data']);
+    final statuses = [
+      for (final s in readMaps(data?['list'])) ?Status.tryFromJson(s),
+    ];
+    // The page number alone pages through; `since_id` is empty on the last
+    // page (PLAN §8).
+    final last = statuses.isEmpty || data?['since_id'] == '';
+    devLog('user statuses p$page: ${statuses.length}, more=${!last}');
+    return Paged(
+      statuses,
+      nextCursor: last ? null : '${page + 1}',
+      total: readInt(data?['total']),
+    );
+  }
+
+  Future<HotSearch> fetchHotSearch() async {
+    final json = await getJson('$_web/ajax/side/hotSearch');
+    return HotSearch.fromJson(readMap(json['data']) ?? const {});
   }
 
   Future<Map<String, Object?>> getJson(

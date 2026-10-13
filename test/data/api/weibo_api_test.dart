@@ -112,4 +112,95 @@ void main() {
     expect(query()['page'], '2');
     expect(second.nextCursor, isNull);
   });
+
+  group('fetchProfile', () {
+    test('looks a user up by uid', () async {
+      respond = (_) => jsonBody({
+        'ok': 1,
+        'data': profileDataJson(user: userJson(id: 1001)),
+      });
+
+      final profile = await fakeApi(adapter).fetchProfile(uid: '1001');
+
+      expect(adapter.requests.single.uri.path, '/ajax/profile/info');
+      expect(query(), {'uid': '1001'});
+      expect(profile.user.id, '1001');
+    });
+
+    test('or by name, for mentions', () async {
+      respond = (_) => jsonBody({
+        'ok': 1,
+        'data': profileDataJson(user: userJson(id: 1001, name: '示例用户')),
+      });
+
+      final profile = await fakeApi(adapter).fetchProfile(screenName: '示例用户');
+
+      expect(query(), {'screen_name': '示例用户'});
+      expect(profile.user.id, '1001');
+    });
+
+    test('reports an unknown name, which Weibo answers with ok=1', () {
+      respond = (_) => jsonBody({
+        'ok': 1,
+        'user': <String, Object?>{},
+        'message': '用户不存在',
+        'abnormal': false,
+      });
+
+      expect(
+        fakeApi(adapter).fetchProfile(screenName: '没有这个人'),
+        throwsA(
+          isA<WeiboApiException>().having(
+            (e) => e.message,
+            'message',
+            '找不到这个用户',
+          ),
+        ),
+      );
+    });
+  });
+
+  group('fetchUserStatuses', () {
+    test('pages by number until since_id runs out', () async {
+      respond = (_) => jsonBody(
+        userStatusesJson([
+          statusJson(id: 1, extra: {'isTop': 1}),
+          statusJson(id: 2),
+        ], total: 30),
+      );
+      final api = fakeApi(adapter);
+
+      final first = await api.fetchUserStatuses(uid: '1001');
+      expect(adapter.requests.single.uri.path, '/ajax/statuses/mymblog');
+      expect(query(), {'uid': '1001', 'page': '1', 'feature': '0'});
+      expect(first.items.map((s) => s.id), ['1', '2']);
+      expect(first.items.first.pinned, isTrue);
+      expect(first.nextCursor, '2');
+      expect(first.total, 30);
+
+      respond = (_) =>
+          jsonBody(userStatusesJson([statusJson(id: 3)], sinceId: ''));
+      final last = await api.fetchUserStatuses(uid: '1001', page: 2);
+      expect(query()['page'], '2');
+      expect(last.items.single.id, '3');
+      expect(last.nextCursor, isNull);
+    });
+
+    test('an empty page ends the list', () async {
+      respond = (_) => jsonBody(userStatusesJson([]));
+
+      final page = await fakeApi(adapter).fetchUserStatuses(uid: '1001');
+      expect(page.nextCursor, isNull);
+    });
+  });
+
+  test('fetchHotSearch reads the list', () async {
+    respond = (_) =>
+        jsonBody(hotSearchJson(realtime: [hotItemJson('第一条', realpos: 1)]));
+
+    final hot = await fakeApi(adapter).fetchHotSearch();
+
+    expect(adapter.requests.single.uri.path, '/ajax/side/hotSearch');
+    expect(hot.items.single.word, '第一条');
+  });
 }

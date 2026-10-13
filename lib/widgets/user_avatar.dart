@@ -28,3 +28,24 @@ class UserAvatar extends StatelessWidget {
     return GestureDetector(onTap: () => onTap(user), child: avatar);
   }
 }
+
+/// Weibo's verification mark: gold for people, blue for organisations.
+class VerifiedIcon extends StatelessWidget {
+  const VerifiedIcon(this.verifiedType, {super.key, this.size = 14});
+
+  final int verifiedType;
+  final double size;
+
+  /// Whether [verifiedType] (`WeiboUser.verifiedType`) has a mark.
+  static bool shows(int? verifiedType) =>
+      verifiedType != null && verifiedType >= 0 && verifiedType <= 7;
+
+  @override
+  Widget build(BuildContext context) {
+    return Icon(
+      Icons.verified,
+      size: size,
+      color: verifiedType == 0 ? Colors.amber.shade700 : Colors.blue.shade600,
+    );
+  }
+}

@@ -88,7 +88,7 @@ class _StatusDetailPageState extends ConsumerState<StatusDetailPage> {
           ? _content(context, status, detail)
           : detail.hasError
           ? ErrorRetry(
-              message: loadErrorMessage(detail.error),
+              error: detail.error,
               onRetry: () => ref.invalidate(statusDetailProvider(widget.id)),
             )
           : const Center(child: CircularProgressIndicator()),
@@ -204,15 +204,10 @@ class _StatusDetailPageState extends ConsumerState<StatusDetailPage> {
   /// [base] for the status atop the page: its own "展开" stays inert, as the
   /// full text is shown or on its way.
   StatusCardActions _cardActions(Status status, StatusCardActions base) =>
-      StatusCardActions(
-        onOpen: base.onOpen,
-        onLink: base.onLink,
-        onUser: base.onUser,
+      base.copyWith(
         onExpand: (s) {
           if (s.id != status.id) base.onExpand?.call(s);
         },
-        onPicture: base.onPicture,
-        onVideo: base.onVideo,
       );
 }
 

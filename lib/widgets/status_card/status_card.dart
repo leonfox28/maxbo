@@ -8,6 +8,7 @@ import '../../data/models/weibo_user.dart';
 import '../pic_grid/pic_grid.dart';
 import '../rich_text/status_text.dart';
 import '../rich_text/status_text_parser.dart';
+import '../tag_label.dart';
 import '../user_avatar.dart';
 
 /// What tapping parts of a status (or comment) leads to. A null callback
@@ -31,6 +32,18 @@ class StatusCardActions {
   final ValueChanged<Status>? onExpand;
   final void Function(List<PicInfo> pics, int index)? onPicture;
   final ValueChanged<Status>? onVideo;
+
+  StatusCardActions copyWith({
+    ValueChanged<WeiboUser>? onUser,
+    ValueChanged<Status>? onExpand,
+  }) => StatusCardActions(
+    onOpen: onOpen,
+    onLink: onLink,
+    onUser: onUser ?? this.onUser,
+    onExpand: onExpand ?? this.onExpand,
+    onPicture: onPicture,
+    onVideo: onVideo,
+  );
 }
 
 /// A status as shown in a timeline, or atop its detail page when [detail].
@@ -120,6 +133,7 @@ class _Header extends StatelessWidget {
       ?status.region,
     ].join('  ');
     final verified = user?.verifiedType;
+    final onUser = this.onUser;
 
     return Row(
       children: [
@@ -132,23 +146,21 @@ class _Header extends StatelessWidget {
               Row(
                 children: [
                   Flexible(
-                    child: Text(
-                      user?.screenName ?? '微博用户',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.titleSmall,
+                    child: GestureDetector(
+                      onTap: user == null || onUser == null
+                          ? null
+                          : () => onUser(user),
+                      child: Text(
+                        user?.screenName ?? '微博用户',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.titleSmall,
+                      ),
                     ),
                   ),
-                  if (verified != null && verified >= 0 && verified <= 7) ...[
+                  if (VerifiedIcon.shows(verified)) ...[
                     const SizedBox(width: 4),
-                    Icon(
-                      Icons.verified,
-                      size: 14,
-                      // Weibo's convention: gold for people, blue otherwise.
-                      color: verified == 0
-                          ? Colors.amber.shade700
-                          : Colors.blue.shade600,
-                    ),
+                    VerifiedIcon(verified!),
                   ],
                 ],
               ),
@@ -164,32 +176,12 @@ class _Header extends StatelessWidget {
             ],
           ),
         ),
-        if (status.isAd) const _AdLabel(),
+        if (status.pinned) const TagLabel('置顶'),
+        if (status.isAd) ...[
+          if (status.pinned) const SizedBox(width: 4),
+          const TagLabel('广告'),
+        ],
       ],
-    );
-  }
-}
-
-class _AdLabel extends StatelessWidget {
-  const _AdLabel();
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        border: Border.all(color: theme.colorScheme.outline),
-        borderRadius: BorderRadius.circular(3),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
-        child: Text(
-          '广告',
-          style: theme.textTheme.labelSmall?.copyWith(
-            color: theme.colorScheme.onSurfaceVariant,
-          ),
-        ),
-      ),
     );
   }
 }

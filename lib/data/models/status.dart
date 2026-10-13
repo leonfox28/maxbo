@@ -26,6 +26,7 @@ class Status {
     this.likesCount = 0,
     this.liked = false,
     this.isAd = false,
+    this.pinned = false,
   });
 
   final String id;
@@ -66,6 +67,9 @@ class Status {
   /// Marked as an ad by Weibo. Ads are labelled, never hidden (PLAN §2).
   final bool isAd;
 
+  /// Pinned atop its author's profile; only set in profile lists.
+  final bool pinned;
+
   static Status? tryFromJson(Object? json) {
     final map = readMap(json);
     if (map == null) return null;
@@ -99,6 +103,7 @@ class Status {
       likesCount: readInt(map['attitudes_count']) ?? 0,
       liked: readInt(map['attitudes_status']) == 1,
       isAd: _isAd(map),
+      pinned: readInt(map['isTop']) == 1,
     );
   }
 

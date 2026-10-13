@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../data/models/status.dart';
+import '../data/models/weibo_user.dart';
 import '../features/auth/login_page.dart';
 import '../features/comments/comment_replies_page.dart';
 import '../features/debug/diagnostics_page.dart';
@@ -11,9 +12,11 @@ import '../features/hot_search/hot_search_page.dart';
 import '../features/media_viewer/image_viewer_page.dart';
 import '../features/media_viewer/video_player_page.dart';
 import '../features/profile/me_page.dart';
+import '../features/profile/profile_page.dart';
 import '../features/shell/home_shell.dart';
 import '../features/status/status_detail_page.dart';
 import '../features/timeline/timeline_page.dart';
+import '../features/webview/web_page.dart';
 
 final routerProvider = Provider<GoRouter>((ref) {
   final router = GoRouter(
@@ -71,6 +74,28 @@ final routerProvider = Provider<GoRouter>((ref) {
             _ => const _MissingPage(),
           },
         ),
+      ),
+      // Profiles by uid, or by name for mentions, as weibo.com has them.
+      GoRoute(
+        path: '/u/:uid',
+        builder: (_, state) => ProfilePage(
+          uid: state.pathParameters['uid']!,
+          initial: state.extra is WeiboUser ? state.extra! as WeiboUser : null,
+        ),
+      ),
+      GoRoute(
+        path: '/n/:name',
+        builder: (_, state) =>
+            ProfilePage(screenName: state.pathParameters['name']!),
+      ),
+      GoRoute(
+        path: '/web',
+        builder: (_, state) =>
+            switch (Uri.tryParse(state.uri.queryParameters['url'] ?? '')) {
+              final url? when url.isScheme('https') || url.isScheme('http') =>
+                WebPage(url: url),
+              _ => const _MissingPage(),
+            },
       ),
       GoRoute(
         path: '/login',

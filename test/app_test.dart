@@ -42,7 +42,9 @@ void main() {
 
     await tester.tap(find.text('热搜'));
     await tester.pumpAndSettle();
-    expect(find.text('热搜榜将在 M4 实现'), findsOneWidget);
+    // The home tab's prompt is offstage now.
+    expect(find.text('登录后即可浏览关注的人的微博'), findsOneWidget);
+    expect(find.text('登录微博'), findsOneWidget);
   });
 
   testWidgets('signed in: Me shows the account and can log out', (

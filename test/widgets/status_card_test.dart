@@ -45,6 +45,25 @@ void main() {
     expect(find.text('广告'), findsOneWidget);
   });
 
+  testWidgets('labels posts pinned to a profile', (tester) async {
+    await pumpCard(tester, statusJson(extra: {'isTop': 1, 'isAd': true}));
+    expect(find.text('置顶'), findsOneWidget);
+    expect(find.text('广告'), findsOneWidget);
+  });
+
+  testWidgets('the avatar and the name report the author', (tester) async {
+    final tapped = <String>[];
+    await pumpCard(
+      tester,
+      statusJson(user: userJson(id: 1001, name: '作者')),
+      actions: StatusCardActions(onUser: (u) => tapped.add(u.id)),
+    );
+
+    await tester.tap(find.byType(ClipOval));
+    await tester.tap(find.text('作者'));
+    expect(tapped, ['1001', '1001']);
+  });
+
   testWidgets('shows the retweeted post with its author', (tester) async {
     await pumpCard(
       tester,
