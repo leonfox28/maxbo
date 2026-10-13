@@ -1,13 +1,76 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
-class MePage extends StatelessWidget {
+import '../../core/session/session_controller.dart';
+import '../../data/models/account.dart';
+import '../auth/login_prompt.dart';
+
+class MePage extends ConsumerWidget {
   const MePage({super.key});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     return Scaffold(
       appBar: AppBar(title: const Text('我')),
-      body: const Center(child: Text('登录与个人信息将在 M1 实现')),
+      body: switch (ref.watch(sessionProvider)) {
+        SignedOut(:final expired) => LoginPrompt(expired: expired),
+        SignedIn(:final account) => _AccountView(account: account),
+      },
+    );
+  }
+}
+
+class _AccountView extends ConsumerWidget {
+  const _AccountView({required this.account});
+
+  final Account account;
+
+  Future<void> _confirmLogout(BuildContext context, WidgetRef ref) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('退出登录'),
+        content: const Text('将清除本机保存的微博登录状态。'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('取消'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('退出'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true) await ref.read(sessionProvider.notifier).logout();
+  }
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return ListView(
+      children: [
+        ListTile(
+          leading: const CircleAvatar(child: Icon(Icons.person)),
+          title: Text(account.screenName ?? '微博用户'),
+          subtitle: Text('UID ${account.uid}'),
+        ),
+        const Divider(),
+        if (kDebugMode)
+          ListTile(
+            leading: const Icon(Icons.bug_report_outlined),
+            title: const Text('开发者诊断'),
+            subtitle: const Text('仅调试版可见'),
+            onTap: () => context.push('/diagnostics'),
+          ),
+        ListTile(
+          leading: const Icon(Icons.logout),
+          title: const Text('退出登录'),
+          onTap: () => _confirmLogout(context, ref),
+        ),
+      ],
     );
   }
 }

@@ -1,4 +1,5 @@
 import 'package:flutter/services.dart';
+import 'package:webview_flutter/webview_flutter.dart';
 
 /// Reads cookies from the platform WebView cookie store.
 ///
@@ -23,5 +24,16 @@ class CookieBridge {
       for (final cookie in cookies ?? const <Map<Object?, Object?>>[])
         cookie['name']! as String: cookie['value']! as String,
     };
+  }
+
+  /// The WebView's cookies for Weibo's two sites, keyed by site.
+  Future<Map<String, Map<String, String>>> readWeiboCookies() async => {
+    'weibo.com': await getCookies(Uri.parse('https://weibo.com/')),
+    'weibo.cn': await getCookies(Uri.parse('https://m.weibo.cn/')),
+  };
+
+  /// Deletes every WebView cookie, signing the embedded browser out.
+  Future<void> clearAll() async {
+    await WebViewCookieManager().clearCookies();
   }
 }
