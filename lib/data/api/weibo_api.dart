@@ -5,9 +5,13 @@ import '../../core/net/weibo_dio.dart';
 import '../../core/net/weibo_exception.dart';
 import '../../core/session/session_controller.dart';
 import '../../core/util/dev_log.dart';
+import '../../core/util/json_read.dart';
 import '../../core/util/json_shape.dart';
 import '../models/account.dart';
+import '../models/comment.dart';
 import '../models/feed_page.dart';
+import '../models/paged.dart';
+import '../models/status.dart';
 import 'page_config.dart';
 
 final weiboApiProvider = Provider<WeiboApi>((ref) {
@@ -72,6 +76,107 @@ class WeiboApi {
       'more=${page.nextCursor != null}',
     );
     return page;
+  }
+
+  /// Status [id] with its full text (timelines truncate long posts), current
+  /// counts and freshly signed video URLs.
+  Future<Status> fetchStatus(String id) async {
+    final json = await getJson(
+      '$_web/ajax/statuses/show',
+      // With this flag `text` holds the whole post as HTML; the longtext
+      // endpoint only has it as plain text (PLAN §8).
+      query: {'id': id, 'isGetLongText': 'true'},
+    );
+    final status = Status.tryFromJson(json);
+    if (status == null) throw const WeiboApiException('微博不存在或已被删除');
+    return status;
+  }
+
+  /// A page of the comments on status [statusId] by [authorId], continuing
+  /// after [maxId] (a previous page's `Paged.nextCursor`).
+  Future<Paged<Comment>> fetchComments({
+    required String statusId,
+    required String authorId,
+    required CommentOrder order,
+    String? maxId,
+  }) async {
+    final json = await getJson(
+      '$_web/ajax/statuses/buildComments',
+      query: {
+        'is_reload': 1,
+        'id': statusId,
+        'is_show_bulletin': 2,
+        'is_mix': 0,
+        'count': 20,
+        'uid': authorId,
+        'fetch_level': 0,
+        'flow': order == CommentOrder.hot ? 0 : 1,
+        'locale': 'zh-CN',
+        'max_id': ?maxId,
+      },
+    );
+    return _commentPage(json);
+  }
+
+  /// A page of the replies in the thread of comment [commentId], on a status
+  /// by [authorId].
+  Future<Paged<Comment>> fetchReplies({
+    required String commentId,
+    required String authorId,
+    String? maxId,
+  }) async {
+    final json = await getJson(
+      '$_web/ajax/statuses/buildComments',
+      query: {
+        'is_reload': 1,
+        'id': commentId,
+        'is_show_bulletin': 2,
+        'is_mix': 1,
+        'fetch_level': 1,
+        'max_id': maxId ?? 0,
+        'count': 20,
+        'uid': authorId,
+        'locale': 'zh-CN',
+      },
+    );
+    return _commentPage(json);
+  }
+
+  // Comment lists continue from `max_id`, which is 0 on the last page.
+  static Paged<Comment> _commentPage(Map<String, Object?> json) {
+    final comments = [
+      for (final c in readMaps(json['data'])) ?Comment.tryFromJson(c),
+    ];
+    final maxId = readString(json['max_id']);
+    devLog('comments: ${comments.length}, more=${maxId != '0'}');
+    return Paged(
+      comments,
+      nextCursor: comments.isEmpty || maxId == null || maxId == '0'
+          ? null
+          : maxId,
+      total: readInt(json['total_number']),
+    );
+  }
+
+  /// Page [page] (from 1) of the reposts of status [statusId], newest first.
+  Future<Paged<Status>> fetchReposts({
+    required String statusId,
+    int page = 1,
+  }) async {
+    final json = await getJson(
+      '$_web/ajax/statuses/repostTimeline',
+      // Weibo sends 20 a page whatever `count` asks for.
+      query: {'id': statusId, 'page': page, 'moduleID': 'feed', 'count': 20},
+    );
+    final reposts = [
+      for (final s in readMaps(json['data'])) ?Status.tryFromJson(s),
+    ];
+    final maxPage = readInt(json['max_page']) ?? page;
+    return Paged(
+      reposts,
+      nextCursor: reposts.isEmpty || page >= maxPage ? null : '${page + 1}',
+      total: readInt(json['total_number']),
+    );
   }
 
   Future<Map<String, Object?>> getJson(

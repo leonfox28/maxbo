@@ -3,11 +3,16 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../data/models/status.dart';
 import '../features/auth/login_page.dart';
+import '../features/comments/comment_replies_page.dart';
 import '../features/debug/diagnostics_page.dart';
 import '../features/hot_search/hot_search_page.dart';
+import '../features/media_viewer/image_viewer_page.dart';
+import '../features/media_viewer/video_player_page.dart';
 import '../features/profile/me_page.dart';
 import '../features/shell/home_shell.dart';
+import '../features/status/status_detail_page.dart';
 import '../features/timeline/timeline_page.dart';
 
 final routerProvider = Provider<GoRouter>((ref) {
@@ -31,6 +36,42 @@ final routerProvider = Provider<GoRouter>((ref) {
           ),
         ],
       ),
+      // Pages above the tabs. `extra` carries what the previous page already
+      // has, such as the status that was tapped; some can't do without it.
+      GoRoute(
+        path: '/status/:id',
+        builder: (_, state) => StatusDetailPage(
+          id: state.pathParameters['id']!,
+          initial: state.extra is Status ? state.extra! as Status : null,
+        ),
+      ),
+      GoRoute(
+        path: '/comments/:id',
+        builder: (_, state) => switch (state.extra) {
+          final CommentThread thread => CommentRepliesPage(thread: thread),
+          _ => const _MissingPage(),
+        },
+      ),
+      GoRoute(
+        path: '/video/:id',
+        builder: (_, state) => VideoPlayerPage(
+          id: state.pathParameters['id']!,
+          initial: state.extra is Status ? state.extra! as Status : null,
+        ),
+      ),
+      GoRoute(
+        path: '/viewer',
+        pageBuilder: (_, state) => CustomTransitionPage(
+          // See-through, so sliding a picture away reveals the page below.
+          opaque: false,
+          transitionsBuilder: (_, animation, _, child) =>
+              FadeTransition(opacity: animation, child: child),
+          child: switch (state.extra) {
+            final ImageViewerArgs args => ImageViewerPage(args: args),
+            _ => const _MissingPage(),
+          },
+        ),
+      ),
       GoRoute(
         path: '/login',
         pageBuilder: (_, _) =>
@@ -46,3 +87,17 @@ final routerProvider = Provider<GoRouter>((ref) {
   ref.onDispose(router.dispose);
   return router;
 });
+
+/// Shown when a page that needs data from the previous one is opened
+/// without it.
+class _MissingPage extends StatelessWidget {
+  const _MissingPage();
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(),
+      body: const Center(child: Text('页面已失效，请返回重新打开')),
+    );
+  }
+}

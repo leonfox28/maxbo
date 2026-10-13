@@ -142,6 +142,23 @@ void main() {
       expect(s.pageCard, isNull);
     });
 
+    test('lists playable streams over https, preferred first', () {
+      final s = Status.tryFromJson(statusJson(pageInfo: videoPageInfo()))!;
+      final labels = [
+        for (final url in s.video!.streamUrls) Uri.parse(url).pathSegments.last,
+      ];
+      // 720p first, then the hd/sd keys, then the best of playback_list;
+      // H.265 and the scrubbing thumbnails are left out.
+      expect(labels, [
+        'mp4_720p.mp4',
+        'mp4_hd.mp4',
+        'mp4_ld.mp4',
+        'list_1080.mp4',
+        'list_480.mp4',
+      ]);
+      expect(s.video!.streamUrls, everyElement(startsWith('https://')));
+    });
+
     test('reads other page_info as a link card', () {
       final s = Status.tryFromJson(
         statusJson(
@@ -185,6 +202,35 @@ void main() {
         }),
         isNull,
       );
+    });
+  });
+
+  group('PicInfo viewing', () {
+    test('views the largest list rendition, or the whole file for a GIF', () {
+      final pic = PicInfo.tryFromJson(picJson('p', width: 3000, height: 2000))!;
+      expect(pic.viewerVariant.url, contains('/mw2000/'));
+
+      final gif = PicInfo.tryFromJson(picJson('g', type: 'gif'))!;
+      expect(gif.viewerVariant.url, contains('/large/'));
+    });
+
+    test('wraps a linked picture URL', () {
+      final pic = PicInfo.fromUrl('https://wx1.sinaimg.cn/large/p1.gif');
+      expect(pic.type, PicType.gif);
+      expect(pic.viewerVariant.url, 'https://wx1.sinaimg.cn/large/p1.gif');
+    });
+
+    test('picsOf follows pic_ids and names pictures by their key', () {
+      final pics = picsOf({
+        'pic_ids': ['b', 'a'],
+        'pic_infos': {
+          'a': picJson('a'),
+          'b': {
+            'thumbnail': {'url': 'https://wx1.sinaimg.cn/thumbnail/b.jpg'},
+          },
+        },
+      });
+      expect(pics.map((p) => p.id), ['b', 'a']);
     });
   });
 

@@ -2,15 +2,19 @@ import 'package:flutter/material.dart';
 
 import '../../core/media/weibo_image.dart';
 import '../../core/util/format.dart';
+import '../../data/models/pic_info.dart';
 import '../../data/models/status.dart';
 import '../../data/models/weibo_user.dart';
 import '../pic_grid/pic_grid.dart';
 import '../rich_text/status_text.dart';
 import '../rich_text/status_text_parser.dart';
+import '../user_avatar.dart';
 
-/// What a status card can lead to. A null callback leaves its target inert.
+/// What tapping parts of a status (or comment) leads to. A null callback
+/// leaves its target inert.
 class StatusCardActions {
   const StatusCardActions({
+    this.onOpen,
     this.onLink,
     this.onUser,
     this.onExpand,
@@ -18,31 +22,39 @@ class StatusCardActions {
     this.onVideo,
   });
 
+  /// The card itself, or the retweeted post inside it.
+  final ValueChanged<Status>? onOpen;
   final ValueChanged<StatusLink>? onLink;
   final ValueChanged<WeiboUser>? onUser;
 
   /// "展开" on a truncated long post.
   final ValueChanged<Status>? onExpand;
-  final void Function(Status status, int index)? onPicture;
+  final void Function(List<PicInfo> pics, int index)? onPicture;
   final ValueChanged<Status>? onVideo;
 }
 
-/// A status as shown in a timeline.
+/// A status as shown in a timeline, or atop its detail page when [detail].
 class StatusCard extends StatelessWidget {
   const StatusCard(
     this.status, {
     super.key,
     this.actions = const StatusCardActions(),
+    this.detail = false,
   });
 
   final Status status;
   final StatusCardActions actions;
 
+  /// On the detail page the card itself isn't tappable and the counts move
+  /// to the page's tabs.
+  final bool detail;
+
   @override
   Widget build(BuildContext context) {
     final retweeted = status.retweeted;
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+    final onOpen = actions.onOpen;
+    final card = Padding(
+      padding: EdgeInsets.fromLTRB(16, 12, 16, detail ? 12 : 0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -51,18 +63,41 @@ class StatusCard extends StatelessWidget {
           _Body(status: status, actions: actions),
           if (retweeted != null) ...[
             const SizedBox(height: 8),
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.surfaceContainerHigh,
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: _Body(status: retweeted, actions: actions, nested: true),
-            ),
+            _Retweeted(status: retweeted, actions: actions),
           ],
-          _Counts(status: status),
+          if (!detail) _Counts(status: status),
         ],
+      ),
+    );
+    if (detail || onOpen == null) return card;
+    return InkWell(onTap: () => onOpen(status), child: card);
+  }
+}
+
+class _Retweeted extends StatelessWidget {
+  const _Retweeted({required this.status, required this.actions});
+
+  final Status status;
+  final StatusCardActions actions;
+
+  @override
+  Widget build(BuildContext context) {
+    final onOpen = actions.onOpen;
+    // Deleted or hidden posts come without an author and can't be opened.
+    final canOpen = onOpen != null && status.user != null;
+    return Material(
+      color: Theme.of(context).colorScheme.surfaceContainerHigh,
+      borderRadius: BorderRadius.circular(8),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: canOpen ? () => onOpen(status) : null,
+        child: Padding(
+          padding: const EdgeInsets.all(10),
+          child: SizedBox(
+            width: double.infinity,
+            child: _Body(status: status, actions: actions, nested: true),
+          ),
+        ),
       ),
     );
   }
@@ -88,10 +123,7 @@ class _Header extends StatelessWidget {
 
     return Row(
       children: [
-        GestureDetector(
-          onTap: user == null || onUser == null ? null : () => onUser!(user),
-          child: _Avatar(url: user?.avatarUrl),
-        ),
+        UserAvatar(user, onTap: onUser),
         const SizedBox(width: 10),
         Expanded(
           child: Column(
@@ -134,25 +166,6 @@ class _Header extends StatelessWidget {
         ),
         if (status.isAd) const _AdLabel(),
       ],
-    );
-  }
-}
-
-class _Avatar extends StatelessWidget {
-  const _Avatar({this.url});
-
-  final String? url;
-
-  static const _size = 40.0;
-
-  @override
-  Widget build(BuildContext context) {
-    final url = this.url;
-    if (url == null) {
-      return const CircleAvatar(radius: _size / 2, child: Icon(Icons.person));
-    }
-    return ClipOval(
-      child: WeiboImage(url, width: _size, height: _size),
     );
   }
 }
@@ -206,7 +219,7 @@ class _Body extends StatelessWidget {
             total: status.picCount,
             onTap: actions.onPicture == null
                 ? null
-                : (i) => actions.onPicture!(status, i),
+                : (i) => actions.onPicture!(status.pics, i),
           )
         : video != null
         ? _VideoCover(

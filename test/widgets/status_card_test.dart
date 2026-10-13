@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:maxbo/data/models/pic_info.dart';
 import 'package:maxbo/data/models/status.dart';
 import 'package:maxbo/widgets/pic_grid/pic_grid.dart';
 import 'package:maxbo/widgets/rich_text/status_text_parser.dart';
@@ -12,11 +13,16 @@ void main() {
     WidgetTester tester,
     Map<String, Object?> json, {
     StatusCardActions actions = const StatusCardActions(),
+    bool detail = false,
   }) => tester.pumpWidget(
     MaterialApp(
       home: Scaffold(
         body: SingleChildScrollView(
-          child: StatusCard(Status.tryFromJson(json)!, actions: actions),
+          child: StatusCard(
+            Status.tryFromJson(json)!,
+            actions: actions,
+            detail: detail,
+          ),
         ),
       ),
     ),
@@ -131,5 +137,83 @@ void main() {
       isA<MentionLink>().having((l) => l.screenName, 'name', '朋友'),
       isA<TopicLink>().having((l) => l.topic, 'topic', '话题'),
     ]);
+  });
+
+  testWidgets('tapping the card or its retweet opens that post', (
+    tester,
+  ) async {
+    final opened = <String>[];
+    await pumpCard(
+      tester,
+      statusJson(
+        id: 1,
+        text: '转发理由',
+        retweeted: statusJson(id: 2, text: '原文内容'),
+      ),
+      actions: StatusCardActions(onOpen: (s) => opened.add(s.id)),
+    );
+
+    await tester.tap(find.text('转发理由'));
+    // Clear of the author's @mention, which is a link of its own.
+    await tester.tapOnText(find.textRange.ofSubstring('原文内容'));
+
+    expect(opened, ['1', '2']);
+  });
+
+  testWidgets('a deleted retweet does not open', (tester) async {
+    final opened = <String>[];
+    await pumpCard(
+      tester,
+      statusJson(
+        id: 1,
+        text: '转发理由',
+        retweeted: {'idstr': '9', 'text': '抱歉，此微博已被作者删除。'},
+      ),
+      actions: StatusCardActions(onOpen: (s) => opened.add(s.id)),
+    );
+
+    await tester.tap(find.text('抱歉，此微博已被作者删除。'));
+
+    expect(opened, ['1']); // The tap falls through to the outer card.
+  });
+
+  testWidgets('in detail mode the card is inert and has no counts', (
+    tester,
+  ) async {
+    final opened = <String>[];
+    await pumpCard(
+      tester,
+      statusJson(text: '正文'),
+      actions: StatusCardActions(onOpen: (s) => opened.add(s.id)),
+      detail: true,
+    );
+
+    await tester.tap(find.text('正文'));
+
+    expect(opened, isEmpty);
+    expect(find.text('1.2万'), findsNothing);
+  });
+
+  testWidgets('tapping a picture reports the pictures and index', (
+    tester,
+  ) async {
+    (List<PicInfo>, int)? tapped;
+    await pumpCard(
+      tester,
+      statusJson(pics: [picJson('a'), picJson('b'), picJson('c')]),
+      actions: StatusCardActions(onPicture: (pics, i) => tapped = (pics, i)),
+    );
+
+    await tester.tap(
+      find
+          .descendant(
+            of: find.byType(PicGrid),
+            matching: find.byType(ClipRRect),
+          )
+          .at(1),
+    );
+
+    expect(tapped?.$1.map((p) => p.id), ['a', 'b', 'c']);
+    expect(tapped?.$2, 1);
   });
 }

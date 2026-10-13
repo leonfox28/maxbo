@@ -20,6 +20,15 @@ class PicInfo {
     this.largest,
   });
 
+  /// A picture known only by its URL, such as one linked from a status body.
+  factory PicInfo.fromUrl(String url) => PicInfo(
+    id: url,
+    type: Uri.tryParse(url)?.path.endsWith('.gif') ?? false
+        ? PicType.gif
+        : PicType.pic,
+    variants: [PicVariant(url, 0, 0)],
+  );
+
   final String id;
   final PicType type;
 
@@ -32,17 +41,23 @@ class PicInfo {
   // Names don't reliably say how big a rendition is (`original` is often a
   // mid-size crop), so variants are chosen by their actual size instead.
   static const _listVariants = ['thumbnail', 'bmiddle', 'large', 'mw2000'];
-  static const _fullVariants = ['largest', 'original'];
+  static const _fullVariants = ['largest', 'original', 'woriginal'];
 
-  static PicInfo? tryFromJson(Object? json) {
+  /// [id] names the picture when the JSON itself doesn't, as in comment
+  /// pictures, which are keyed by id.
+  static PicInfo? tryFromJson(Object? json, {String? id}) {
     final map = readMap(json);
     if (map == null) return null;
-    final id = readString(map['pic_id']) ?? readString(map['object_id']);
-    final variants = [for (final key in _listVariants) ?_variant(map[key])]
-      ..sort((a, b) => a.width.compareTo(b.width));
-    if (id == null || variants.isEmpty) return null;
+    final picId =
+        readString(map['pic_id']) ?? readString(map['object_id']) ?? id;
+    final variants = [for (final key in _listVariants) ?_variant(map[key])];
+    // Without sizes (comment pictures), keep the smallest-first key order.
+    if (variants.every((v) => v.width > 0)) {
+      variants.sort((a, b) => a.width.compareTo(b.width));
+    }
+    if (picId == null || variants.isEmpty) return null;
     return PicInfo(
-      id: id,
+      id: picId,
       type: switch (map['type']) {
         'gif' => PicType.gif,
         'livephoto' => PicType.livePhoto,
@@ -69,14 +84,20 @@ class PicInfo {
   bool get isLong => (aspectRatio ?? 1) < 1 / 3;
 
   /// The smallest rendition whose shorter side covers [pixels], or the
-  /// largest available.
+  /// largest available. A rendition of unknown size is taken to cover it.
   PicVariant variantFor(double pixels) {
     for (final v in variants) {
       final shorter = v.width < v.height ? v.width : v.height;
-      if (shorter >= pixels) return v;
+      if (shorter >= pixels || shorter == 0) return v;
     }
     return variants.last;
   }
+
+  /// What the image viewer shows: the largest list rendition (up to about
+  /// 2000 px wide, enough for a phone screen), or for a GIF the full file,
+  /// as smaller renditions may not be animated.
+  PicVariant get viewerVariant =>
+      type == PicType.gif ? largest ?? variants.last : variants.last;
 
   static PicVariant? _variant(Object? json) {
     final map = readMap(json);
@@ -88,4 +109,18 @@ class PicInfo {
       readInt(map['height']) ?? 0,
     );
   }
+}
+
+/// The pictures of a JSON object holding `pic_infos` keyed by id, in the
+/// display order of its `pic_ids`.
+List<PicInfo> picsOf(Map<String, Object?> json) {
+  final infos = readMap(json['pic_infos']);
+  if (infos == null) return const [];
+  final order = json['pic_ids'] is List
+      ? (json['pic_ids']! as List).map(readString).nonNulls
+      : const <String>[];
+  return [
+    for (final pid in order.isEmpty ? infos.keys : order)
+      ?PicInfo.tryFromJson(infos[pid], id: pid),
+  ];
 }

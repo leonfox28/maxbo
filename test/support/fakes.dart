@@ -3,8 +3,12 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
+import 'package:maxbo/core/net/cookie_jar.dart';
+import 'package:maxbo/core/net/request_throttle.dart';
+import 'package:maxbo/core/net/weibo_dio.dart';
 import 'package:maxbo/core/session/cookie_bridge.dart';
 import 'package:maxbo/core/session/session_storage.dart';
+import 'package:maxbo/data/api/weibo_api.dart';
 
 /// Answers every request with [handler] and records what was sent.
 class FakeAdapter implements HttpClientAdapter {
@@ -27,6 +31,16 @@ class FakeAdapter implements HttpClientAdapter {
   @override
   void close({bool force = false}) {}
 }
+
+/// A [WeiboApi] on a signed-in jar whose requests [adapter] answers.
+WeiboApi fakeApi(FakeAdapter adapter) => WeiboApi(
+  createWeiboDio(
+    jar: WeiboCookieJar({
+      'weibo.com': {'SUB': 'x'},
+    }),
+    throttle: RequestThrottle(minInterval: Duration.zero),
+  )..httpClientAdapter = adapter,
+);
 
 ResponseBody jsonBody(
   Object json, {

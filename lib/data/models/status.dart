@@ -75,18 +75,7 @@ class Status {
         readString(map['id']);
     if (id == null) return null;
 
-    final infos = readMap(map['pic_infos']);
-    final pics = <PicInfo>[];
-    if (infos != null) {
-      // pic_ids holds the display order; pic_infos is keyed by id.
-      final order = map['pic_ids'] is List
-          ? (map['pic_ids']! as List).map(readString).nonNulls
-          : const <String>[];
-      final ids = order.isEmpty ? infos.keys : order;
-      for (final pid in ids) {
-        if (PicInfo.tryFromJson(infos[pid]) case final pic?) pics.add(pic);
-      }
-    }
+    final pics = picsOf(map);
     final pageInfo = readMap(map['page_info']);
 
     return Status(
@@ -148,16 +137,28 @@ class UrlEntity {
   }
 }
 
-/// The video attached to a status. Playback (M3) re-fetches the status for
-/// fresh stream URLs, so only what the card shows is kept.
+/// The video attached to a status.
 class VideoInfo {
-  const VideoInfo({this.coverUrl, this.duration, this.aspectRatio});
+  const VideoInfo({
+    this.coverUrl,
+    this.duration,
+    this.aspectRatio,
+    this.streamUrls = const [],
+  });
 
   final String? coverUrl;
 
   /// Length in seconds.
   final int? duration;
   final double? aspectRatio;
+
+  /// Playable mp4 streams, preferred first. They are signed and expire about
+  /// an hour after Weibo sent them; see `resolveVideoUrl`.
+  final List<String> streamUrls;
+
+  // In order of preference: 720p is plenty on a phone; H.265 renditions are
+  // skipped because not every device decodes them.
+  static const _streamKeys = ['mp4_720p_mp4', 'mp4_hd_url', 'mp4_sd_url'];
 
   static VideoInfo? tryFromPageInfo(Map<String, Object?>? pageInfo) {
     if (pageInfo == null || pageInfo['object_type'] != 'video') return null;
@@ -173,7 +174,29 @@ class VideoInfo {
       aspectRatio: width != null && height != null && width > 0 && height > 0
           ? width / height
           : null,
+      streamUrls: {
+        for (final key in _streamKeys) ?readUrl(media?[key]),
+        ..._playbackUrls(media?['playback_list']),
+      }.map(_https).toList(),
     );
+  }
+
+  // Stream URLs come as plain http, which Android and iOS refuse by default;
+  // the CDN serves the same signed URLs over https, as weibo.com uses them.
+  static String _https(String url) =>
+      url.startsWith('http://') ? 'https://${url.substring(7)}' : url;
+
+  /// The plain mp4 entries of `playback_list`, best quality first; it also
+  /// lists scrubbing thumbnails and may list adaptive streams.
+  static Iterable<String> _playbackUrls(Object? list) {
+    final entries = [
+      for (final item in readMaps(list))
+        if (readMap(item['play_info']) case final info?
+            when info['mime'] == 'video/mp4' && info['protocol'] != 'dash')
+          if (readUrl(info['url']) case final url?)
+            (url, readInt(readMap(item['meta'])?['quality_index']) ?? 0),
+    ]..sort((a, b) => b.$2.compareTo(a.$2));
+    return entries.map((e) => e.$1);
   }
 }
 
