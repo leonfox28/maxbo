@@ -21,6 +21,7 @@ class Comment {
     this.liked = false,
     this.replyCount = 0,
     this.replies = const [],
+    this.canReply = true,
   });
 
   final String id;
@@ -45,6 +46,24 @@ class Comment {
   final int replyCount;
   final List<Comment> replies;
 
+  /// False when its author turned replies off.
+  final bool canReply;
+
+  Comment copyWith({int? replyCount, List<Comment>? replies}) => Comment(
+    id: id,
+    user: user,
+    createdAt: createdAt,
+    source: source,
+    text: text,
+    urls: urls,
+    pics: pics,
+    likesCount: likesCount,
+    liked: liked,
+    replyCount: replyCount ?? this.replyCount,
+    replies: replies ?? this.replies,
+    canReply: canReply,
+  );
+
   static Comment? tryFromJson(Object? json) {
     final map = readMap(json);
     if (map == null) return null;
@@ -66,6 +85,7 @@ class Comment {
       replies: [
         for (final r in readMaps(map['comments'])) ?Comment.tryFromJson(r),
       ],
+      canReply: readInt(map['disable_reply']) != 1,
     );
   }
 }

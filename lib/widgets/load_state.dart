@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../core/net/weibo_exception.dart';
 import '../core/paging/paged_controller.dart';
@@ -192,6 +193,26 @@ class ErrorRetry extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Tells the user why something they did failed; when Weibo wants a
+/// security check first, offers to take it (they then try again themselves).
+void showErrorSnackBar(BuildContext context, Object error) {
+  // The snack bar can outlive [context], e.g. a list item scrolled away.
+  final router = GoRouter.maybeOf(context);
+  ScaffoldMessenger.of(context)
+    ..hideCurrentSnackBar()
+    ..showSnackBar(
+      SnackBar(
+        content: Text(error is WeiboException ? error.message : '操作失败'),
+        action: error is CaptchaRequiredException && router != null
+            ? SnackBarAction(
+                label: '去验证',
+                onPressed: () => router.push(webPageLocation(error.url)),
+              )
+            : null,
+      ),
+    );
 }
 
 /// Lets the user take Weibo's security check at [url] in the in-app browser

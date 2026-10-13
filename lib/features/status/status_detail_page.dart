@@ -1,9 +1,13 @@
+import 'dart:math';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/net/weibo_exception.dart';
+import '../../core/session/session_controller.dart';
 import '../../core/util/format.dart';
+import '../../data/api/weibo_api.dart';
 import '../../data/models/comment.dart';
 import '../../data/models/status.dart';
 import '../../widgets/load_state.dart';
@@ -13,6 +17,8 @@ import '../../widgets/user_avatar.dart';
 import '../comments/comment_replies_page.dart';
 import '../comments/comment_tile.dart';
 import '../comments/comments_controller.dart';
+import '../interactions/comment_composer.dart';
+import '../interactions/likes.dart';
 import 'status_actions.dart';
 import 'status_detail_providers.dart';
 
@@ -44,6 +50,12 @@ class _StatusDetailPageState extends ConsumerState<StatusDetailPage> {
   final _openedOrders = {CommentOrder.hot};
   var _repostsOpened = false;
 
+  /// Comments the user added here, less those they deleted, since the
+  /// status they were counted on loaded: newer data already has them.
+  ({Status on, int added})? _commentsChange;
+  final _drafts = <String, String>{};
+  final _deleting = <String>{};
+
   void _showTab(_Tab tab) => setState(() {
     _tab = tab;
     if (tab == _Tab.reposts) _repostsOpened = true;
@@ -60,6 +72,97 @@ class _StatusDetailPageState extends ConsumerState<StatusDetailPage> {
     return (statusId: status.id, authorId: authorId, order: order);
   }
 
+  int _commentsAddedTo(Status status) {
+    final change = _commentsChange;
+    return change != null && identical(change.on, status) ? change.added : 0;
+  }
+
+  int _commentsCount(Status status) =>
+      max(0, status.commentsCount + _commentsAddedTo(status));
+
+  void _countComments(Status status, int change) => setState(
+    () => _commentsChange = (
+      on: status,
+      added: _commentsAddedTo(status) + change,
+    ),
+  );
+
+  void _editComments(
+    Status status,
+    void Function(CommentsController list) edit,
+  ) {
+    final authorId = status.user?.id;
+    if (authorId == null) return;
+    editOpenCommentLists(
+      ref,
+      statusId: status.id,
+      authorId: authorId,
+      edit: edit,
+    );
+  }
+
+  Future<void> _comment(Status status) async {
+    final sent = await showCommentComposer(
+      context,
+      hint: '写评论…',
+      drafts: _drafts,
+      draftKey: 'status',
+      send: (text) async {
+        final comment = await ref
+            .read(weiboApiProvider)
+            .postComment(statusId: status.id, text: text);
+        if (!mounted) return;
+        _countComments(status, 1);
+        setState(() => _tab = _Tab.comments);
+        if (comment != null) _editComments(status, (l) => l.prepend(comment));
+      },
+    );
+    if (sent && mounted) _showSnackBar('评论成功');
+  }
+
+  Future<void> _reply(Status status, Comment target) async {
+    final name = target.user?.screenName;
+    final sent = await showCommentComposer(
+      context,
+      hint: name == null ? '回复评论…' : '回复 @$name',
+      drafts: _drafts,
+      draftKey: target.id,
+      send: (text) async {
+        final reply = await ref
+            .read(weiboApiProvider)
+            .postComment(statusId: status.id, text: text, replyTo: target.id);
+        if (!mounted) return;
+        // Weibo counts replies among a status's comments.
+        _countComments(status, 1);
+        _editComments(
+          status,
+          (list) => list.replace(target.id, (c) => withReply(c, reply)),
+        );
+      },
+    );
+    if (sent && mounted) _showSnackBar('回复成功');
+  }
+
+  Future<void> _delete(Status status, Comment comment) async {
+    if (!await confirmDeleteComment(context) || !mounted) return;
+    if (!_deleting.add(comment.id)) return;
+    try {
+      await ref.read(weiboApiProvider).deleteComment(comment.id);
+      if (!mounted) return;
+      _countComments(status, -1);
+      _editComments(status, (list) => list.remove(comment.id));
+      _showSnackBar('已删除');
+    } on WeiboException catch (e) {
+      if (mounted) showErrorSnackBar(context, e);
+    } finally {
+      _deleting.remove(comment.id);
+    }
+  }
+
+  void _showSnackBar(String message) => ScaffoldMessenger.of(context)
+    ..hideCurrentSnackBar()
+    ..showSnackBar(SnackBar(content: Text(message)));
+
   Future<void> _refresh(Status status) async {
     final query = _commentsQuery(status, _order);
     try {
@@ -71,10 +174,7 @@ class _StatusDetailPageState extends ConsumerState<StatusDetailPage> {
           ref.refresh(commentsProvider(query).future),
       ]);
     } on WeiboException catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context)
-        ..hideCurrentSnackBar()
-        ..showSnackBar(SnackBar(content: Text(e.message)));
+      if (mounted) showErrorSnackBar(context, e);
     }
   }
 
@@ -84,6 +184,9 @@ class _StatusDetailPageState extends ConsumerState<StatusDetailPage> {
     final status = detail.value ?? widget.initial;
     return Scaffold(
       appBar: AppBar(title: const Text('微博正文')),
+      bottomNavigationBar: status == null || status.user == null
+          ? null
+          : _bottomBar(status),
       body: status != null
           ? _content(context, status, detail)
           : detail.hasError
@@ -95,6 +198,26 @@ class _StatusDetailPageState extends ConsumerState<StatusDetailPage> {
     );
   }
 
+  Widget _bottomBar(Status status) {
+    final colors = Theme.of(context).colorScheme;
+    return CommentBar(
+      hint: '写评论…',
+      onTap: () => _comment(status),
+      trailing: LikeBuilder(
+        target: (kind: LikeKind.status, id: status.id),
+        loaded: LikeState(liked: status.liked, count: status.likesCount),
+        builder: (context, like, onToggle) => TextButton.icon(
+          onPressed: onToggle,
+          style: like.liked
+              ? TextButton.styleFrom(foregroundColor: colors.primary)
+              : TextButton.styleFrom(foregroundColor: colors.onSurfaceVariant),
+          icon: Icon(like.liked ? Icons.thumb_up : Icons.thumb_up_outlined),
+          label: Text(like.count > 0 ? formatCount(like.count) : '赞'),
+        ),
+      ),
+    );
+  }
+
   Widget _content(
     BuildContext context,
     Status status,
@@ -102,6 +225,8 @@ class _StatusDetailPageState extends ConsumerState<StatusDetailPage> {
   ) {
     final actions = statusCardActions(context);
     final authorId = status.user?.id;
+    final session = ref.watch(sessionProvider);
+    final me = session is SignedIn ? session.account.uid : null;
     final comments = {
       for (final order in _openedOrders)
         if (_commentsQuery(status, order) case final query?)
@@ -137,8 +262,16 @@ class _StatusDetailPageState extends ConsumerState<StatusDetailPage> {
           actions: actions,
           onThread: () => context.push(
             '/comments/${comment.id}',
-            extra: CommentThread(root: comment, authorId: activeQuery.authorId),
+            extra: CommentThread(
+              root: comment,
+              statusId: status.id,
+              authorId: activeQuery.authorId,
+            ),
           ),
+          onTap: comment.canReply ? () => _reply(status, comment) : null,
+          onLongPress: me != null && comment.user?.id == me
+              ? () => _delete(status, comment)
+              : null,
         ),
         emptyText: '还没有评论',
         onRetry: () => ref.invalidate(provider),
@@ -185,6 +318,7 @@ class _StatusDetailPageState extends ConsumerState<StatusDetailPage> {
               pinned: true,
               delegate: _TabsDelegate(
                 status: status,
+                commentsCount: _commentsCount(status),
                 tab: _tab,
                 onTab: _showTab,
                 colors: Theme.of(context).colorScheme,
@@ -242,17 +376,21 @@ class _LoadFailedBar extends StatelessWidget {
   }
 }
 
-/// The repost and comment tabs with their counts, and the like count, which
-/// is display only.
+/// The repost and comment tabs with their counts, and the like count (the
+/// like button is in the bottom bar).
 class _TabsDelegate extends SliverPersistentHeaderDelegate {
   _TabsDelegate({
     required this.status,
+    required this.commentsCount,
     required this.tab,
     required this.onTab,
     required this.colors,
   });
 
   final Status status;
+
+  /// With the comments the user added or deleted here.
+  final int commentsCount;
   final _Tab tab;
   final ValueChanged<_Tab> onTab;
 
@@ -310,14 +448,21 @@ class _TabsDelegate extends SliverPersistentHeaderDelegate {
             child: Row(
               children: [
                 tabButton(_Tab.reposts, '转发', status.repostsCount),
-                tabButton(_Tab.comments, '评论', status.commentsCount),
+                tabButton(_Tab.comments, '评论', commentsCount),
                 const Spacer(),
                 Padding(
                   padding: const EdgeInsets.only(right: 16),
-                  child: Text(
-                    '赞 ${formatCount(status.likesCount)}',
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      color: colors.onSurfaceVariant,
+                  child: LikeBuilder(
+                    target: (kind: LikeKind.status, id: status.id),
+                    loaded: LikeState(
+                      liked: status.liked,
+                      count: status.likesCount,
+                    ),
+                    builder: (context, like, _) => Text(
+                      '赞 ${formatCount(like.count)}',
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: colors.onSurfaceVariant,
+                      ),
                     ),
                   ),
                 ),
@@ -333,6 +478,7 @@ class _TabsDelegate extends SliverPersistentHeaderDelegate {
   @override
   bool shouldRebuild(_TabsDelegate oldDelegate) =>
       oldDelegate.status != status ||
+      oldDelegate.commentsCount != commentsCount ||
       oldDelegate.tab != tab ||
       oldDelegate.colors != colors;
 }

@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:maxbo/core/net/request_throttle.dart';
 import 'package:maxbo/data/models/comment.dart';
 import 'package:maxbo/data/models/pic_info.dart';
 import 'package:maxbo/features/comments/comment_tile.dart';
@@ -15,13 +17,16 @@ void main() {
     StatusCardActions actions = const StatusCardActions(),
     VoidCallback? onThread,
   }) => tester.pumpWidget(
-    MaterialApp(
-      home: Scaffold(
-        body: CommentTile(
-          Comment.tryFromJson(json)!,
-          authorId: authorId,
-          actions: actions,
-          onThread: onThread,
+    ProviderScope(
+      retry: noRetry,
+      child: MaterialApp(
+        home: Scaffold(
+          body: CommentTile(
+            Comment.tryFromJson(json)!,
+            authorId: authorId,
+            actions: actions,
+            onThread: onThread,
+          ),
         ),
       ),
     ),

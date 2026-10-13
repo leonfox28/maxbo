@@ -1,3 +1,5 @@
+import 'dart:math';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../data/models/paged.dart';
@@ -25,6 +27,16 @@ class PagedState<T> {
   final WeiboException? loadMoreError;
 
   bool get hasMore => nextCursor != null;
+
+  /// This list with [items] in place of its own, [total] changing by
+  /// [totalChange].
+  PagedState<T> withItems(List<T> items, {int totalChange = 0}) => PagedState(
+    items: items,
+    nextCursor: nextCursor,
+    total: total == null ? null : max(0, total! + totalChange),
+    loadingMore: loadingMore,
+    loadMoreError: loadMoreError,
+  );
 }
 
 /// A list loaded a page at a time: the first page when first watched, the
@@ -66,29 +78,69 @@ abstract class PagedController<T> extends AsyncNotifier<PagedState<T>> {
 
     // `ref` follows rebuilds; the captured one tells if this build is gone.
     final buildRef = ref;
-    PagedState<T> next;
+    Paged<T>? page;
+    WeiboException? error;
     try {
-      final page = await fetchPage(current.nextCursor);
-      final seen = {for (final item in current.items) idOf(item)};
-      next = PagedState(
+      page = await fetchPage(current.nextCursor);
+    } on WeiboException catch (e) {
+      error = e;
+    }
+    // Drop the result if a refresh replaced the list meanwhile; otherwise
+    // add it to the list as it is now, which the user may have changed.
+    final latest = state.value;
+    if (!buildRef.mounted || latest == null) return;
+    if (page == null) {
+      state = AsyncData(
+        PagedState(
+          items: latest.items,
+          nextCursor: latest.nextCursor,
+          total: latest.total,
+          loadMoreError: error,
+        ),
+      );
+      return;
+    }
+    final seen = {for (final item in latest.items) idOf(item)};
+    state = AsyncData(
+      PagedState(
         items: [
-          ...current.items,
+          ...latest.items,
           ...page.items.where((item) => seen.add(idOf(item))),
         ],
         nextCursor: page.nextCursor,
-        total: page.total ?? current.total,
-      );
-    } on WeiboException catch (e) {
-      next = PagedState(
-        items: current.items,
-        nextCursor: current.nextCursor,
-        total: current.total,
-        loadMoreError: e,
-      );
-    }
-    // Drop the result if a refresh replaced the list meanwhile.
-    if (buildRef.mounted && identical(state.value, loading)) {
-      state = AsyncData(next);
-    }
+        total: page.total ?? latest.total,
+      ),
+    );
+  }
+
+  /// Puts [item], which the user just added, atop the list.
+  void prepend(T item) => _edit((list) {
+    final id = idOf(item);
+    return list.withItems([
+      item,
+      ...list.items.where((i) => idOf(i) != id),
+    ], totalChange: 1);
+  });
+
+  /// Takes the item [id], which the user just deleted, out of the list.
+  void remove(String id) => _edit((list) {
+    final items = list.items.where((i) => idOf(i) != id).toList();
+    if (items.length == list.items.length) return list;
+    return list.withItems(items, totalChange: -1);
+  });
+
+  /// Replaces the item [id] with what [change] makes of it.
+  void replace(String id, T Function(T item) change) => _edit(
+    (list) => list.withItems([
+      for (final i in list.items) idOf(i) == id ? change(i) : i,
+    ]),
+  );
+
+  // Lists still loading their first page are left alone: that page will be
+  // current anyway.
+  void _edit(PagedState<T> Function(PagedState<T> list) change) {
+    final list = state.value;
+    if (list == null || state.isLoading) return;
+    state = AsyncData(change(list));
   }
 }

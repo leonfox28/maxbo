@@ -7,9 +7,10 @@ import '../../data/models/pic_info.dart';
 import '../../widgets/rich_text/status_text.dart';
 import '../../widgets/status_card/status_card.dart';
 import '../../widgets/user_avatar.dart';
+import '../interactions/likes.dart';
 
-/// A comment with its author, pictures, time and likes; with [onThread], also
-/// a preview of its replies that opens the whole thread.
+/// A comment with its author, pictures, time and like button; with
+/// [onThread], also a preview of its replies that opens the whole thread.
 class CommentTile extends StatelessWidget {
   const CommentTile(
     this.comment, {
@@ -17,6 +18,8 @@ class CommentTile extends StatelessWidget {
     this.authorId,
     this.actions = const StatusCardActions(),
     this.onThread,
+    this.onTap,
+    this.onLongPress,
   });
 
   final Comment comment;
@@ -25,6 +28,10 @@ class CommentTile extends StatelessWidget {
   final String? authorId;
   final StatusCardActions actions;
   final VoidCallback? onThread;
+
+  /// Tapping the comment, e.g. to reply to it.
+  final VoidCallback? onTap;
+  final VoidCallback? onLongPress;
 
   @override
   Widget build(BuildContext context) {
@@ -38,7 +45,7 @@ class CommentTile extends StatelessWidget {
     ].join('  ');
     final onPicture = actions.onPicture;
 
-    return Padding(
+    final tile = Padding(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -102,19 +109,7 @@ class CommentTile extends StatelessWidget {
                         ),
                       ),
                     ),
-                    // Display only until interactions arrive (M5).
-                    Icon(
-                      comment.liked ? Icons.thumb_up : Icons.thumb_up_outlined,
-                      size: 14,
-                      color: comment.liked ? theme.colorScheme.primary : muted,
-                    ),
-                    const SizedBox(width: 3),
-                    Text(
-                      comment.likesCount > 0
-                          ? formatCount(comment.likesCount)
-                          : '赞',
-                      style: theme.textTheme.bodySmall?.copyWith(color: muted),
-                    ),
+                    _LikeButton(comment),
                   ],
                 ),
                 if (onThread != null && comment.replyCount > 0) ...[
@@ -130,6 +125,50 @@ class CommentTile extends StatelessWidget {
           ),
         ],
       ),
+    );
+    if (onTap == null && onLongPress == null) return tile;
+    return InkWell(onTap: onTap, onLongPress: onLongPress, child: tile);
+  }
+}
+
+class _LikeButton extends StatelessWidget {
+  const _LikeButton(this.comment);
+
+  final Comment comment;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final muted = theme.colorScheme.onSurfaceVariant;
+    return LikeBuilder(
+      target: (kind: LikeKind.comment, id: comment.id),
+      loaded: LikeState(liked: comment.liked, count: comment.likesCount),
+      builder: (context, like, onToggle) {
+        final color = like.liked ? theme.colorScheme.primary : muted;
+        return InkWell(
+          // While a like is on its way, taps do nothing (rather than reply).
+          onTap: onToggle ?? () {},
+          borderRadius: BorderRadius.circular(4),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  like.liked ? Icons.thumb_up : Icons.thumb_up_outlined,
+                  size: 14,
+                  color: color,
+                ),
+                const SizedBox(width: 3),
+                Text(
+                  like.count > 0 ? formatCount(like.count) : '赞',
+                  style: theme.textTheme.bodySmall?.copyWith(color: color),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 }

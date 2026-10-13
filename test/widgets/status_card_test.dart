@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:maxbo/core/net/request_throttle.dart';
 import 'package:maxbo/data/models/pic_info.dart';
 import 'package:maxbo/data/models/status.dart';
 import 'package:maxbo/widgets/pic_grid/pic_grid.dart';
@@ -15,13 +17,16 @@ void main() {
     StatusCardActions actions = const StatusCardActions(),
     bool detail = false,
   }) => tester.pumpWidget(
-    MaterialApp(
-      home: Scaffold(
-        body: SingleChildScrollView(
-          child: StatusCard(
-            Status.tryFromJson(json)!,
-            actions: actions,
-            detail: detail,
+    ProviderScope(
+      retry: noRetry,
+      child: MaterialApp(
+        home: Scaffold(
+          body: SingleChildScrollView(
+            child: StatusCard(
+              Status.tryFromJson(json)!,
+              actions: actions,
+              detail: detail,
+            ),
           ),
         ),
       ),

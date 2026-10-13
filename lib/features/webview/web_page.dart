@@ -18,9 +18,12 @@ Uri weiboSearchUrl(String query) {
 }
 
 /// Opens [url] in the in-app browser; completes when the user leaves it.
-Future<void> openWebPage(BuildContext context, Uri url) => context.push(
-  Uri(path: '/web', queryParameters: {'url': '$url'}).toString(),
-);
+Future<void> openWebPage(BuildContext context, Uri url) =>
+    context.push(webPageLocation(url));
+
+/// Where the in-app browser showing [url] is routed.
+String webPageLocation(Uri url) =>
+    Uri(path: '/web', queryParameters: {'url': '$url'}).toString();
 
 /// A web page inside the app, for what maxbo has no page of its own for,
 /// such as search results or Weibo's security checks.

@@ -5,6 +5,7 @@ import '../../core/util/format.dart';
 import '../../data/models/pic_info.dart';
 import '../../data/models/status.dart';
 import '../../data/models/weibo_user.dart';
+import '../../features/interactions/likes.dart';
 import '../pic_grid/pic_grid.dart';
 import '../rich_text/status_text.dart';
 import '../rich_text/status_text_parser.dart';
@@ -349,7 +350,7 @@ class _PageCardView extends StatelessWidget {
   }
 }
 
-/// Repost, comment and like counts. Display only until interactions (M5).
+/// Repost, comment and like counts; the like count is a like button.
 class _Counts extends StatelessWidget {
   const _Counts({required this.status});
 
@@ -358,23 +359,36 @@ class _Counts extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
-    Widget item(IconData icon, int count, String label, {Color? color}) {
+    Widget item(
+      IconData icon,
+      int count,
+      String label, {
+      Color? color,
+      VoidCallback? onTap,
+    }) {
       final c = color ?? colors.onSurfaceVariant;
-      return Expanded(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 10),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(icon, size: 16, color: c),
-              const SizedBox(width: 4),
-              Text(
-                count > 0 ? formatCount(count) : label,
-                style: TextStyle(fontSize: 13, color: c),
-              ),
-            ],
-          ),
+      final content = Padding(
+        padding: const EdgeInsets.symmetric(vertical: 10),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(icon, size: 16, color: c),
+            const SizedBox(width: 4),
+            Text(
+              count > 0 ? formatCount(count) : label,
+              style: TextStyle(fontSize: 13, color: c),
+            ),
+          ],
         ),
+      );
+      return Expanded(
+        child: onTap == null
+            ? content
+            : InkWell(
+                onTap: onTap,
+                borderRadius: BorderRadius.circular(6),
+                child: content,
+              ),
       );
     }
 
@@ -382,11 +396,18 @@ class _Counts extends StatelessWidget {
       children: [
         item(Icons.repeat, status.repostsCount, '转发'),
         item(Icons.chat_bubble_outline, status.commentsCount, '评论'),
-        item(
-          status.liked ? Icons.thumb_up : Icons.thumb_up_outlined,
-          status.likesCount,
-          '赞',
-          color: status.liked ? colors.primary : null,
+        LikeBuilder(
+          target: (kind: LikeKind.status, id: status.id),
+          loaded: LikeState(liked: status.liked, count: status.likesCount),
+          builder: (context, like, onToggle) => item(
+            like.liked ? Icons.thumb_up : Icons.thumb_up_outlined,
+            like.count,
+            '赞',
+            color: like.liked ? colors.primary : null,
+            // While a like is on its way, the button takes no taps but
+            // still swallows them, so they don't open the status.
+            onTap: onToggle ?? () {},
+          ),
         ),
       ],
     );

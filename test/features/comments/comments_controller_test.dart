@@ -116,4 +116,45 @@ void main() {
 
     expect(ids(), ['9']);
   });
+
+  test('the user\'s comments go atop the list, deleted ones out', () async {
+    c.listen(commentsProvider(_query), (_, _) {});
+    respond = (_) => jsonBody(
+      commentsPageJson([commentJson(id: 1), commentJson(id: 2)], total: 10),
+    );
+    await c.read(commentsProvider(_query).future);
+    final list = c.read(commentsProvider(_query).notifier);
+
+    list.prepend(Comment.tryFromJson(commentJson(id: 3))!);
+    expect(ids(), ['3', '1', '2']);
+    expect(c.read(commentsProvider(_query)).requireValue.total, 11);
+
+    list.remove('1');
+    list.remove('404');
+    expect(ids(), ['3', '2']);
+    expect(c.read(commentsProvider(_query)).requireValue.total, 10);
+
+    list.replace('2', (comment) => comment.copyWith(replyCount: 5));
+    final items = c.read(commentsProvider(_query)).requireValue.items;
+    expect(items.last.replyCount, 5);
+  });
+
+  test('a comment added while a page loads stays', () async {
+    c.listen(commentsProvider(_query), (_, _) {});
+    respond = (_) =>
+        jsonBody(commentsPageJson([commentJson(id: 1)], maxId: 50));
+    await c.read(commentsProvider(_query).future);
+
+    final slowPage = Completer<ResponseBody>();
+    respond = (_) => slowPage.future;
+    final list = c.read(commentsProvider(_query).notifier);
+    final loading = list.loadMore();
+
+    list.prepend(Comment.tryFromJson(commentJson(id: 3))!);
+    slowPage.complete(jsonBody(commentsPageJson([commentJson(id: 2)])));
+    await loading;
+
+    expect(ids(), ['3', '1', '2']);
+    expect(c.read(commentsProvider(_query)).requireValue.loadingMore, isFalse);
+  });
 }
