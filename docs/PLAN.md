@@ -113,14 +113,14 @@ test/  (fixtures/ 下只放合成数据)
 - 所有 `*.sinaimg.cn` 图片和 `*.weibocdn.com` 视频请求都带 `Referer: https://weibo.com/`；表情资源 `face.t.sinajs.cn` 不需要。
 - 头像链接带约 3 小时有效的签名参数，缓存 key 要去掉这些签名参数。
 - 配图按质量设置选择尺寸：列表用 `orj360` 或 `bmiddle`，查看器用 `mw2000` 或 `large`；gif 取 `original`；实况照片 v1 只显示静图并加角标。
-- 视频地址选择顺序：`mp4_720p_mp4` > `mp4_hd_url` > `mp4_sd_url` > `playback_list` 中最好的非 DASH 条目。播放前检查 `Expires` 参数，过期就重新请求 `statuses/show` 换取新地址。
+- 视频地址选择顺序：`mp4_720p_mp4` > `mp4_hd_url` > `mp4_sd_url` > `playback_list` 中最好的非 DASH 条目。地址下发时是 `http://`，两端默认都拦截明文请求，统一改成 `https://`。播放前检查 `Expires` 参数，过期（或 5 分钟内过期）就重新请求 `statuses/show` 换取新地址；CDN 拒绝时也会换一次。
 
 **正文渲染**
 - 用 `html` 包解析 `text` 字段，转换成 `InlineSpan`：
   - `<a>`：@用户跳到主页，#话题# 跳到搜索 WebView，短链通过 `url_struct` 还原后外部打开
   - `<img>` 表情：用 `WidgetSpan` 内联显示
   - `<br>`：换行
-  - `span.expand`（"展开"）：点击后加载长文
+  - `span.expand`（"展开"）：点击进入详情页，详情页用 `statuses/show` 取全文
 - `isLongText` 不可靠（超话等情况也会置位），所以长文只在用户点"展开"或进入详情时才请求。
 
 ## 5. v1 使用的接口
@@ -129,11 +129,11 @@ test/  (fixtures/ 下只放合成数据)
 |---|---|---|
 | 当前用户 / 登录校验 | GET `https://weibo.com/` 页面，解析内嵌的 `window.$CONFIG` | — |
 | 首页时间线 | GET `/ajax/feed/friendstimeline?refresh=4&count=20&list_id=…` | `since_id` / `max_id` |
-| 微博详情 | GET `/ajax/statuses/show?id=&isGetLongText=1` | — |
-| 长文 | GET `/ajax/statuses/longtext?id=` | — |
-| 评论 | GET `/ajax/statuses/buildComments?id&uid&flow(0热/1时间)&fetch_level=0&count=20` | `max_id` |
-| 楼中楼 | 同上，`id=<根评论id>&fetch_level=1` | `max_id` |
-| 转发列表 | GET `/ajax/statuses/repostTimeline?id&page` | `page` |
+| 微博详情（含长文全文） | GET `/ajax/statuses/show?id=&isGetLongText=true` | — |
+| ~~长文~~ | ~~GET `/ajax/statuses/longtext?id=`~~ 不用：只给纯文本，见第 8 节 | — |
+| 评论 | GET `/ajax/statuses/buildComments?id&uid(作者)&flow(0热/1时间)&fetch_level=0&count=20&is_reload=1&is_show_bulletin=2&is_mix=0` | `max_id`（0 为末页） |
+| 楼中楼 | 同上，`id=<根评论id>&fetch_level=1&is_mix=1`，首页 `max_id=0` | `max_id` |
+| 转发列表 | GET `/ajax/statuses/repostTimeline?id&page&moduleID=feed` | `page`（到 `max_page` 为止） |
 | 用户资料 | GET `/ajax/profile/info?uid=` 或 `?screen_name=` | — |
 | 用户微博 | GET `/ajax/statuses/mymblog?uid&page&feature=0` | `page` |
 | 热搜 | GET `/ajax/side/hotSearch` | — |
@@ -183,6 +183,14 @@ test/  (fixtures/ 下只放合成数据)
 - **正文链接**：@ 的 href 是相对路径 `/n/<昵称>`，带 `usercard` 属性；话题指向 `s.weibo.com/weibo?q=`；带 `data-pid` 的链接是图片（「查看图片」）；`t.cn` 短链在 `url_struct` 里有 `long_url`；很多链接内含 `img.icon-link` 类型图标（网页、商品、视频等）。
 - **`source`**：可能是纯文本，也可能是 `<a>` 片段，需要去掉标签。
 
+**M3 实测结论（2026-10-13，诊断页「详情结构」）：**
+
+- **长文**：时间线里长微博的 `text` 被截断，末尾带 `<span class="expand">展开</span>`。`statuses/show?isGetLongText=true` 返回的 `text` 是**完整的 HTML**（3 个样本都含全文结尾，且没有展开标记），链接、表情照常可用。`show` 里另有 `longText{content,…}`，`statuses/longtext` 返回 `longTextContent`，这两处都是纯文本（与 `text_raw` 相同），附带 `topic_struct`/`url_struct`，链接要自己重建。所以**只用 `show`，不调 `longtext`**。`show` 的 `id` 传数字 id 或 mblogid 都可以。
+- **视频**：`page_info.media_info` 里的 `mp4_720p_mp4`、`mp4_hd_url`、`mp4_sd_url`、`stream_url`、`h265_*`、`inch_*` 都是 `http://f.video.weibocdn.com/…`，带 `Expires`/`ssig`/`KID` 签名，**约 60 分钟后过期**，时间线和 `show` 返回的一样。`playback_list` 每项是 `meta{label,quality_index,quality_desc,type}` 加 `play_info{mime,protocol,width,height,url}`，其中 `type` 3 是拖动缩略图（`image/jpeg`）。明文 http 在 Android 上直接报 `CleartextNotPermitted`，改成 https 后能正常播放（Android 实测）。
+- **评论**：`buildComments` 返回 `data[]`、`max_id`（int，0 表示末页）、`total_number`、`rootComment`、`trendsText`。`flow=0` 按热度排序（时间是乱序的），`flow=1` 按时间倒序，每页约 20 条，两页之间没有重叠。每条评论有 `id`/`idstr`、`text`（HTML，含 @、话题、表情 `img`）、`text_raw`、`source`（如「来自上海」）、`like_counts`、`liked`、`total_number`（楼中楼回复数）、`comments`（0–2 条回复预览）、`more_info`。**带图评论**的图片不在 `text` 里，而是在 `url_struct` 的一项（`url_type` 39）中：`pic_infos` 以 pid 为键，项内没有 `pic_id`，尺寸档为 `thumbnail`/`bmiddle`/`large`/`woriginal`，没有宽高。
+- **楼中楼**：`fetch_level=1`，`id` 为根评论 id，`max_id` 从 0 开始。回复按时间倒序返回，`text` 自带「回复@xx:」前缀，并带有 `reply_comment`。`total_number` 可能比实际返回的条数多（有的回复被折叠或删除）。
+- **转发**：`repostTimeline` 返回 `data[]`（完整的 status，含 `retweeted_status`）、`total_number`、`max_page`、`next_cursor`。`count` 参数不起作用，每页 20 条左右；按时间倒序，两页之间没有重叠。
+
 ## 9. 分发
 
 - **Android**：GitHub Releases 发布按 ABI 拆分的 APK。签名密钥只保存在本地（`key.properties` 已 gitignore）。国行手机通常没有 GMS，暂不受 Google 开发者验证影响；2027 年该政策全球生效后再评估。
@@ -203,33 +211,37 @@ test/  (fixtures/ 下只放合成数据)
 | M0 脚手架 | ✅ 完成 | `1d6888b` |
 | M1 登录验证 | ✅ 完成：Android 真实登录通过，重启后保持登录；iOS 的 HttpOnly Cookie 读取已由集成测试验证，真实登录待补测 | `02b3d90` `af0e0e2` `88969f8` |
 | M2 首页时间线 | ✅ 完成：Android 真实会话下加载、下拉刷新、滚动翻页（连续 3 页）都正常，图片无 403，浅色和深色主题都核对过；iOS 只验证了能编译 | `984f7bb` `585cc22` |
-| M3 详情与媒体 | ⏭ 下一步 | — |
-| M4–M6 | 未开始 | — |
+| M3 详情与媒体 | ✅ 完成：Android 真实会话下核对了详情页（长文全文、评论按热度/按时间、评论翻页、楼中楼、转发页签）、图片查看器（翻页、点击或下滑关闭）、视频播放、深色主题；视频地址过期后自动换新地址（时间线加载 1 小时后点视频，先请求一次 `statuses/show` 再播放，无播放错误）；iOS 只验证了能编译 | `41e7e80` `544dc60` |
+| M4 主页与热搜 | ⏭ 下一步 | — |
+| M5–M6 | 未开始 | — |
 
-### 已有的基础设施（M3 直接复用）
+### 已有的基础设施（M4 直接复用）
 
 - **网络**：`weiboApiProvider`（`lib/data/api/weibo_api.dart`）。新端点加成 `WeiboApi` 的方法，内部用 `getJson()` / `getPage()`，统一完成错误映射和登录过期处理。请求头、Cookie、XSRF、限流都由 `createWeiboDio()` 的拦截器负责，调用方不用操心。
 - **会话**：`sessionProvider` 为 `SignedIn(account)` 时可拿到 `account.uid`；登录失效时会自动切到 `SignedOut(expired: true)`，界面统一显示 `LoginPrompt`。
-- **错误类型**：`SessionExpiredException` / `CaptchaRequiredException` / `RateLimitedException` / `NetworkException` / `WeiboApiException`，都带有可以直接展示的中文 `message`。
+- **错误类型**：`SessionExpiredException` / `CaptchaRequiredException` / `RateLimitedException` / `NetworkException` / `WeiboApiException`，都带有可以直接展示的中文 `message`；界面上用 `loadErrorMessage(error)` 取。
 - **不自动重试**：`main.dart` 的 `ProviderScope(retry: noRetry)` 关掉了 Riverpod 默认的失败重试（默认最多 10 次），保证每个请求都由用户操作触发。测试里的 `ProviderScope`/`ProviderContainer` 也要传 `noRetry`。
-- **模型**（`lib/data/models/`）：`Status`、`WeiboUser`、`PicInfo`、`VideoInfo`、`PageCard`、`UrlEntity`、`FeedPage`，都用 `tryFromJson` 容错解析，读字段用 `lib/core/util/json_read.dart`。时间、计数、时长的格式化在 `lib/core/util/format.dart`。
-- **图片**：`WeiboImage` / `weiboImageProvider`（`lib/core/media/weibo_image.dart`）自动带 Referer，缓存 key 去掉头像签名；尺寸用 `PicInfo.variantFor(像素)` 选，查看器用 `PicInfo.largest`。
-- **微博卡片**：`StatusCard` + `StatusCardActions`（`lib/widgets/status_card/`），正文由 `parseStatusText()` 解析成片段，再由 `StatusText` 渲染。各处点击统一走 `statusCardActions(context)`（`lib/features/status/status_actions.dart`）：网页链接用外部浏览器打开；@、话题、图片、视频、「展开」目前只弹「将在 M3/M4 实现」，M3、M4 在这里接上真实页面。
-- **时间线**：`timelineProvider`（`lib/features/timeline/timeline_controller.dart`）负责首屏、`refresh()`、`loadMore()`。刷新和翻页并发、或会话中途变化时，过期结果会被丢弃。
-- **调试**：调试版「我」页右上角的虫子图标进入诊断页：▶ 是 M1 的接口检查，▤ 是「时间线结构」探针（字段形状、分页规律）。日志前缀 `[maxbo-diag]` / `[maxbo]`，用 `adb logcat` 读取。`devLog()` 只在调试版输出，不得记录 Cookie 值或微博正文。
+- **模型**（`lib/data/models/`）：`Status`、`WeiboUser`、`PicInfo`、`VideoInfo`、`PageCard`、`UrlEntity`、`FeedPage`、`Comment`、`Paged<T>`，都用 `tryFromJson` 容错解析，读字段用 `lib/core/util/json_read.dart`。时间、计数、时长的格式化在 `lib/core/util/format.dart`。`picsOf(json)` 解析任何带 `pic_ids`/`pic_infos` 的对象。
+- **分页列表**：`PagedController<T>`（`lib/core/paging/`）实现首屏、`loadMore()`、去重和过期结果丢弃，子类只需写 `fetchPage(cursor)` 和 `idOf(item)`，游标是字符串（`max_id` 或页码）。界面用 `PagedSliverList`（加载中、错误重试、空列表、页脚）和 `LoadMoreTrigger`（滚到接近底部时加载下一页），都在 `lib/widgets/load_state.dart`。示例见 `features/comments/comments_controller.dart` 和 `features/status/status_detail_providers.dart`（转发，按页码翻页）。
+- **图片**：`WeiboImage` / `weiboImageProvider`（`lib/core/media/weibo_image.dart`）自动带 Referer，缓存 key 去掉头像签名；列表尺寸用 `PicInfo.variantFor(像素)` 选，查看器用 `PicInfo.viewerVariant`（`mw2000` 一档，GIF 用原图）。
+- **视频**：`lib/core/media/video_source.dart` 的 `resolveVideoUrl()` 负责选地址、判断过期、必要时重新请求 `statuses/show`；播放请求带 `videoHttpHeaders`。
+- **路由与入口**：`/status/:id`（详情）、`/comments/:id`（楼中楼）、`/video/:id`、`/viewer`，`extra` 传上一页已有的数据（`Status`、`CommentThread`、`ImageViewerArgs`）。卡片和评论上的各种点击统一走 `statusCardActions(context)`（`lib/features/status/status_actions.dart`）：点卡片和「展开」进详情，图片进查看器，视频进播放页，网页链接用外部浏览器打开；**@、头像、话题目前只弹「将在 M4 实现」**。`UserAvatar`（`lib/widgets/user_avatar.dart`）是通用的圆形头像。
+- **详情页**：`StatusDetailPage` 先显示上一页传来的 `Status`，再用 `statusDetailProvider` 取全文和最新计数。评论和转发列表在页面存续期间保持已加载状态，切换页签或排序不会重复请求。
+- **调试**：调试版「我」页右上角的虫子图标进入诊断页：▶ 是 M1 的接口检查，▤ 是「时间线结构」探针，📄 是「详情结构」探针（长文、视频地址和有效期、评论/楼中楼/转发的分页）。日志前缀 `[maxbo-diag]` / `[maxbo]`，用 `adb logcat` 读取。`devLog()` 只在调试版输出，不得记录 Cookie 值或微博正文。
 
-### M3 要点
+### M4 要点
 
-- **入口**：在 `statusCardActions` 里把「展开」、图片、视频换成真实页面；点卡片本身进详情页（目前点卡片没有反应）。
-- **长文**：`/ajax/statuses/longtext?id=<mblogid>` 的返回结构**还没有实测**，先用诊断页确认 `longTextContent` 是 HTML 还是纯文本、`url_struct` 在不在里面。
-- **视频**：时间线里已有 `page_info.media_info` 的各档地址，但都带 `Expires` 签名；按第 4.2 节的顺序选地址，播放前检查是否过期，过期就调 `statuses/show` 换新地址。`VideoInfo` 目前只存了封面、时长和宽高。
-- **图片查看器**：`extended_image` 的手势翻页；用 `PicInfo.largest`，gif 和实况照片按第 4.2 节处理。
-- **评论**：`buildComments` 的 `flow`、`max_id` 分页规则也要先实测。
-- **还没做的小项**：验证码（`CaptchaRequiredException`）目前只显示文字，还没有打开 WebView 让用户处理的入口；图片磁盘缓存没有大小上限，留给 M6 的设置页处理。
-- **流畅度**：M2 只在模拟器的调试版上看过，滚动没有明显卡顿；还没在 profile 版或真机上测帧率。
+- **入口**：在 `statusCardActions` 里把 `onUser`（头像）、`MentionLink`（@昵称，只有昵称没有 uid）、`TopicLink` 换成真实页面。
+- **用户主页**：`/ajax/profile/info?uid=` 或 `?screen_name=`（@ 链接只能用后者），用户微博 `/ajax/statuses/mymblog?uid&page&feature=0`。这两个端点的结构**还没有实测**，先在诊断页加探针确认字段和翻页规则。微博列表可以直接用 `PagedController`（页码游标）配合 `StatusCard`。
+- **热搜**：`/ajax/side/hotSearch`；点某条或点话题，在应用内 WebView 打开 `s.weibo.com/weibo?q=`。应用内 WebView 要沿用登录页的 UA 和 Cookie。
+- **还没做的小项**：验证码（`CaptchaRequiredException`）目前只显示文字，还没有打开 WebView 让用户处理的入口，应用内 WebView 做好后可一并接上；图片磁盘缓存没有大小上限，留给 M6 的设置页处理；评论的点赞数只显示（M5）。
+- **M3 未在真机上验证的部分**：查看器的双击放大（adb 连点两次太慢，触发不了双击）；长图在查看器里按屏幕宽度铺满（没遇到真实长图样本）；GIF 和实况照片（时间线里还没出现过样本）。
+- **流畅度**：M2、M3 都只在模拟器的调试版上看过，滚动没有明显卡顿；还没在 profile 版或真机上测帧率。
 
 ### 开发环境注意
 
 - 真实登录要过短信验证码和网易易盾人机验证，代价很高。保存着登录态的设备**只能用 `adb install -r` 覆盖安装**；不要在上面运行 `integration_test`（会清空 WebView Cookie），也不要卸载或清除数据。
 - 本机可能同时连着别的模拟器（2026-10-13 有一台 `emulator-5586` 不属于本项目），adb 命令要用 `-s emulator-5554` 指定保存着登录态的 Pixel_9。
 - 部分 Google 域名（如 `dl.google.com`）可能被本机代理规则判为直连而连不上，表现为 TLS 握手中断；这时调整代理分流规则即可，**不要往仓库里写镜像地址**。
+- `adb shell uiautomator dump` 看不到 Flutter 的界面元素，操作模拟器只能靠截图（`adb exec-out screencap -p`）加坐标点击。截图是 1080×2424，按缩小后的图量出的坐标要乘回原始比例。
+- 核对深色主题可用 `adb -s emulator-5554 shell cmd uimode night yes`，看完记得改回 `no`。
