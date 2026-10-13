@@ -2,7 +2,7 @@
 
 一个开源、非商业的第三方微博阅读客户端（Android / iOS），使用 Flutter 开发。
 
-> **状态：规划中。** 方案见 [docs/PLAN.md](docs/PLAN.md)。
+> **状态：开发中。** 已完成工程脚手架和登录（M0、M1），下一步是首页时间线（M2）。方案与进度见 [docs/PLAN.md](docs/PLAN.md)。
 
 ## 声明
 

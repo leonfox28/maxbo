@@ -147,7 +147,7 @@ test/  (fixtures/ 下只放合成数据)
 |---|---|---|
 | **M0 脚手架** | 用 brew 安装 Flutter，`flutter create`（只建 android 和 ios 平台），配置 lint，搭目录骨架，写好平台通道 | 在 Android 模拟器和 iOS 模拟器上都能启动空壳 App |
 | **M1 登录验证（决定能否继续）** | WebView 登录、读取 Cookie、持久化、登录校验、过期处理；同时实测第 8 节的待验证项 | 用真实账号登录后，重启 App 仍保持登录，并能拿到 uid |
-| **M2 首页时间线** | 网络层、Status 模型、富文本、九宫格、转发卡片、刷新和分页 | 首页流畅滚动，图片正常加载（无 403） |
+| **M2 首页时间线** | Status 模型、富文本、九宫格、转发卡片、刷新和分页、带 Referer 的图片加载（网络层已在 M1 完成） | 首页流畅滚动，图片正常加载（无 403） |
 | **M3 详情与媒体** | 详情页、长文、评论（含楼中楼）、转发列表、图片查看器、视频播放 | 长文展开、评论分页、视频能播，且地址过期后能自动刷新 |
 | **M4 主页与热搜** | 用户主页、热搜榜、应用内 WebView | 从卡片上的 @ 和头像能跳到主页 |
 | **M5 轻互动** | 点赞、评论 | 界面状态与服务端一致；失败可回滚并提示 |
@@ -187,3 +187,33 @@ test/  (fixtures/ 下只放合成数据)
 - **Git 提交身份**：仅本仓库配置 `Leon <41661196+leonfox28@users.noreply.github.com>`。
 - **Flutter**：stable 3.47.7（Dart 3.13.5）。
 - **包名**：暂定 `app.maxbo`，首次发版前可以改。
+
+## 11. 进度与交接（更新于 2026-10-13）
+
+| 里程碑 | 状态 | 提交 |
+|---|---|---|
+| M0 脚手架 | ✅ 完成 | `1d6888b` |
+| M1 登录验证 | ✅ 完成：Android 真实登录通过，重启后保持登录；iOS 的 HttpOnly Cookie 读取已由集成测试验证，真实登录待补测 | `02b3d90` `af0e0e2` `88969f8` |
+| M2 首页时间线 | ⏭ 下一步 | — |
+| M3–M6 | 未开始 | — |
+
+### M1 已有的基础设施（M2 直接复用）
+
+- **网络**：`weiboApiProvider`（`lib/data/api/weibo_api.dart`）。新端点加成 `WeiboApi` 的方法，内部用 `getJson()` / `getPage()`，统一完成错误映射和登录过期处理。请求头、Cookie、XSRF、限流都由 `createWeiboDio()` 的拦截器负责，调用方不用操心。
+- **会话**：`sessionProvider` 为 `SignedIn(account)` 时可拿到 `account.uid`；登录失效时会自动切到 `SignedOut(expired: true)`，界面统一显示 `LoginPrompt`。
+- **错误类型**：`SessionExpiredException` / `CaptchaRequiredException` / `RateLimitedException` / `NetworkException` / `WeiboApiException`，都带有可以直接展示的中文 `message`。
+- **调试**：调试版「我」页右上角的虫子图标进入诊断页，可以对真实会话核对接口；日志前缀 `[maxbo-diag]` / `[maxbo]`，用 `adb logcat` 读取。`devLog()` 只在调试版输出，不得记录 Cookie 值或微博正文。
+
+### M2 实测要点
+
+- **时间线**：`GET /ajax/feed/friendstimeline?list_id=11000<uid>&refresh=4&count=20`，返回 `statuses[]`、`max_id`、`since_id`、`total_number`。翻页按调研结论处理：首屏 `since_id=0`，之后传上一页的 `max_id`，`max_id` 为 0 或列表为空时停止；**翻页规则还没有实测**，实现时用诊断页或日志确认。
+- **微博对象字段**（2026-10-13 实测 24 条样本的字段并集）：`analysis_extra, annotations, attitudes_count, attitudes_status, can_edit, cardid, comment_manage_info, comments_count, content_auth, continue_tag, created_at, edit_count, favorited, geo, id, idstr, isAd, isLongText, isSinglePayAudio, is_controlled_by_server, is_paid, is_show_bulletin, is_show_mixed, mblog_feed_back_menus_format, mblog_vip_type, mblogid, mblogtype, md_render_mark, mid, mixed_count, mlevel, number_display_strategy, pic_bg_new, pic_focus_point, pic_ids, pic_infos, pic_num, pictureViewerSign, rcList, readtimetype, region_name, repost_type, reposts_count, retweeted_status, rid, share_repost_type, showFeedComment, showFeedRepost, showPictureViewer, source, tag_struct, text, textLength, text_raw, topic_struct, url_struct, user, visible`。
+- **正文**：`text` 是 HTML，包含 `<a>`（@ 用户的 href 不带引号）、表情 `<img alt="[xx]">`、`<br />`，截断时末尾带 `span.expand`；`text_raw` 是纯文本。规则见第 4.2 节。
+- **图片**：用 `pic_ids` 加 `pic_infos[pid].{thumbnail,bmiddle,large,largest,mw2000,original}`，每个尺寸都是 `{url,width,height}`；`type` 可能是 `pic`、`gif` 或 `livephoto`。`*.sinaimg.cn` 必须带 `Referer: https://weibo.com/`，否则返回 403。头像 URL 带签名，约 3 小时过期，缓存 key 要去掉签名参数。
+- **广告**：满足 `isAd == true`、`readtimetype == 'adMblog'` 或 `mark` 含 `mark_ad` 中任一条件，就打「广告」标签，**不过滤**。目前还没见到真实广告样本。
+- **时间格式**：`created_at` 形如 `Mon Oct 12 13:17:46 +0800 2026`（英文 locale）。
+
+### 开发环境注意
+
+- 真实登录要过短信验证码和网易易盾人机验证，代价很高。保存着登录态的设备**只能用 `adb install -r` 覆盖安装**；不要在上面运行 `integration_test`（会清空 WebView Cookie），也不要卸载或清除数据。
+- 部分 Google 域名（如 `dl.google.com`）可能被本机代理规则判为直连而连不上，表现为 TLS 握手中断；这时调整代理分流规则即可，**不要往仓库里写镜像地址**。
