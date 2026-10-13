@@ -631,6 +631,294 @@ class _DiagnosticsPageState extends ConsumerState<DiagnosticsPage> {
     if (mounted) setState(() => _running = false);
   }
 
+  /// Logs the structure of what the profile and hot search pages read: user
+  /// profiles looked up by uid and by screen name, how a user's statuses
+  /// page, and the hot search list.
+  Future<void> _probeProfile() async {
+    setState(() {
+      _lines.clear();
+      _running = true;
+    });
+    final session = ref.read(sessionProvider);
+    if (session is! SignedIn) {
+      _log('profile probe needs a signed-in session');
+      setState(() => _running = false);
+      return;
+    }
+    final uid = session.account.uid;
+    final api = WeiboApi(
+      createWeiboDio(
+        jar: ref.read(cookieJarProvider),
+        throttle: ref.read(requestThrottleProvider),
+      ),
+    );
+
+    Future<Map<String, Object?>?> fetch(
+      String label,
+      String path,
+      Map<String, Object?> query,
+    ) async {
+      try {
+        return await api.getJson('https://weibo.com/ajax/$path', query: query);
+      } on Exception catch (e) {
+        _log('$label: $e');
+        return null;
+      }
+    }
+
+    // Another user to look at: the author with the most posts on the first
+    // timeline page who isn't the signed-in user.
+    final feed = await fetch('timeline', 'feed/friendstimeline', {
+      'list_id': '11000$uid',
+      'refresh': 4,
+      'count': 20,
+      'since_id': 0,
+    });
+    final authors = <String, Map<String, Object?>>{};
+    final posts = <String, int>{};
+    for (final s in _maps(feed?['statuses'])) {
+      final user = readMap(s['user']);
+      final id = readString(user?['idstr']);
+      if (user == null || id == null || id == uid) continue;
+      authors[id] = user;
+      posts[id] = (posts[id] ?? 0) + 1;
+    }
+    final other =
+        (posts.entries.toList()..sort((a, b) => b.value.compareTo(a.value)))
+            .firstOrNull
+            ?.key;
+    _log('authors=${authors.length} other=${other != null}');
+
+    void logUser(String label, Map<String, Object?>? json) {
+      if (json == null) return;
+      _log('$label: ${describeShape({...json, 'data': null}, maxDepth: 1)}');
+      final data = readMap(json['data']);
+      _log(
+        '$label data: '
+        '${describeShape({...?data, 'user': null}, maxDepth: 2)}',
+      );
+      final user = readMap(data?['user']);
+      if (user == null) return;
+      _log('$label user keys: ${(user.keys.toList()..sort()).join(', ')}');
+      for (final key in [
+        'id',
+        'idstr',
+        'description',
+        'location',
+        'gender',
+        'followers_count',
+        'followers_count_str',
+        'friends_count',
+        'statuses_count',
+        'verified',
+        'verified_type',
+        'verified_reason',
+        'following',
+        'follow_me',
+        'cover_image_phone',
+        'avatar_hd',
+        'avatar_large',
+        'profile_image_url',
+        'mbrank',
+        'svip',
+        'user_type',
+        'is_muteuser',
+        'special_follow',
+      ]) {
+        final v = user[key];
+        _log(
+          '  $key: ${v is String && v.startsWith('http')
+              ? _urlPattern(v)
+              : v is String
+              ? 'str(${v.length})'
+              : describeShape(v, maxDepth: 1)}',
+        );
+      }
+    }
+
+    _log('== profile by uid (self)');
+    final selfProfile = await fetch('self', 'profile/info', {'uid': uid});
+    logUser('self', selfProfile);
+
+    if (other != null) {
+      _log('== profile by uid (other)');
+      final byUid = await fetch('other', 'profile/info', {'uid': other});
+      logUser('other', byUid);
+
+      _log('== profile by screen_name');
+      final name = readString(authors[other]?['screen_name']);
+      final byName = name == null
+          ? null
+          : await fetch('by name', 'profile/info', {'screen_name': name});
+      if (byName != null) {
+        final user = readMap(readMap(byName['data'])?['user']);
+        _log(
+          'by name: ok=${byName['ok']} same idstr=${user?['idstr'] == other} '
+          '${describeShape({...byName, 'data': null}, maxDepth: 1)}',
+        );
+      }
+      final missing = await fetch('missing name', 'profile/info', {
+        'screen_name': 'maxbo_no_such_user_zq9x',
+      });
+      if (missing != null) _log('missing name: ${describeShape(missing)}');
+
+      _log('== mymblog (other)');
+      await _probeUserStatuses(fetch, other, pages: 2);
+    }
+    _log(
+      '== mymblog (self, statuses_count=${readMap(readMap(selfProfile?['data'])?['user'])?['statuses_count']})',
+    );
+    await _probeUserStatuses(fetch, uid, pages: 3);
+
+    _log('== hotSearch');
+    final hot = await fetch('hotSearch', 'side/hotSearch', {});
+    if (hot != null) {
+      final data = readMap(hot['data']);
+      _log('hotSearch: ${describeShape({...hot, 'data': null}, maxDepth: 1)}');
+      _log('data: ${describeShape(data, maxDepth: 1)}');
+      for (final entry in data?.entries ?? <MapEntry<String, Object?>>[]) {
+        final items = entry.value is Map
+            ? [readMap(entry.value)!]
+            : _maps(entry.value).toList();
+        if (items.isEmpty) continue;
+        final keys = {for (final i in items) ...i.keys}.toList()..sort();
+        _log('${entry.key}: ${items.length} items, keys: ${keys.join(', ')}');
+        for (final key in [
+          'word',
+          'word_scheme',
+          'note',
+          'num',
+          'rank',
+          'realpos',
+          'label_name',
+          'icon_desc',
+          'icon_desc_color',
+          'small_icon_desc',
+          'small_icon_desc_color',
+          'flag',
+          'is_ad',
+          'ad_type',
+          'topic_flag',
+          'icon',
+          'mid',
+          'url',
+          'name',
+          'pos',
+        ]) {
+          final values = <String>{
+            for (final i in items)
+              if (i.containsKey(key))
+                switch (i[key]) {
+                  // Labels are Weibo's one-character badges such as 新/热.
+                  final String v
+                      when key.contains('label') || key.contains('icon_desc') =>
+                    v,
+                  final String v when v.startsWith('http') => _urlPattern(v),
+                  final String v => 'str(${v.length})',
+                  final v => describeShape(v, maxDepth: 1),
+                },
+          };
+          if (values.isNotEmpty) {
+            _log('  $key: ${values.take(8).join(' | ')}');
+          }
+        }
+        final scheme = items
+            .where(
+              (i) =>
+                  i['word_scheme'] is String &&
+                  i['word'] is String &&
+                  i['word_scheme'] != i['word'],
+            )
+            .map(
+              (i) => '${i['word_scheme']}' == '#${i['word']}#'
+                  ? '#word#'
+                  : 'other',
+            )
+            .toSet();
+        _log('  word_scheme vs word: ${scheme.join(', ')}');
+        _log(
+          '  ads: ${items.where((i) => _truthy(i['is_ad'])).length} '
+          'ranks: ${[for (final i in items.take(60)) i['rank'] ?? '-'].join(',')}',
+        );
+        _log(
+          '  realpos: '
+          '${[for (final i in items.take(60)) i['realpos'] ?? '-'].join(',')}',
+        );
+        for (final (n, i) in items.indexed) {
+          final ad = _truthy(i['is_ad']) || _truthy(i['topic_ad']);
+          if (!ad && n > 2) continue;
+          final word = '${i['word'] ?? ''}';
+          _log(
+            '  [$n] is_ad=${i['is_ad']} topic_ad=${i['topic_ad']} '
+            'rank=${i['rank']} realpos=${i['realpos']} num=${i['num']} '
+            'flag=${i['flag']} icon_type=${i['icon_type']} '
+            'label=${i['label_name']}/${i['icon_desc']}/${i['small_icon_desc']} '
+            'flag_desc=${describeShape(i['flag_desc'], maxDepth: 0)} '
+            'emoticon=${describeShape(i['emoticon'], maxDepth: 1)} '
+            'dot_icon=${describeShape(i['dot_icon'], maxDepth: 0)} '
+            'note==word=${i['note'] == i['word']} '
+            'word=${word.startsWith('#') ? '#…' : '…'}${word.endsWith('#') ? '#' : ''} '
+            'scheme=${'${i['word_scheme']}' == '#$word#'
+                ? '#word#'
+                : '${i['word_scheme']}' == word
+                ? 'word'
+                : 'other'}',
+          );
+        }
+      }
+    }
+    _log('== done');
+    if (mounted) setState(() => _running = false);
+  }
+
+  /// Logs up to [pages] pages of the statuses of [user], stopping at an
+  /// empty one: what each page holds and how pages relate.
+  Future<void> _probeUserStatuses(
+    Future<Map<String, Object?>?> Function(
+      String label,
+      String path,
+      Map<String, Object?> query,
+    )
+    fetch,
+    String user, {
+    required int pages,
+  }) async {
+    final seen = <String>{};
+    for (var n = 1; n <= pages; n++) {
+      final label = 'p$n';
+      final json = await fetch(label, 'statuses/mymblog', {
+        'uid': user,
+        'page': n,
+        'feature': 0,
+      });
+      if (json == null) return;
+      final data = readMap(json['data']);
+      final list = _maps(data?['list']).toList();
+      _log(
+        '$label data: ${describeShape({...?data, 'list': null}, maxDepth: 2)}',
+      );
+      _log(
+        '$label: list=${list.length} total=${data?['total']} '
+        'since_id=${_patterns([data?['since_id']])} '
+        'tips_visible=${data?['bottom_tips_visible']} '
+        'tips_len=${'${data?['bottom_tips_text'] ?? ''}'.length} '
+        'status_visible=${data?['status_visible']} '
+        'overlap=${list.where((s) => !seen.add('${s['idstr']}')).length} '
+        'order=${_order(list)}',
+      );
+      for (final (i, s) in list.indexed) {
+        if (s['isTop'] == null && s['mblogtype'] == 0) continue;
+        _log(
+          '  #$i isTop=${s['isTop']} mblogtype=${s['mblogtype']} '
+          'title=${describeShape(s['title'], maxDepth: 1)} '
+          'own=${readMap(s['user'])?['idstr'] == user} '
+          'retweet=${s['retweeted_status'] != null}',
+        );
+      }
+      if (list.isEmpty) return;
+    }
+  }
+
   /// Fetches up to two pages of a `max_id`-cursored comment list into [into],
   /// logging how the cursor and pages relate.
   Future<void> _pages(
@@ -918,6 +1206,11 @@ class _DiagnosticsPageState extends ConsumerState<DiagnosticsPage> {
       appBar: AppBar(
         title: const Text('开发者诊断'),
         actions: [
+          IconButton(
+            tooltip: '主页与热搜结构',
+            icon: const Icon(Icons.person_search_outlined),
+            onPressed: _running ? null : _probeProfile,
+          ),
           IconButton(
             tooltip: '详情结构',
             icon: const Icon(Icons.article_outlined),
