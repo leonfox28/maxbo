@@ -225,6 +225,58 @@ class WeiboApi {
     return HotSearch.fromJson(readMap(json['data']) ?? const {});
   }
 
+  /// Likes status [id], or takes the like back when [liked] is false.
+  Future<void> likeStatus(String id, {bool liked = true}) async => _checkLike(
+    await postForm('$_web/ajax/statuses/${liked ? 'setLike' : 'cancelLike'}', {
+      'id': id,
+    }),
+    liked: liked,
+  );
+
+  /// Likes comment [id], or takes the like back when [liked] is false.
+  Future<void> likeComment(String id, {bool liked = true}) async => _checkLike(
+    await postForm(
+      '$_web/ajax/statuses/${liked ? 'updateLike' : 'destroyLike'}',
+      {'object_id': id, 'object_type': 'comment'},
+    ),
+    liked: liked,
+  );
+
+  // Some answers carry a `result`, and say ok even when it is false: taking
+  // a like back right after giving it does nothing, for one (PLAN §8).
+  static void _checkLike(Map<String, Object?> json, {required bool liked}) {
+    if (json['result'] == false) {
+      throw WeiboApiException(liked ? '点赞没有成功，请稍后再试' : '取消赞没有成功，请稍后再试');
+    }
+  }
+
+  /// Comments [text] on status [statusId], or with [replyTo] replies to that
+  /// comment (or reply) under it. Returns the new comment as Weibo shows it,
+  /// or null when its answer has none.
+  Future<Comment?> postComment({
+    required String statusId,
+    required String text,
+    String? replyTo,
+  }) async {
+    final json = await postForm(
+      '$_web/ajax/comments/${replyTo == null ? 'create' : 'reply'}',
+      {
+        'id': statusId,
+        'cid': ?replyTo,
+        'comment': text,
+        // Don't also repost it or comment on the retweeted post.
+        'is_repost': 0,
+        'comment_ori': 0,
+        'is_comment': 0,
+      },
+    );
+    return Comment.tryFromJson(json['data']);
+  }
+
+  /// Deletes comment (or reply) [id], which the user wrote.
+  Future<void> deleteComment(String id) =>
+      postForm('$_web/ajax/statuses/destroyComment', {'cid': id});
+
   Future<Map<String, Object?>> getJson(
     String url, {
     Map<String, Object?>? query,
@@ -233,6 +285,32 @@ class WeiboApi {
     final data = response.data;
     _logResponse(response, 'ok=${data is Map ? data['ok'] : data.runtimeType}');
     return unwrapResponse(response);
+  });
+
+  /// Posts [body] as a form, as weibo.com does for everything that changes
+  /// something.
+  Future<Map<String, Object?>> postForm(
+    String url,
+    Map<String, Object?> body,
+  ) => _guard(() async {
+    final response = await _dio.post<Object?>(
+      url,
+      data: body,
+      options: Options(contentType: Headers.formUrlEncodedContentType),
+    );
+    final data = response.data;
+    _logResponse(
+      response,
+      data is Map
+          ? 'ok=${data['ok']} ${describeShape(data, maxDepth: 0)}'
+          : '${data.runtimeType}',
+    );
+    final json = unwrapResponse(response);
+    // An answer can say ok and still carry an error.
+    if (json['error'] case final String error when error.isNotEmpty) {
+      throw WeiboApiException(error, statusCode: response.statusCode);
+    }
+    return json;
   });
 
   /// Fetches an HTML page as a signed-in browser would.
@@ -270,7 +348,8 @@ class WeiboApi {
   static void _logResponse(Response<Object?> response, String detail) {
     final uri = response.realUri;
     devLog(
-      'GET ${response.requestOptions.uri.path} -> ${response.statusCode} '
+      '${response.requestOptions.method} ${response.requestOptions.uri.path} '
+      '-> ${response.statusCode} '
       '$detail final=${uri.host}${uri.path}',
     );
   }

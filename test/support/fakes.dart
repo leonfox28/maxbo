@@ -21,6 +21,9 @@ class FakeAdapter implements HttpClientAdapter {
   final FutureOr<ResponseBody> Function(RequestOptions options) handler;
   final requests = <RequestOptions>[];
 
+  /// The body of each request as sent, empty for GETs.
+  final bodies = <String>[];
+
   @override
   Future<ResponseBody> fetch(
     RequestOptions options,
@@ -28,6 +31,9 @@ class FakeAdapter implements HttpClientAdapter {
     Future<void>? cancelFuture,
   ) async {
     requests.add(options);
+    final bytes = <int>[];
+    if (requestStream != null) await requestStream.forEach(bytes.addAll);
+    bodies.add(utf8.decode(bytes));
     return handler(options);
   }
 

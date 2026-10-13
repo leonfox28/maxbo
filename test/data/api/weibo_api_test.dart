@@ -1,6 +1,10 @@
 import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:maxbo/core/net/cookie_jar.dart';
+import 'package:maxbo/core/net/request_throttle.dart';
+import 'package:maxbo/core/net/weibo_dio.dart';
 import 'package:maxbo/core/net/weibo_exception.dart';
+import 'package:maxbo/data/api/weibo_api.dart';
 import 'package:maxbo/data/models/comment.dart';
 
 import '../../support/fakes.dart';
@@ -202,5 +206,128 @@ void main() {
 
     expect(adapter.requests.single.uri.path, '/ajax/side/hotSearch');
     expect(hot.items.single.word, '第一条');
+  });
+
+  group('writes', () {
+    Map<String, String> form() => Uri.splitQueryString(adapter.bodies.last);
+
+    test('post forms with the XSRF token, as weibo.com does', () async {
+      respond = (_) => jsonBody({'ok': 1, 'attitude': 'heart'});
+      final api = WeiboApi(
+        createWeiboDio(
+          jar: WeiboCookieJar({
+            'weibo.com': {'SUB': 'x', 'XSRF-TOKEN': 'tok'},
+          }),
+          throttle: RequestThrottle(minInterval: Duration.zero),
+        )..httpClientAdapter = adapter,
+      );
+
+      await api.likeStatus('42');
+
+      final request = adapter.requests.single;
+      expect(request.method, 'POST');
+      expect(request.uri.path, '/ajax/statuses/setLike');
+      expect(request.contentType, Headers.formUrlEncodedContentType);
+      expect(request.headers['X-XSRF-TOKEN'], 'tok');
+      expect(request.headers['Origin'], 'https://weibo.com');
+      expect(form(), {'id': '42'});
+    });
+
+    test('like and take back likes of statuses and comments', () async {
+      respond = (_) => jsonBody({'ok': 1, 'result': true});
+      final api = fakeApi(adapter);
+
+      await api.likeStatus('42', liked: false);
+      expect(adapter.requests.last.uri.path, '/ajax/statuses/cancelLike');
+      expect(form(), {'id': '42'});
+
+      await api.likeComment('7');
+      expect(adapter.requests.last.uri.path, '/ajax/statuses/updateLike');
+      expect(form(), {'object_id': '7', 'object_type': 'comment'});
+
+      await api.likeComment('7', liked: false);
+      expect(adapter.requests.last.uri.path, '/ajax/statuses/destroyLike');
+    });
+
+    test('a like answered ok but without result failed', () {
+      // What taking a like back right after giving it gets.
+      respond = (_) => jsonBody({'ok': 1, 'result': false});
+
+      expect(
+        fakeApi(adapter).likeStatus('42', liked: false),
+        throwsA(isA<WeiboApiException>()),
+      );
+    });
+
+    test('a refusal carries its message', () {
+      respond = (_) => jsonBody({
+        'ok': 0,
+        'message': '微博不存在',
+        'msg': '微博不存在',
+        'error_code': 20101,
+        'error_type': 'toast',
+      });
+
+      expect(
+        fakeApi(adapter).likeStatus('42'),
+        throwsA(
+          isA<WeiboApiException>().having((e) => e.message, 'message', '微博不存在'),
+        ),
+      );
+    });
+
+    test('postComment comments, and returns the new comment', () async {
+      respond = (_) => jsonBody({
+        'ok': 1,
+        'msg': '评论成功',
+        'data': commentJson(id: 9, text: '好的'),
+      });
+
+      final comment = await fakeApi(adapter)
+          .postComment(statusId: '42', text: '好的 & 再见');
+
+      expect(adapter.requests.single.uri.path, '/ajax/comments/create');
+      expect(form(), {
+        'id': '42',
+        'comment': '好的 & 再见',
+        'is_repost': '0',
+        'comment_ori': '0',
+        'is_comment': '0',
+      });
+      expect(comment?.id, '9');
+      expect(comment?.text, '好的');
+    });
+
+    test('postComment with replyTo replies', () async {
+      respond = (_) => jsonBody({'ok': 1, 'data': commentJson(id: 10)});
+
+      await fakeApi(adapter)
+          .postComment(statusId: '42', text: '同意', replyTo: '9');
+
+      expect(adapter.requests.single.uri.path, '/ajax/comments/reply');
+      expect(form()['id'], '42');
+      expect(form()['cid'], '9');
+      expect(form()['comment'], '同意');
+    });
+
+    test('deleteComment', () async {
+      respond = (_) => jsonBody({'ok': 1, 'data': commentJson(id: 9)});
+
+      await fakeApi(adapter).deleteComment('9');
+
+      expect(adapter.requests.single.uri.path, '/ajax/statuses/destroyComment');
+      expect(form(), {'cid': '9'});
+    });
+
+    test('an answer that says ok but has an error failed', () {
+      respond = (_) => jsonBody({'ok': 1, 'error': '评论太频繁'});
+
+      expect(
+        fakeApi(adapter).postComment(statusId: '42', text: '好'),
+        throwsA(
+          isA<WeiboApiException>().having((e) => e.message, 'message', '评论太频繁'),
+        ),
+      );
+    });
   });
 }

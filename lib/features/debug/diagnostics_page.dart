@@ -1,17 +1,21 @@
+import 'dart:async';
 import 'dart:math';
 
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../core/net/cookie_jar.dart';
 import '../../core/net/request_throttle.dart';
 import '../../core/net/weibo_dio.dart';
+import '../../core/net/weibo_exception.dart';
 import '../../core/session/session_controller.dart';
 import '../../core/util/format.dart';
 import '../../core/util/json_read.dart';
 import '../../core/util/json_shape.dart';
 import '../../data/api/weibo_api.dart';
+import '../../data/models/comment.dart';
 
 const _mobileUserAgent =
     'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) '
@@ -871,6 +875,345 @@ class _DiagnosticsPageState extends ConsumerState<DiagnosticsPage> {
     if (mounted) setState(() => _running = false);
   }
 
+  /// Opens an app route typed in, e.g. `/n/name`, to reach pages the app
+  /// has no way to yet.
+  Future<void> _openRoute() async {
+    // No controller: it would be disposed while the dialog animates out.
+    var text = '';
+    final route = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('打开页面'),
+        content: TextField(
+          autofocus: true,
+          onChanged: (v) => text = v,
+          decoration: const InputDecoration(hintText: '/n/昵称、/status/id …'),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('取消'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, text.trim()),
+            child: const Text('打开'),
+          ),
+        ],
+      ),
+    );
+    if (route != null && route.startsWith('/') && mounted) {
+      unawaited(context.push(route));
+    }
+  }
+
+  /// Asks which status to try likes and comments on: `@name` for the first
+  /// status on that user's profile, or a status id or mblogid; and whether to
+  /// try comments too.
+  Future<({String target, bool comments})?> _askTarget() {
+    var target = '';
+    var comments = true;
+    return showDialog<({String target, bool comments})>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setState) => AlertDialog(
+          title: const Text('互动测试目标'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                autofocus: true,
+                onChanged: (v) => target = v,
+                decoration: const InputDecoration(hintText: '@昵称 或 微博 id'),
+              ),
+              CheckboxListTile(
+                value: comments,
+                onChanged: (v) => setState(() => comments = v ?? true),
+                title: const Text('包括评论'),
+                contentPadding: EdgeInsets.zero,
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('取消'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(context, (
+                target: target.trim(),
+                comments: comments,
+              )),
+              child: const Text('开始'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Logs what liking and commenting answer, on one status the user picked
+  /// for testing (PLAN §11): likes and takes back a like on it, comments,
+  /// replies, likes the comment, then deletes both comments again. Leaves the
+  /// status as it was.
+  Future<void> _probeInteractions() async {
+    final session = ref.read(sessionProvider);
+    if (session is! SignedIn) {
+      setState(() => _lines.clear());
+      _log('interaction probe needs a signed-in session');
+      return;
+    }
+    final answer = await _askTarget();
+    final input = answer?.target;
+    if (answer == null || input == null || input.isEmpty || !mounted) return;
+    setState(() {
+      _lines.clear();
+      _running = true;
+    });
+    final uid = session.account.uid;
+    final api = WeiboApi(
+      createWeiboDio(
+        jar: ref.read(cookieJarProvider),
+        throttle: ref.read(requestThrottleProvider),
+      ),
+    );
+    const web = 'https://weibo.com/ajax';
+
+    Future<Map<String, Object?>?> get(
+      String label,
+      String path,
+      Map<String, Object?> query,
+    ) async {
+      try {
+        return await api.getJson('$web/$path', query: query);
+      } on Exception catch (e) {
+        _log('$label: $e');
+        return null;
+      }
+    }
+
+    // Posts without the error mapping, to see failures as they come.
+    Future<Map<String, Object?>?> post(
+      String label,
+      String path,
+      Map<String, Object?> body,
+    ) async {
+      try {
+        return await api.postForm('$web/$path', body);
+      } on WeiboApiException catch (e) {
+        _log('$label: ${e.statusCode} ${_redact(e.message)}');
+        return null;
+      } on Exception catch (e) {
+        _log('$label: $e');
+        return null;
+      }
+    }
+
+    void shape(String label, Map<String, Object?>? json) {
+      if (json == null) return;
+      _log('$label: ${describeShape({...json, 'data': null}, maxDepth: 2)}');
+      if (json['data'] case final Object data) {
+        _log('$label data: ${describeShape(data, maxDepth: 1)}');
+      }
+      for (final key in ['msg', 'message', 'error', 'error_type', 'url']) {
+        if (json[key] case final Object v) {
+          _log('  $key: ${v is String ? _redact(v) : describeShape(v)}');
+        }
+      }
+    }
+
+    // The target.
+    String? id;
+    if (input.startsWith('@')) {
+      final profile = await get('profile', 'profile/info', {
+        'screen_name': input.substring(1),
+      });
+      final user = readMap(readMap(profile?['data'])?['user']);
+      final userId = readString(user?['idstr']);
+      _log(
+        'user found=${userId != null} '
+        'statuses=${user?['statuses_count']} following=${user?['following']}',
+      );
+      // The user named a test account this one follows; anyone else is
+      // probably a name mix-up, and gets no likes or comments.
+      if (userId != null && user?['following'] != true) {
+        _log('not followed; stopping');
+      } else if (userId != null) {
+        final page = await get('mymblog', 'statuses/mymblog', {
+          'uid': userId,
+          'page': 1,
+          'feature': 0,
+        });
+        final first = _maps(readMap(page?['data'])?['list']).firstOrNull;
+        id = readString(first?['idstr']);
+      }
+    } else {
+      id = input;
+    }
+    if (id == null) {
+      _log('no target');
+      if (mounted) setState(() => _running = false);
+      return;
+    }
+
+    Future<Map<String, Object?>?> show(String label) async {
+      final s = await get(label, 'statuses/show', {'id': id});
+      if (s != null) {
+        _log(
+          '$label: created=${s['created_at']} isTop=${s['isTop']} '
+          'own=${readMap(s['user'])?['idstr'] == uid} '
+          'liked=${s['attitudes_status']} likes=${s['attitudes_count']} '
+          'comments=${s['comments_count']}',
+        );
+      }
+      return s;
+    }
+
+    final status = await show('target');
+    if (status == null) {
+      if (mounted) setState(() => _running = false);
+      return;
+    }
+    final mid = readString(status['idstr']) ?? id;
+    final authorId = readString(readMap(status['user'])?['idstr']) ?? '';
+
+    _log('== status likes');
+    final wasLiked = readInt(status['attitudes_status']) == 1;
+    for (final like in wasLiked ? [false, true] : [true, false]) {
+      final path = like ? 'statuses/setLike' : 'statuses/cancelLike';
+      final answer = await post(path, path, {'id': mid});
+      shape(path, answer);
+      _log('  result=${answer?['result']} attitude=${answer?['attitude']}');
+      await show('after');
+      await Future<void>.delayed(const Duration(seconds: 3));
+      await show('3s later');
+    }
+    shape(
+      'setLike bad id',
+      await post('bad id', 'statuses/setLike', {'id': '1'}),
+    );
+
+    if (!answer.comments) {
+      _log('== done');
+      if (mounted) setState(() => _running = false);
+      return;
+    }
+
+    _log('== comments');
+    final comments = await get('comments', 'statuses/buildComments', {
+      'is_reload': 1,
+      'id': mid,
+      'is_show_bulletin': 2,
+      'is_mix': 0,
+      'count': 20,
+      'uid': authorId,
+      'fetch_level': 0,
+      'flow': 1,
+      'locale': 'zh-CN',
+    });
+    _log('comments: ${_maps(comments?['data']).length}');
+
+    final created = await post('create', 'comments/create', {
+      'id': mid,
+      'comment': 'maxbo 接口测试评论，稍后删除',
+      'is_repost': 0,
+      'comment_ori': 0,
+      'is_comment': 0,
+    });
+    shape('create', created);
+    final createdData = readMap(created?['data']);
+    if (createdData != null) {
+      _log(
+        'create data keys: ${(createdData.keys.toList()..sort()).join(', ')}',
+      );
+    }
+    final comment = Comment.tryFromJson(createdData);
+    _log(
+      'create parsed=${comment != null} '
+      'own=${comment?.user?.id == uid} textLen=${comment?.text.length} '
+      'liked=${comment?.liked} at=${comment?.createdAt != null} '
+      'source=${comment?.source != null}',
+    );
+
+    if (comment != null) {
+      final replied = await post('reply', 'comments/reply', {
+        'id': mid,
+        'cid': comment.id,
+        'comment': 'maxbo 接口测试回复，稍后删除',
+        'is_repost': 0,
+        'comment_ori': 0,
+        'is_comment': 0,
+      });
+      shape('reply', replied);
+      final replyData = readMap(replied?['data']);
+      if (replyData != null) {
+        _log(
+          'reply data keys: ${(replyData.keys.toList()..sort()).join(', ')}',
+        );
+        _log(
+          'reply: reply_comment=${replyData['reply_comment'] != null} '
+          'rootid=${'${replyData['rootid']}' == comment.id} '
+          'textPrefix=${'${replyData['text']}'.startsWith('回复')}',
+        );
+      }
+      final reply = Comment.tryFromJson(replyData);
+
+      _log('== comment likes');
+      for (final like in [true, false]) {
+        final path = like ? 'statuses/updateLike' : 'statuses/destroyLike';
+        shape(
+          path,
+          await post(path, path, {
+            'object_id': comment.id,
+            'object_type': 'comment',
+          }),
+        );
+        final list = await get('comments', 'statuses/buildComments', {
+          'is_reload': 1,
+          'id': mid,
+          'is_show_bulletin': 2,
+          'is_mix': 0,
+          'count': 20,
+          'uid': authorId,
+          'fetch_level': 0,
+          'flow': 1,
+          'locale': 'zh-CN',
+        });
+        final mine = _maps(list?['data'])
+            .where((c) => readString(c['idstr']) == comment.id)
+            .firstOrNull;
+        _log(
+          'listed=${mine != null} liked=${mine?['liked']} '
+          'likes=${mine?['like_counts']} replies=${mine?['total_number']} '
+          'preview=${_maps(mine?['comments']).length}',
+        );
+      }
+      await show('after comment');
+
+      _log('== delete');
+      if (reply != null) {
+        shape(
+          'destroy reply',
+          await post('destroy reply', 'statuses/destroyComment', {
+            'cid': reply.id,
+          }),
+        );
+      }
+      shape(
+        'destroy',
+        await post('destroy', 'statuses/destroyComment', {'cid': comment.id}),
+      );
+      shape(
+        'destroy again',
+        await post('destroy again', 'statuses/destroyComment', {
+          'cid': comment.id,
+        }),
+      );
+      await show('after delete');
+    }
+    _log('== done');
+    if (mounted) setState(() => _running = false);
+  }
+
   /// Logs up to [pages] pages of the statuses of [user], stopping at an
   /// empty one: what each page holds and how pages relate.
   Future<void> _probeUserStatuses(
@@ -1206,6 +1549,16 @@ class _DiagnosticsPageState extends ConsumerState<DiagnosticsPage> {
       appBar: AppBar(
         title: const Text('开发者诊断'),
         actions: [
+          IconButton(
+            tooltip: '打开页面',
+            icon: const Icon(Icons.open_in_new),
+            onPressed: _openRoute,
+          ),
+          IconButton(
+            tooltip: '互动结构（会真实点赞和评论）',
+            icon: const Icon(Icons.thumb_up_outlined),
+            onPressed: _running ? null : _probeInteractions,
+          ),
           IconButton(
             tooltip: '主页与热搜结构',
             icon: const Icon(Icons.person_search_outlined),
