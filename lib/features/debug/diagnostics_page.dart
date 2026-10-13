@@ -191,6 +191,272 @@ class _DiagnosticsPageState extends ConsumerState<DiagnosticsPage> {
     if (mounted) setState(() => _running = false);
   }
 
+  /// Logs the structure of two timeline pages: how paging cursors relate to
+  /// the statuses, and the shapes of the fields the status card renders.
+  Future<void> _probeTimeline() async {
+    setState(() {
+      _lines.clear();
+      _running = true;
+    });
+    final session = ref.read(sessionProvider);
+    if (session is! SignedIn) {
+      _log('timeline probe needs a signed-in session');
+      setState(() => _running = false);
+      return;
+    }
+    final uid = session.account.uid;
+    final api = WeiboApi(
+      createWeiboDio(
+        jar: ref.read(cookieJarProvider),
+        throttle: ref.read(requestThrottleProvider),
+      ),
+    );
+    const url = 'https://weibo.com/ajax/feed/friendstimeline';
+    final listId = '11000$uid';
+
+    Future<List<Map<String, Object?>>?> page(
+      String label,
+      Map<String, Object?> cursor,
+    ) async {
+      final Map<String, Object?> feed;
+      try {
+        feed = await api.getJson(
+          url,
+          query: {'list_id': listId, 'refresh': 4, 'count': 20, ...cursor},
+        );
+      } on Exception catch (e) {
+        _log('$label: $e');
+        return null;
+      }
+      final statuses = _maps(feed['statuses']).toList();
+      final first = statuses.isEmpty ? null : '${statuses.first['idstr']}';
+      final last = statuses.isEmpty ? null : '${statuses.last['idstr']}';
+      final maxId = '${feed['max_id']}';
+      final sinceId = '${feed['since_id']}';
+      _log(
+        '$label: ${describeShape({...feed, 'statuses': null}, maxDepth: 1)}',
+      );
+      _log(
+        '$label: statuses=${statuses.length} '
+        'max_id=${feed['max_id'].runtimeType} '
+        'cmp(max_id,last)=${_compareIds(maxId, last)} '
+        'since_id=${feed['since_id'].runtimeType} '
+        'cmp(since_id,first)=${_compareIds(sinceId, first)} '
+        'max_id==0:${maxId == '0'}',
+      );
+      _cursors[label] = maxId;
+      return statuses;
+    }
+
+    _log('== paging');
+    final page1 = await page('page1', {'since_id': 0}) ?? const [];
+    final page2 = page1.isEmpty
+        ? const <Map<String, Object?>>[]
+        : await page('page2', {'max_id': _cursors['page1']}) ?? const [];
+    final ids1 = {for (final s in page1) '${s['idstr']}'};
+    _log(
+      'page2 overlaps page1: '
+      '${page2.where((s) => ids1.contains('${s['idstr']}')).length}',
+    );
+    final all = [...page1, ...page2];
+    final retweets = [
+      for (final s in all)
+        if (s['retweeted_status'] case final Map<String, Object?> r) r,
+    ];
+    final everything = [...all, ...retweets];
+
+    _log('== status');
+    _log('retweets=${retweets.length} of ${all.length}');
+    _log('created_at: ${_patterns(everything.map((s) => s['created_at']))}');
+    _log('source: ${_patterns(everything.map((s) => s['source']))}');
+    for (final key in [
+      'mblogtype',
+      'isLongText',
+      'pic_num',
+      'visible',
+      'title',
+      'continue_tag',
+      'mark',
+      'isAd',
+      'readtimetype',
+    ]) {
+      final shapes = {
+        for (final s in everything)
+          if (s.containsKey(key)) describeShape(s[key], maxDepth: 2),
+      };
+      _log('$key: ${shapes.join(' | ')}');
+    }
+    final retweetKeys = {for (final r in retweets) ...r.keys}.toList()..sort();
+    _log('retweet keys: ${retweetKeys.join(', ')}');
+    final deleted = retweets.where((r) => r['user'] == null).toList();
+    _log(
+      'retweets without user: ${deleted.length} '
+      'keys=${{for (final r in deleted) ...r.keys}.join(',')}',
+    );
+
+    _log('== user');
+    final users = [
+      for (final s in everything)
+        if (s['user'] case final Map<String, Object?> u) u,
+    ];
+    _log(
+      'user keys: ${({for (final u in users) ...u.keys}.toList()..sort()).join(', ')}',
+    );
+    for (final key in [
+      'profile_image_url',
+      'avatar_large',
+      'avatar_hd',
+      'verified_type',
+      'mbrank',
+      'mbtype',
+      'icon_list',
+    ]) {
+      _log(
+        '$key: ${_patterns(users.map((u) => u[key] is String ? _urlPattern(u[key]! as String) : describeShape(u[key], maxDepth: 2)))}',
+      );
+    }
+
+    _log('== pictures');
+    final picTypes = <String>{};
+    final variantPatterns = <String>{};
+    final picKeys = <String>{};
+    for (final s in everything) {
+      final infos = s['pic_infos'];
+      if (infos is! Map) continue;
+      for (final info in infos.values.whereType<Map<String, Object?>>()) {
+        picKeys.addAll(info.keys);
+        picTypes.add('${info['type']}');
+        for (final variant in [
+          'thumbnail',
+          'bmiddle',
+          'large',
+          'largest',
+          'mw2000',
+          'original',
+        ]) {
+          if (info[variant] case {'url': final String u}) {
+            variantPatterns.add('$variant=${_urlPattern(u)}');
+          }
+        }
+      }
+    }
+    _log('pic types: ${picTypes.join(', ')}');
+    _log('pic keys: ${(picKeys.toList()..sort()).join(', ')}');
+    for (final p in variantPatterns.toList()..sort()) {
+      _log('  $p');
+    }
+    final mixed = everything.where((s) => s['mix_media_info'] != null);
+    _log('mix_media_info: ${mixed.length}');
+
+    _log('== page_info');
+    for (final s in everything) {
+      final info = s['page_info'];
+      if (info is! Map<String, Object?>) continue;
+      // Logcat cuts lines at ~4 KB, so log keys and the media fields only.
+      _log(
+        'object_type=${info['object_type']} type=${info['type']} '
+        'keys=${info.keys.join(',')}',
+      );
+      for (final key in ['page_pic', 'pic_info', 'page_url']) {
+        if (info[key] case final Object v) {
+          _log(
+            '  $key: ${v is String ? _urlPattern(v) : describeShape(v, maxDepth: 2)}',
+          );
+        }
+      }
+      if (info['media_info'] case final Map<String, Object?> media) {
+        _log('  media_info keys=${media.keys.join(',')}');
+        for (final e in media.entries) {
+          if (e.value is String && '${e.value}'.startsWith('http')) {
+            _log('  media.${e.key}: ${_urlPattern('${e.value}')}');
+          }
+        }
+        _log(
+          '  media.duration=${media['duration'].runtimeType} '
+          'big_pic_info=${describeShape(media['big_pic_info'], maxDepth: 2)}',
+        );
+      }
+    }
+
+    _log('== text html');
+    final tags = <String>{};
+    final hrefs = <String>{};
+    for (final s in everything) {
+      final text = s['text'];
+      if (text is! String) continue;
+      for (final m in RegExp(r'<(\w+)([^>]*)>').allMatches(text)) {
+        final attrs = RegExp(r'(\w[\w-]*)=')
+            .allMatches(m[2]!)
+            .map((a) => a[1])
+            .join(',');
+        final cls = RegExp(r'class="?([\w -]+)').firstMatch(m[2]!)?[1];
+        tags.add('${m[1]}[$attrs]${cls == null ? '' : '.$cls'}');
+        final href = RegExp(r'''href=["']?([^"'\s>]+)''').firstMatch(m[2]!);
+        if (href != null) {
+          // Mention links carry the user's name; keep only the shape.
+          hrefs.add(
+            href[1]!.startsWith('/n/') ? '/n/<name>' : _urlPattern(href[1]!),
+          );
+        }
+      }
+    }
+    for (final t in tags.toList()..sort()) {
+      _log('  tag $t');
+    }
+    for (final h in hrefs.toList()..sort()) {
+      _log('  href $h');
+    }
+    final urlStructs = [
+      for (final s in everything)
+        if (s['url_struct'] case final List l) ...l,
+    ];
+    _log('url_struct: ${urlStructs.length}');
+    for (final u in urlStructs.whereType<Map<String, Object?>>().take(5)) {
+      _log(
+        '  keys=${u.keys.join(',')} '
+        'short=${_urlPattern('${u['short_url']}')} '
+        'long=${_urlPattern('${u['long_url'] ?? u['ori_url']}')}',
+      );
+    }
+    _log('== done');
+    if (mounted) setState(() => _running = false);
+  }
+
+  final _cursors = <String, String>{};
+
+  /// How two numeric ids compare, without revealing them.
+  static String _compareIds(String a, String? b) {
+    final x = BigInt.tryParse(a);
+    final y = b == null ? null : BigInt.tryParse(b);
+    if (x == null || y == null) return 'n/a';
+    final c = x.compareTo(y);
+    return c == 0 ? '=' : (c < 0 ? '<' : '>');
+  }
+
+  /// A URL reduced to its host and path shape: query values, digits and
+  /// file names are masked.
+  static String _urlPattern(String url) {
+    final uri = Uri.tryParse(url.startsWith('//') ? 'https:$url' : url);
+    if (uri == null) return '<bad url>';
+    final segments = uri.pathSegments;
+    final path = [
+      for (final (i, seg) in segments.indexed)
+        i == segments.length - 1 && seg.contains('.')
+            ? '<file>.${seg.split('.').last}'
+            : _redact(seg).replaceAll(RegExp(r'\d+'), '9'),
+    ].join('/');
+    final query = uri.queryParameters.keys.join('&');
+    return '${uri.host}/$path${query.isEmpty ? '' : '?$query'}';
+  }
+
+  /// Distinct value shapes: digits become 9, non-ASCII text is masked.
+  static String _patterns(Iterable<Object?> values) => {
+    for (final v in values)
+      v is String
+          ? _redact(v).replaceAll(RegExp(r'\d'), '9')
+          : '${v.runtimeType}',
+  }.take(6).join(' | ');
+
   /// Logs where in an HTML page the current user's id might be embedded.
   Future<void> _probePage(Dio dio, String url) async {
     try {
@@ -241,6 +507,11 @@ class _DiagnosticsPageState extends ConsumerState<DiagnosticsPage> {
       appBar: AppBar(
         title: const Text('开发者诊断'),
         actions: [
+          IconButton(
+            tooltip: '时间线结构',
+            icon: const Icon(Icons.view_agenda_outlined),
+            onPressed: _running ? null : _probeTimeline,
+          ),
           IconButton(
             tooltip: '运行',
             icon: const Icon(Icons.play_arrow),
