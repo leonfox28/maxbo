@@ -1,4 +1,4 @@
-package app.maxbo
+package io.github.leonfox28.maxbo
 
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine

@@ -2,7 +2,27 @@
 
 一个开源、非商业的第三方微博阅读客户端（Android / iOS），使用 Flutter 开发。
 
-> **状态：开发中。** 已完成工程脚手架和登录（M0、M1），下一步是首页时间线（M2）。方案与进度见 [docs/PLAN.md](docs/PLAN.md)。
+> **状态：早期测试版（v0.1.0，仅 Android）。** 已有登录、关注时间线、微博详情（长文、评论、楼中楼、转发）、图片和视频、用户主页、热搜、点赞和评论。设置页、应用内的关于页和 iOS 安装包还没有做。方案与进度见 [docs/PLAN.md](docs/PLAN.md)。
+
+## 安装（Android）
+
+在 [Releases](https://github.com/leonfox28/maxbo/releases) 页面下载 APK：
+
+- `app-arm64-v8a-release.apk`：绝大多数手机选这个；
+- `app-armeabi-v7a-release.apk`：较老的 32 位手机；
+- `app-x86_64-release.apk`：模拟器。
+
+鸿蒙 HarmonyOS 5/6 可以通过卓易通安装 APK。
+
+## 从源码构建
+
+需要 Flutter stable 3.47.x。
+
+```sh
+flutter build apk --release --split-per-abi
+```
+
+没有 `android/key.properties` 时，release 包用调试密钥签名，无法覆盖安装 Releases 页面上的正式包。
 
 ## 声明
 

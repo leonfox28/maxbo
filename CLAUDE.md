@@ -11,6 +11,7 @@ flutter test                         # 单元测试 + Widget 测试
 flutter test integration_test -d <iOS 模拟器 id>   # 平台通道测试，见下方注意事项
 flutter build apk --debug && adb -s <设备> install -r build/app/outputs/flutter-apk/app-debug.apk
 flutter build ios --simulator --debug
+flutter build apk --release --split-per-abi   # 发版用，签名见 PLAN §9
 ```
 
 Flutter stable 3.47.x（Dart 3.13），通过 Homebrew cask 安装。
@@ -25,7 +26,7 @@ Flutter stable 3.47.x（Dart 3.13），通过 Homebrew cask 安装。
 - **参考项目不能复制代码**：Android_16_Weibo、weiboX 没有 License，只能参考它们的接口形态。
 - **测试数据**：只用手写的合成数据。真实响应放在 `captured/`（已 gitignore），不得提交。
 - **日志**：日志和诊断输出里不得出现 Cookie 值或微博正文。调试日志用 `devLog()`，它只在调试版输出。
-- **保护真实登录态**：真实登录需要短信验证码和人机验证。保存着登录态的设备只能用 `install -r` 更新，不要在上面跑 `integration_test`（会清空 WebView Cookie），也不要卸载或清除数据。
+- **保护真实登录态**：真实登录需要短信验证码和人机验证。保存着登录态的设备只能用 `install -r` 更新（调试版包名是 `io.github.leonfox28.maxbo.debug`），不要在上面跑 `integration_test`（会清空 WebView Cookie），也不要卸载或清除数据。
 - **先问用户**：完成人机验证、勾选用户协议、以用户身份对外操作（关注、点赞、评论），都必须先得到用户确认。写操作只在用户指定的测试微博上测，测完恢复原状。
 
 ## 架构速览

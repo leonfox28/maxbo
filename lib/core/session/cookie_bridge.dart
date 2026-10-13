@@ -9,7 +9,7 @@ import 'package:webview_flutter/webview_flutter.dart';
 class CookieBridge {
   const CookieBridge();
 
-  static const _channel = MethodChannel('app.maxbo/cookies');
+  static const _channel = MethodChannel('io.github.leonfox28.maxbo/cookies');
 
   /// Returns the cookies the WebView would send to [url], keyed by name.
   ///

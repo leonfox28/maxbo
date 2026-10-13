@@ -211,7 +211,7 @@ test/  (fixtures/ 下只放合成数据)
 
 ## 9. 分发
 
-- **Android**：GitHub Releases 发布按 ABI 拆分的 APK。签名密钥只保存在本地（`key.properties` 已 gitignore）。国行手机通常没有 GMS，暂不受 Google 开发者验证影响；2027 年该政策全球生效后再评估。
+- **Android**：GitHub Releases 发布按 ABI 拆分的 APK（`flutter build apk --release --split-per-abi`）。签名密钥只保存在本地：密钥库是 `~/.config/maxbo/release.jks`（别名 `maxbo`），密码在 `android/key.properties`（已 gitignore）。证书 SHA-256 是 `A1:7A:66:0B:CA:65:D7:BB:89:D6:F3:07:AB:A4:61:06:F3:F8:AF:CB:90:F5:D0:B3:EC:40:EB:28:6D:71:79:E2`。**密钥丢了，已安装的用户就无法覆盖升级**，这两个文件要另外备份。没有 `key.properties` 时 release 包退回调试密钥签名。调试版的包名带 `.debug` 后缀，名称是「maxbo debug」，和 release 版可以同时安装。国行手机通常没有 GMS，暂不受 Google 开发者验证影响；2027 年该政策全球生效后再评估。
 - **iOS**：发布无签名 IPA，文档说明如何用 SideStore/AltStore 或自己的开发者账号签名。不上 App Store。
 - **CI**：等你建好 GitHub 远程仓库后，再加 GitHub Actions 自动构建。
 
@@ -220,7 +220,7 @@ test/  (fixtures/ 下只放合成数据)
 - **License**：GPL-3.0。
 - **Git 提交身份**：仅本仓库配置 `Leon <41661196+leonfox28@users.noreply.github.com>`。
 - **Flutter**：stable 3.47.7（Dart 3.13.5）。
-- **包名**：暂定 `app.maxbo`，首次发版前可以改。
+- **包名**：`io.github.leonfox28.maxbo`（v0.1.0 起不再改；iOS Bundle ID 和平台通道名 `io.github.leonfox28.maxbo/cookies` 同步改过）。
 
 ## 11. 进度与交接（更新于 2026-10-13，M5 完成后）
 
@@ -232,7 +232,8 @@ test/  (fixtures/ 下只放合成数据)
 | M3 详情与媒体 | ✅ 完成：Android 真实会话下核对了详情页（长文全文、评论按热度/按时间、评论翻页、楼中楼、转发页签）、图片查看器（翻页、点击或下滑关闭）、视频播放、深色主题；视频地址过期后自动换新地址（时间线加载 1 小时后点视频，先请求一次 `statuses/show` 再播放，无播放错误）；iOS 只验证了能编译 | `41e7e80` `544dc60` |
 | M4 主页与热搜 | ✅ 完成：Android 真实会话下核对了从头像、昵称、@ 进主页（@ 先按昵称查资料再加载微博）、主页翻页、置顶标签、「我」进自己的主页（1 条微博，按 `since_id` 为空判断到底，没有多发请求）、热搜榜（置顶、前三名配色、付费条目的「商」标签、热度）、点热搜条目在应用内打开搜索页（普通词和 `#话题#` 两种），以及浅色和深色主题。正文里的话题链接与热搜条目调用同一个函数，没有在真机上点过，只由 Widget 测试覆盖；iOS 只验证了能编译 | `41a27b1` `bfdda6e` |
 | M5 轻互动 | ✅ 完成：Android 真实会话下，在用户指定的测试微博上核对了卡片和详情页点赞/取消（主页、详情页之间状态同步，刷新后与服务端一致）、发评论（出现在列表顶部，计数 +1）、评论点赞/取消、回复评论（楼中楼预览更新）、在楼中楼页删除自己的回复、在详情页删除自己的评论；测试结束后这条微博恢复为未赞、0 评论。深色主题核对过；iOS 只验证了能编译 | `7d12372` `53d9951` |
-| M6 打磨与打包 | ⏭ 下一步 | — |
+| v0.1.0 | ✅ 2026-10-13 在 GitHub Releases 发布（Pre-release，只有 Android）。包名改为 `io.github.leonfox28.maxbo`，加了 release 签名。release 包在模拟器上只验证了未登录时的启动、登录页和热搜页，登录后的功能没有在 release 包上测过 | 见 `v0.1.0` 标签 |
+| M6 打磨与打包 | ⏭ 下一步（release APK 已在 v0.1.0 出过） | — |
 
 ### 已有的基础设施
 
@@ -267,6 +268,7 @@ test/  (fixtures/ 下只放合成数据)
 
 ### 开发环境注意
 
+- **包名变更（v0.1.0）**：emulator-5554 上保存着真实登录态的是旧包名 `app.maxbo` 的调试版，它不会再更新，也不要卸载。新的调试版是 `io.github.leonfox28.maxbo.debug`，这台模拟器上还没有登录，需要真实会话时请用户在新调试版里重新登录。同一台模拟器上还装着未登录的 release 版 `io.github.leonfox28.maxbo`。
 - 真实登录要过短信验证码和网易易盾人机验证，代价很高。保存着登录态的设备**只能用 `adb install -r` 覆盖安装**；不要在上面运行 `integration_test`（会清空 WebView Cookie），也不要卸载或清除数据。
 - 本机可能同时连着别的模拟器（2026-10-13 先后见过 `emulator-5586`、`emulator-5558`，都不属于本项目），adb 命令要用 `-s emulator-5554` 指定保存着登录态的 Pixel_9；不确定时用 `adb -s <设备> emu avd name` 确认是 `Pixel_9`。adb 偶尔会短暂掉线（`install` 无报错失败、`device offline`），稍等再试即可。
 - 部分 Google 域名（如 `dl.google.com`）可能被本机代理规则判为直连而连不上，表现为 TLS 握手中断；这时调整代理分流规则即可，**不要往仓库里写镜像地址**。

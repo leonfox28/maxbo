@@ -23,7 +23,7 @@ import WebKit
 /// (such as Weibo's SUB) that page scripts and webview_flutter cannot read.
 enum CookieBridge {
   static func register(with messenger: FlutterBinaryMessenger) {
-    let channel = FlutterMethodChannel(name: "app.maxbo/cookies", binaryMessenger: messenger)
+    let channel = FlutterMethodChannel(name: "io.github.leonfox28.maxbo/cookies", binaryMessenger: messenger)
     channel.setMethodCallHandler { call, result in
       guard call.method == "getCookies" else {
         result(FlutterMethodNotImplemented)

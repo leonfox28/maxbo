@@ -1,4 +1,4 @@
-package app.maxbo
+package io.github.leonfox28.maxbo
 
 import android.webkit.CookieManager
 import io.flutter.plugin.common.BinaryMessenger
@@ -9,7 +9,7 @@ import io.flutter.plugin.common.MethodChannel
  * (such as Weibo's SUB) that page scripts and webview_flutter cannot read.
  */
 object CookieBridge {
-    private const val CHANNEL = "app.maxbo/cookies"
+    private const val CHANNEL = "io.github.leonfox28.maxbo/cookies"
 
     fun register(messenger: BinaryMessenger) {
         MethodChannel(messenger, CHANNEL).setMethodCallHandler { call, result ->

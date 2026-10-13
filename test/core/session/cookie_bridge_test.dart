@@ -5,7 +5,7 @@ import 'package:maxbo/core/session/cookie_bridge.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  const channel = MethodChannel('app.maxbo/cookies');
+  const channel = MethodChannel('io.github.leonfox28.maxbo/cookies');
   final messenger =
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
 
