@@ -139,8 +139,10 @@ test/  (fixtures/ 下只放合成数据)
 | 热搜 | GET `/ajax/side/hotSearch` | — |
 | 搜索（应用内 WebView） | `https://m.weibo.cn/search?containerid=231522`（话题）或 `100103`（普通词）`&q=` | — |
 | 表情 | GET `/ajax/statuses/config` | — |
-| 点赞 / 取消 | POST `/ajax/statuses/setLike`、`/ajax/statuses/cancelLike`（`id=<mid>`） | — |
-| 评论 / 回复 | POST `/ajax/comments/create`、`/ajax/comments/reply` | — |
+| 点赞 / 取消（微博） | POST `/ajax/statuses/setLike`、`/ajax/statuses/cancelLike`（表单 `id=<mid>`） | — |
+| 点赞 / 取消（评论） | POST `/ajax/statuses/updateLike`、`/ajax/statuses/destroyLike`（`object_id=<评论id>&object_type=comment`） | — |
+| 评论 / 回复 | POST `/ajax/comments/create`（`id&comment&is_repost=0&comment_ori=0&is_comment=0`）、`/ajax/comments/reply`（另加 `cid=<被回复的评论id>`） | — |
+| 删除自己的评论 | POST `/ajax/statuses/destroyComment`（`cid=`） | — |
 
 ## 6. 里程碑
 
@@ -199,6 +201,14 @@ test/  (fixtures/ 下只放合成数据)
 - **热搜**：`side/hotSearch` 返回 `data{realtime, hotgovs, hotgov}`。`realtime` 约 50 条加上插入的条目（两次分别是 51、52 条）。排名看 `realpos`（从 1 开始）；`rank` 从 0 开始，而且插入的条目会与相邻条目重复，不能用。**插入的条目没有 `realpos`，`is_ad=1`**，但 `is_ad` 不等于商业推广：一次是付费的（`small_icon_desc`「商」、`icon_desc`「首发」），另一次是「辟谣」。所以标签取 `small_icon_desc`（付费条目上写着「商」），为空时取 `icon_desc`；`is_ad` 但没有任何标签的显示「荐」。`word_scheme` 是 `#word#`（话题）或与 `word` 相同（普通词），用作搜索词。置顶条目在 `hotgovs`（列表）和 `hotgov`（单个，多了 `url`/`mid`）里都有，`word` 带 `#`，没有排名和热度。条目里的 `monitors` 是广告曝光监测地址，我们不请求。
 - **应用内 WebView 打开搜索**：桌面 UA 下的 `s.weibo.com` 是 PC 版布局（侧栏占半屏、正文被截断），在手机上没法用；手机 UA 访问时，它会 302 到 **http://**`m.weibo.cn/search?containerid=…&q=…`，话题用 `231522`、普通词用 `100103`。`m.weibo.cn` 对桌面 UA 同样给出手机布局，所以 **WebView 保持与登录页相同的桌面 UA 和 Cookie，直接打开 `m.weibo.cn` 的搜索页**。`m.weibo.cn` 没有登录态（见第 1 项），以游客身份浏览，搜索结果和话题页都能正常显示。WebView 会把 http 的主框架跳转改成 https，否则 Android 会以 `ERR_CLEARTEXT_NOT_PERMITTED` 拒绝。
 
+**M5 实测结论（2026-10-13，诊断页「互动结构」，目标是用户指定的测试微博）：**
+
+- **请求格式**：先从 weibo.com 前端脚本里查到写接口的请求形态（只看接口形态，没有复制代码），再用真实账号核对。所有写操作都是 `POST`，`Content-Type: application/x-www-form-urlencoded`，带 `X-XSRF-TOKEN` 和 `Origin`（拦截器已经在加），空字段不发。网页版还会给点赞、评论、回复额外附一个 `fp` 参数，它来自风控脚本 `wbBotDetector`，脚本加载失败时网页版就不带。**我们不带 `fp`，也不去伪造它**（PLAN §2「不绕过风控」）；实测不带也能正常点赞和评论。
+- **点赞**：`setLike` 返回 `ok=1`，外加一个点赞记录对象（`attitude`、`user` 等）。`cancelLike`、`updateLike`（评论点赞）、`destroyLike` 返回 `{ok:1, result:bool}`。**`ok=1` 但 `result:false` 的请求没有生效**：点赞后约 1 秒内取消，服务端返回 `ok=1,result=false`，微博仍是已赞状态；隔几秒再取消就返回 `result=true`，`statuses/show` 立即显示已取消。所以 `result:false` 一律当失败处理，界面回滚并提示。点赞后 `statuses/show` 立即反映新的 `attitudes_status`、`attitudes_count`，没有缓存延迟。
+- **评论 / 回复**：返回 `{ok:1, msg:"…", data:<评论>}`，`data` 与 `buildComments` 里的评论同构（`idstr`、`text`、`user`、`created_at`、`source`、`disable_reply` 等），`Comment.tryFromJson` 可以直接解析。回复多了 `reply_comment`、`reply_original_text`、`is_sub_cmt`；直接回复根评论时 `text` 没有「回复@xx:」前缀。微博的 `comments_count` 把回复也算在内（发一条评论、一条回复后 `comments_count` 为 2）。
+- **删除评论**：`statuses/destroyComment` 返回 `{ok:1, data:<被删的评论>}`；重复删除返回 HTTP 400 和 `message`。
+- **失败的样子**：`{ok:0, message, msg, error_code, error_type}`（`error_type` 为 `toast`/`alert`/`confirm`/`link`），HTTP 200。`unwrapResponse` 已经把它映射成带 `message` 的 `WeiboApiException`。还没见到写操作触发验证码（`ok:-100`），映射与读接口相同。
+
 ## 9. 分发
 
 - **Android**：GitHub Releases 发布按 ABI 拆分的 APK。签名密钥只保存在本地（`key.properties` 已 gitignore）。国行手机通常没有 GMS，暂不受 Google 开发者验证影响；2027 年该政策全球生效后再评估。
@@ -212,7 +222,7 @@ test/  (fixtures/ 下只放合成数据)
 - **Flutter**：stable 3.47.7（Dart 3.13.5）。
 - **包名**：暂定 `app.maxbo`，首次发版前可以改。
 
-## 11. 进度与交接（更新于 2026-10-13）
+## 11. 进度与交接（更新于 2026-10-13，M5 完成后）
 
 | 里程碑 | 状态 | 提交 |
 |---|---|---|
@@ -221,17 +231,17 @@ test/  (fixtures/ 下只放合成数据)
 | M2 首页时间线 | ✅ 完成：Android 真实会话下加载、下拉刷新、滚动翻页（连续 3 页）都正常，图片无 403，浅色和深色主题都核对过；iOS 只验证了能编译 | `984f7bb` `585cc22` |
 | M3 详情与媒体 | ✅ 完成：Android 真实会话下核对了详情页（长文全文、评论按热度/按时间、评论翻页、楼中楼、转发页签）、图片查看器（翻页、点击或下滑关闭）、视频播放、深色主题；视频地址过期后自动换新地址（时间线加载 1 小时后点视频，先请求一次 `statuses/show` 再播放，无播放错误）；iOS 只验证了能编译 | `41e7e80` `544dc60` |
 | M4 主页与热搜 | ✅ 完成：Android 真实会话下核对了从头像、昵称、@ 进主页（@ 先按昵称查资料再加载微博）、主页翻页、置顶标签、「我」进自己的主页（1 条微博，按 `since_id` 为空判断到底，没有多发请求）、热搜榜（置顶、前三名配色、付费条目的「商」标签、热度）、点热搜条目在应用内打开搜索页（普通词和 `#话题#` 两种），以及浅色和深色主题。正文里的话题链接与热搜条目调用同一个函数，没有在真机上点过，只由 Widget 测试覆盖；iOS 只验证了能编译 | `41a27b1` `bfdda6e` |
-| M5 轻互动 | ⏭ 下一步 | — |
-| M6 | 未开始 | — |
+| M5 轻互动 | ✅ 完成：Android 真实会话下，在用户指定的测试微博上核对了卡片和详情页点赞/取消（主页、详情页之间状态同步，刷新后与服务端一致）、发评论（出现在列表顶部，计数 +1）、评论点赞/取消、回复评论（楼中楼预览更新）、在楼中楼页删除自己的回复、在详情页删除自己的评论；测试结束后这条微博恢复为未赞、0 评论。深色主题核对过；iOS 只验证了能编译 | `7d12372` `53d9951` |
+| M6 打磨与打包 | ⏭ 下一步 | — |
 
-### 已有的基础设施（M5 直接复用）
+### 已有的基础设施
 
-- **网络**：`weiboApiProvider`（`lib/data/api/weibo_api.dart`）。新端点加成 `WeiboApi` 的方法，内部用 `getJson()` / `getPage()`，统一完成错误映射和登录过期处理。请求头、Cookie、XSRF、限流都由 `createWeiboDio()` 的拦截器负责，调用方不用操心。
+- **网络**：`weiboApiProvider`（`lib/data/api/weibo_api.dart`）。新端点加成 `WeiboApi` 的方法，读用 `getJson()` / `getPage()`，写用 `postForm()`（表单提交，`ok=1` 但带 `error` 的也当失败），统一完成错误映射和登录过期处理。请求头、Cookie、XSRF、限流都由 `createWeiboDio()` 的拦截器负责，调用方不用操心。
 - **会话**：`sessionProvider` 为 `SignedIn(account)` 时可拿到 `account.uid`；登录失效时会自动切到 `SignedOut(expired: true)`，界面统一显示 `LoginPrompt`。
 - **错误类型**：`SessionExpiredException` / `CaptchaRequiredException` / `RateLimitedException` / `NetworkException` / `WeiboApiException`，都带有可以直接展示的中文 `message`；界面上用 `loadErrorMessage(error)` 取。
 - **不自动重试**：`main.dart` 的 `ProviderScope(retry: noRetry)` 关掉了 Riverpod 默认的失败重试（默认最多 10 次），保证每个请求都由用户操作触发。测试里的 `ProviderScope`/`ProviderContainer` 也要传 `noRetry`。
 - **模型**（`lib/data/models/`）：`Status`、`WeiboUser`、`PicInfo`、`VideoInfo`、`PageCard`、`UrlEntity`、`FeedPage`、`Comment`、`Paged<T>`、`UserProfile`、`HotSearch`，都用 `tryFromJson`/`fromJson` 容错解析，读字段用 `lib/core/util/json_read.dart`。时间、计数、时长的格式化在 `lib/core/util/format.dart`。`picsOf(json)` 解析任何带 `pic_ids`/`pic_infos` 的对象。
-- **分页列表**：`PagedController<T>`（`lib/core/paging/`）实现首屏、`loadMore()`、去重和过期结果丢弃，子类只需写 `fetchPage(cursor)` 和 `idOf(item)`，游标是字符串（`max_id` 或页码）。界面用 `PagedSliverList`（加载中、错误重试、空列表、页脚）和 `LoadMoreTrigger`（滚到接近底部时加载下一页），都在 `lib/widgets/load_state.dart`。示例见 `features/comments/comments_controller.dart` 和 `features/status/status_detail_providers.dart`（转发，按页码翻页）。
+- **分页列表**：`PagedController<T>`（`lib/core/paging/`）实现首屏、`loadMore()`、去重和过期结果丢弃，子类只需写 `fetchPage(cursor)` 和 `idOf(item)`，游标是字符串（`max_id` 或页码）。用户自己的改动用 `prepend()`、`remove()`、`replace()` 直接改列表（同时调整 `total`），翻页结果会接在改动后的列表后面。界面用 `PagedSliverList`（加载中、错误重试、空列表、页脚）和 `LoadMoreTrigger`（滚到接近底部时加载下一页），都在 `lib/widgets/load_state.dart`。示例见 `features/comments/comments_controller.dart` 和 `features/status/status_detail_providers.dart`（转发，按页码翻页）。
 - **图片**：`WeiboImage` / `weiboImageProvider`（`lib/core/media/weibo_image.dart`）自动带 Referer，缓存 key 去掉头像签名；列表尺寸用 `PicInfo.variantFor(像素)` 选，查看器用 `PicInfo.viewerVariant`（`mw2000` 一档，GIF 用原图）。
 - **视频**：`lib/core/media/video_source.dart` 的 `resolveVideoUrl()` 负责选地址、判断过期、必要时重新请求 `statuses/show`；播放请求带 `videoHttpHeaders`。
 - **路由与入口**：`/status/:id`（详情）、`/comments/:id`（楼中楼）、`/video/:id`、`/viewer`、`/u/:uid`（主页）、`/n/:name`（按昵称打开主页）、`/web?url=`（应用内 WebView），`extra` 传上一页已有的数据（`Status`、`CommentThread`、`ImageViewerArgs`、`WeiboUser`）。卡片和评论上的各种点击统一走 `statusCardActions(context)`（`lib/features/status/status_actions.dart`）：点卡片和「展开」进详情，图片进查看器，视频进播放页，头像和昵称进主页，@ 按昵称进主页，话题在应用内打开搜索页，网页链接用外部浏览器打开。只想改其中一项时用 `StatusCardActions.copyWith`（例如主页里点这个用户自己的头像不再跳转）。`UserAvatar`、`VerifiedIcon`（`lib/widgets/user_avatar.dart`）、`TagLabel`（`lib/widgets/tag_label.dart`，广告/置顶/已关注/热搜标签）是通用组件。
@@ -239,16 +249,21 @@ test/  (fixtures/ 下只放合成数据)
 - **验证码**：`ErrorRetry(error:)` 和 `LoadMoreFooter(error:)` 遇到 `CaptchaRequiredException` 时显示「去验证」，用户在应用内 WebView 里自己完成验证，返回后自动重试一次。
 - **详情页**：`StatusDetailPage` 先显示上一页传来的 `Status`，再用 `statusDetailProvider` 取全文和最新计数。评论和转发列表在页面存续期间保持已加载状态，切换页签或排序不会重复请求。
 - **测试**：`test/support/fakes.dart` 的 `signedInOverrides(adapter)` 一次性给出"已登录（uid 7）+ 假网络"所需的覆盖；`test/support/routes.dart` 的 `stubRouter(home)` 把 `/u`、`/n`、`/status`、`/web` 换成只显示参数的占位页，用来测"点了会跳到哪里"。合成数据的构造函数都在 `test/support/statuses.dart`。
-- **调试**：调试版「我」页右上角的虫子图标进入诊断页：▶ 是 M1 的接口检查，▤ 是「时间线结构」探针，📄 是「详情结构」探针（长文、视频地址和有效期、评论/楼中楼/转发的分页），👤 是「主页与热搜结构」探针。日志前缀 `[maxbo-diag]` / `[maxbo]`，用 `adb logcat` 读取。`devLog()` 只在调试版输出，不得记录 Cookie 值或微博正文。
+- **互动**（`lib/features/interactions/`）：
+  - `likesProvider`（`likes.dart`）按 `(kind, id)` 保存用户在应用里改过的点赞，所有列表和页面共用，所以同一条微博或评论在时间线、主页、详情页、楼中楼页显示一致。每条改动记着改动时页面数据的样子（`base`），**只有页面数据还是那个样子时才套用改动**；之后加载的数据已经包含这次改动，以新数据为准。界面用 `LikeBuilder`：点了立即显示，请求期间不能再点，失败时回滚并用 `showErrorSnackBar()` 提示（验证码时给「去验证」，验证后由用户自己再点一次）。
+  - `showCommentComposer()`（`comment_composer.dart`）是写评论/回复的底部弹层：发送中禁用、失败时在弹层里显示原因、关掉弹层不丢草稿（草稿存在页面的 `Map` 里）。`CommentBar` 是详情页和楼中楼页底部的输入条，`confirmDeleteComment()` 是删除前的菜单加二次确认。
+  - 详情页：底部条写评论和点赞，点评论回复它，长按自己的评论删除。楼中楼页：底部条回复根评论，点任一条回复它，长按自己的回复删除。楼中楼页的改动通过 `editOpenCommentLists()` 同步到详情页里已打开的评论列表（只改已加载的列表，不会因此发请求）。评论数在详情页本地加减，刷新后以服务端为准。
+- **调试**：调试版「我」页右上角的虫子图标进入诊断页：▶ 是 M1 的接口检查，▤ 是「时间线结构」探针，📄 是「详情结构」探针（长文、视频地址和有效期、评论/楼中楼/转发的分页），👤 是「主页与热搜结构」探针，👍 是「互动结构」探针（**会真实点赞、评论再删除**，输入 `@昵称` 时只对当前账号关注的人生效，可以只测点赞），↗ 可以输入路由直接打开页面（如 `/n/昵称`、`/status/<id>`，用来进入应用里还没有入口的页面）。日志前缀 `[maxbo-diag]` / `[maxbo]`，用 `adb logcat` 读取。`devLog()` 只在调试版输出，不得记录 Cookie 值或微博正文。
 
-### M5 要点
+### M6 要点
 
-- **端点**：点赞 `POST /ajax/statuses/setLike`、取消 `POST /ajax/statuses/cancelLike`（`id=<mid>`），评论 `POST /ajax/comments/create`、回复 `POST /ajax/comments/reply`。请求体格式和返回结构**都还没实测**。拦截器已经给非 GET 请求带上 `Origin` 和 `X-XSRF-TOKEN`，但 `WeiboApi` 里还没有 POST 的封装（`getJson` 只管 GET），需要加一个 `postForm()` 并复用 `unwrapResponse` 的错误映射。
-- **合规**：写操作都要由用户点击触发，请求期间按钮禁用，失败要回滚并提示（PLAN §2）。**用真实账号点赞或发评论属于以用户身份对外操作，每次实测前都要先问用户**，最好让用户指定一条可以用来测试的微博。
-- **界面状态**：卡片上的计数（`_Counts`）和详情页页签右侧的「赞」现在都只是展示。评论的 `liked`/`like_counts` 已经解析好了（`Comment`）。点赞后需要同时更新时间线、详情页和主页列表里的同一条微博，可以考虑按 id 保存一份本地覆盖状态。
-- **还没做的小项**：图片磁盘缓存没有大小上限，留给 M6 的设置页；`mymblog` 的 `bottom_tips_text` 没有显示（还没见过实例）；验证码的「去验证」只用合成数据测过，还没遇到真实验证码，也不知道验证完成后要不要把 WebView 的 Cookie 同步回 API。
-- **未在真机上验证的部分**：M3 的双击放大、长图、GIF 和实况照片；M4 在 iOS 上只验证了能编译（iOS 模拟器没有真实登录），包括应用内 WebView。
-- **流畅度**：M2–M4 都只在模拟器的调试版上看过，滚动没有明显卡顿；还没在 profile 版或真机上测帧率。
+- **范围**（§6）：设置页（主题、图片质量、图片缓存上限）、关于与免责声明、深色模式打磨、release APK（按 ABI 拆分）、iOS 无签名 IPA 和自签文档、README。
+- **疑似广告误判**：M5 测试时，测试账号主页上一条 2025-06-13 的普通原创微博被标成了「广告」。判定规则还是 M2 的猜测（`isAd`、`readtimetype == 'adMblog'`、`mark` 含 `mark_ad`，§8 第 5 项），可能是 `mymblog` 里的某个字段命中了。建议先在诊断页加一个只读探针看这条微博的 `isAd`、`mark`、`readtimetype` 等字段，再收紧判定。标签只影响显示，不影响合规边界（广告只打标签、不过滤）。
+- **互动的已知局限**：转发数和时间线卡片上的评论数不会因为用户评论而变化（只有详情页本地加减）；从详情页的楼中楼预览里不能直接删回复（要进楼中楼页）；没有表情面板和 @ 补全；评论字数没有在客户端限制，超长时显示服务端的错误信息。
+- **还没做的小项**（沿用）：图片磁盘缓存没有大小上限；`mymblog` 的 `bottom_tips_text` 没有显示；验证码的「去验证」还没遇到真实验证码（M5 的写操作也没触发过），不知道验证完成后要不要把 WebView 的 Cookie 同步回 API。
+- **未在真机上验证的部分**：M3 的双击放大、长图、GIF 和实况照片；M4、M5 在 iOS 上只验证了能编译（iOS 模拟器没有真实登录）。
+- **流畅度**：M2–M5 都只在模拟器的调试版上看过，滚动没有明显卡顿；还没在 profile 版或真机上测帧率。
+- **测试写操作**：测试目标由用户指定。2026-10-13 指定的是测试账号关注的用户大号主页上的第一条微博（2025-08-29 发布），昵称问用户，诊断页里用 `@昵称` 定位。每次真实点赞或评论前仍要先问用户；测试完把它恢复成未赞、无测试评论。
 
 ### 开发环境注意
 
@@ -257,3 +272,6 @@ test/  (fixtures/ 下只放合成数据)
 - 部分 Google 域名（如 `dl.google.com`）可能被本机代理规则判为直连而连不上，表现为 TLS 握手中断；这时调整代理分流规则即可，**不要往仓库里写镜像地址**。
 - `adb shell uiautomator dump` 看不到 Flutter 的界面元素，操作模拟器只能靠截图（`adb exec-out screencap -p`）加坐标点击。截图是 1080×2424，按缩小后的图量出的坐标要乘回原始比例；目测容易偏几十像素，点小目标（如正文里的 @）前先用 `sips -c <高> <宽> --cropOffset <y> <x>` 裁出原图对应区域核对。
 - 核对深色主题可用 `adb -s emulator-5554 shell cmd uimode night yes`，看完记得改回 `no`。
+- `adb shell input text` 只能输入 ASCII（空格写成 `%s`），测试评论用英文。
+- 调试版红屏时 logcat 里看不到完整异常：先 `am start` 启动应用，再 `flutter attach -d emulator-5554` 接上去复现，异常会打在 attach 的输出里。**不要用 `flutter run`**，它安装失败时会先卸载再装，登录态就没了。
+- 测写操作时注意点击位置：卡片里的转发框打开的是**原微博**（别人的），不是测试微博。
