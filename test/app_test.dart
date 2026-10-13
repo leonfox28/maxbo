@@ -2,19 +2,34 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:maxbo/app.dart';
+import 'package:maxbo/core/net/cookie_jar.dart';
+import 'package:maxbo/core/net/request_throttle.dart';
+import 'package:maxbo/core/net/weibo_dio.dart';
 import 'package:maxbo/core/session/session_controller.dart';
 import 'package:maxbo/core/session/session_storage.dart';
 import 'package:maxbo/data/models/account.dart';
 
 import 'support/fakes.dart';
+import 'support/statuses.dart';
 
 void main() {
   Widget app({StoredSession? restored, FakeCookieBridge? bridge}) =>
       ProviderScope(
+        retry: noRetry,
         overrides: [
           sessionStorageProvider.overrideWithValue(InMemorySessionStorage()),
           cookieBridgeProvider.overrideWithValue(bridge ?? FakeCookieBridge()),
           restoredSessionProvider.overrideWithValue(restored),
+          weiboDioFactoryProvider.overrideWithValue(
+            (WeiboCookieJar jar) =>
+                createWeiboDio(
+                    jar: jar,
+                    throttle: RequestThrottle(minInterval: Duration.zero),
+                  )
+                  ..httpClientAdapter = FakeAdapter(
+                    (_) => jsonBody(feedJson([statusJson(text: '首页的一条微博')])),
+                  ),
+          ),
         ],
         child: const MaxboApp(),
       );
@@ -46,7 +61,8 @@ void main() {
       ),
     );
 
-    expect(find.text('关注时间线将在 M2 实现'), findsOneWidget);
+    await tester.pumpAndSettle();
+    expect(find.text('首页的一条微博'), findsOneWidget);
 
     await tester.tap(find.text('我'));
     await tester.pumpAndSettle();

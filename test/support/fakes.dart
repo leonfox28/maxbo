@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 
@@ -9,7 +10,8 @@ import 'package:maxbo/core/session/session_storage.dart';
 class FakeAdapter implements HttpClientAdapter {
   FakeAdapter(this.handler);
 
-  final ResponseBody Function(RequestOptions options) handler;
+  /// May return a future to hold a response back, e.g. to test races.
+  final FutureOr<ResponseBody> Function(RequestOptions options) handler;
   final requests = <RequestOptions>[];
 
   @override

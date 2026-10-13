@@ -1,8 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/net/weibo_exception.dart';
 import '../../core/session/session_controller.dart';
+import '../../widgets/status_card/status_card.dart';
 import '../auth/login_prompt.dart';
+import '../status/status_actions.dart';
+import 'timeline_controller.dart';
 
 class TimelinePage extends ConsumerWidget {
   const TimelinePage({super.key});
@@ -13,8 +17,150 @@ class TimelinePage extends ConsumerWidget {
       appBar: AppBar(title: const Text('首页')),
       body: switch (ref.watch(sessionProvider)) {
         SignedOut(:final expired) => LoginPrompt(expired: expired),
-        SignedIn() => const Center(child: Text('关注时间线将在 M2 实现')),
+        SignedIn() => const _Timeline(),
       },
+    );
+  }
+}
+
+class _Timeline extends ConsumerWidget {
+  const _Timeline();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return switch (ref.watch(timelineProvider)) {
+      AsyncData(:final value) => _StatusList(timeline: value),
+      AsyncError(:final error) => _ErrorView(
+        message: error is WeiboException ? error.message : '加载失败',
+        onRetry: () => ref.invalidate(timelineProvider),
+      ),
+      AsyncLoading() => const Center(child: CircularProgressIndicator()),
+    };
+  }
+}
+
+class _StatusList extends ConsumerWidget {
+  const _StatusList({required this.timeline});
+
+  final TimelineState timeline;
+
+  // How close to the end scrolling gets before the next page is requested.
+  static const _loadMoreExtent = 800.0;
+
+  Future<void> _refresh(BuildContext context, WidgetRef ref) async {
+    try {
+      await ref.read(timelineProvider.notifier).refresh();
+    } on WeiboException catch (e) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(SnackBar(content: Text(e.message)));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final statuses = timeline.statuses;
+    final actions = statusCardActions(context);
+    return NotificationListener<ScrollUpdateNotification>(
+      onNotification: (n) {
+        // After a failure, loading more waits for the retry button.
+        if (n.depth == 0 &&
+            n.metrics.extentAfter < _loadMoreExtent &&
+            timeline.loadMoreError == null) {
+          ref.read(timelineProvider.notifier).loadMore();
+        }
+        return false;
+      },
+      child: RefreshIndicator(
+        onRefresh: () => _refresh(context, ref),
+        child: statuses.isEmpty
+            ? ListView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                children: const [
+                  SizedBox(height: 160),
+                  Center(child: Text('还没有微博，下拉刷新试试')),
+                ],
+              )
+            : ListView.separated(
+                physics: const AlwaysScrollableScrollPhysics(),
+                itemCount: statuses.length + 1,
+                separatorBuilder: (_, _) => const Divider(height: 1),
+                itemBuilder: (context, i) => i < statuses.length
+                    ? StatusCard(statuses[i], actions: actions)
+                    : _Footer(
+                        timeline: timeline,
+                        onLoadMore: () =>
+                            ref.read(timelineProvider.notifier).loadMore(),
+                      ),
+              ),
+      ),
+    );
+  }
+}
+
+class _Footer extends StatelessWidget {
+  const _Footer({required this.timeline, required this.onLoadMore});
+
+  final TimelineState timeline;
+  final VoidCallback onLoadMore;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final error = timeline.loadMoreError;
+    final Widget child;
+    if (timeline.loadingMore) {
+      child = const SizedBox.square(
+        dimension: 24,
+        child: CircularProgressIndicator(strokeWidth: 2),
+      );
+    } else if (error != null) {
+      child = Column(
+        children: [
+          Text(error.message, style: theme.textTheme.bodySmall),
+          TextButton(onPressed: onLoadMore, child: const Text('重试')),
+        ],
+      );
+    } else if (timeline.hasMore) {
+      // Normally replaced by the spinner before it scrolls into view; kept
+      // for lists too short to scroll.
+      child = TextButton(onPressed: onLoadMore, child: const Text('加载更多'));
+    } else {
+      child = Text(
+        '没有更多了',
+        style: theme.textTheme.bodySmall?.copyWith(
+          color: theme.colorScheme.onSurfaceVariant,
+        ),
+      );
+    }
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 20),
+      child: Center(child: child),
+    );
+  }
+}
+
+class _ErrorView extends StatelessWidget {
+  const _ErrorView({required this.message, required this.onRetry});
+
+  final String message;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(message, textAlign: TextAlign.center),
+            const SizedBox(height: 16),
+            FilledButton.tonal(onPressed: onRetry, child: const Text('重试')),
+          ],
+        ),
+      ),
     );
   }
 }

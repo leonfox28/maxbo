@@ -7,6 +7,7 @@ import '../../core/session/session_controller.dart';
 import '../../core/util/dev_log.dart';
 import '../../core/util/json_shape.dart';
 import '../models/account.dart';
+import '../models/feed_page.dart';
 import 'page_config.dart';
 
 final weiboApiProvider = Provider<WeiboApi>((ref) {
@@ -47,6 +48,30 @@ class WeiboApi {
       throw const SessionExpiredException();
     }
     return account;
+  }
+
+  /// A page of the "最新微博" timeline of [uid]: the newest page, or the one
+  /// after [maxId] (a previous page's `FeedPage.nextCursor`).
+  Future<FeedPage> fetchHomeTimeline({
+    required String uid,
+    String? maxId,
+  }) async {
+    final json = await getJson(
+      '$_web/ajax/feed/friendstimeline',
+      query: {
+        // The built-in "最新微博" group; see PLAN §8 item 3.
+        'list_id': '11000$uid',
+        'refresh': 4,
+        'count': 20,
+        if (maxId == null) 'since_id': 0 else 'max_id': maxId,
+      },
+    );
+    final page = FeedPage.fromJson(json);
+    devLog(
+      'timeline: ${page.statuses.length} statuses, '
+      'more=${page.nextCursor != null}',
+    );
+    return page;
   }
 
   Future<Map<String, Object?>> getJson(

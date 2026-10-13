@@ -74,3 +74,9 @@ class RequestThrottle {
 
   void resetBackOff() => _backOff = Duration.zero;
 }
+
+/// The app-wide Riverpod retry policy: never retry on our own.
+///
+/// Riverpod retries failed providers by default, but requests to Weibo must
+/// only follow user actions (PLAN §2), so retrying is left to the user.
+Duration? noRetry(int retryCount, Object error) => null;

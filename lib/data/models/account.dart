@@ -1,3 +1,5 @@
+import '../../core/util/json_read.dart';
+
 /// The signed-in Weibo account.
 class Account {
   const Account({required this.uid, this.screenName});
@@ -10,12 +12,14 @@ class Account {
   static Account? tryFromPageConfig(Map<String, Object?> config) {
     final user = config['user'];
     final uid =
-        _string(config['uid']) ??
-        (user is Map ? _string(user['idstr']) ?? _string(user['id']) : null);
+        readString(config['uid']) ??
+        (user is Map
+            ? readString(user['idstr']) ?? readString(user['id'])
+            : null);
     if (uid == null || uid == '0') return null;
     return Account(
       uid: uid,
-      screenName: user is Map ? _string(user['screen_name']) : null,
+      screenName: user is Map ? readString(user['screen_name']) : null,
     );
   }
 
@@ -25,11 +29,4 @@ class Account {
   );
 
   Map<String, Object?> toJson() => {'uid': uid, 'screenName': screenName};
-
-  // Weibo mixes numbers and strings for ids; normalize to non-empty strings.
-  static String? _string(Object? value) => switch (value) {
-    String() when value.isNotEmpty => value,
-    int() => '$value',
-    _ => null,
-  };
 }
