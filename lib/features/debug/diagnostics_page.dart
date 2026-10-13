@@ -26,7 +26,7 @@ const _adLabels = ['readtimetype', 'mblogtypename', 'mark'];
 /// Runs on the signed-in session, or on the login WebView's cookies when
 /// signed out (to debug a login that didn't complete). The report holds field
 /// names, counts and cookie names, never cookie values or post content;
-/// numbers of 5+ digits and non-ASCII text in page snippets are masked. Each
+/// numbers of 7+ digits and non-ASCII text in page snippets are masked. Each
 /// line is also printed with a `[maxbo-diag]` prefix for reading over adb.
 class DiagnosticsPage extends ConsumerStatefulWidget {
   const DiagnosticsPage({super.key});
@@ -111,19 +111,36 @@ class _DiagnosticsPageState extends ConsumerState<DiagnosticsPage> {
       'https://weibo.com/ajax/feed/allGroups',
       {'is_new_segment': 1, 'fetch_hot': 1},
     );
-    final gids = <String>[];
+    String maskId(Object? id) =>
+        _redact(uid == null ? '$id' : '$id'.replaceAll(uid, '<uid>'));
+    final systemGids = <String>[];
     if (groups != null) {
       _log(describeShape(groups, maxDepth: 5));
-      _collect(groups, 'gid', gids);
-      _log('gids: ${gids.take(8).map(_redact).join(', ')}');
+      for (final category in _maps(groups['groups'])) {
+        for (final group in _maps(category['group'])) {
+          // sysgroup 0 marks the user's own groups; others are Weibo's.
+          final builtIn = group['sysgroup'] != 0;
+          final channel = '${group['type']}' == '8888'; // Topic feeds.
+          if (builtIn && !channel) {
+            systemGids.add('${group['gid']}');
+          }
+          if (channel) continue;
+          _log(
+            'group type=${group['type']} sys=${group['sysgroup']} '
+            'gid=${maskId(group['gid'])} '
+            'title=${builtIn ? group['title'] : '<custom>'}',
+          );
+        }
+      }
     }
 
     final variants = <String, String?>{
       'no list_id': null,
       if (uid != null) 'list_id=11000<uid>': '11000$uid',
-      for (final gid in gids.take(2)) 'list_id=${_redact(gid)}': gid,
+      for (final gid in systemGids.take(6)) 'list_id=${maskId(gid)}': gid,
     };
     var statuses = <Map<String, Object?>>[];
+    List<Object?>? baseline;
     for (final MapEntry(key: label, value: listId) in variants.entries) {
       final feed = await fetch(
         label,
@@ -134,8 +151,12 @@ class _DiagnosticsPageState extends ConsumerState<DiagnosticsPage> {
       final items = (feed['statuses'] as List? ?? const [])
           .whereType<Map<String, Object?>>()
           .toList();
+      final ids = [for (final s in items) s['idstr']];
+      baseline ??= ids;
+      final shared = ids.where(baseline.contains).length;
       _log(
         '$label: ok=${feed['ok']} statuses=${items.length} '
+        'same_as_first=$shared/${baseline.length} '
         'max_id=${feed['max_id'] != null} since_id=${feed['since_id'] != null}',
       );
       if (items.length > statuses.length) statuses = items;
@@ -201,23 +222,12 @@ class _DiagnosticsPageState extends ConsumerState<DiagnosticsPage> {
   }
 
   static String _redact(String s) => s
-      .replaceAll(RegExp(r'\d{5,}'), '<num>')
+      .replaceAll(RegExp(r'\d{7,}'), '<num>')
       .replaceAll(RegExp(r'[^\x00-\x7F]+'), '<text>')
       .replaceAll(RegExp(r'\s+'), ' ');
 
-  static void _collect(Object? json, String key, List<String> out) {
-    switch (json) {
-      case Map():
-        for (final MapEntry(key: k, :value) in json.entries) {
-          if (k == key && value != null) out.add('$value');
-          _collect(value, key, out);
-        }
-      case List():
-        for (final item in json) {
-          _collect(item, key, out);
-        }
-    }
-  }
+  static Iterable<Map<String, Object?>> _maps(Object? list) =>
+      list is List ? list.whereType<Map<String, Object?>>() : const [];
 
   static bool _truthy(Object? value) => switch (value) {
     null || false || 0 || '' || '0' => false,

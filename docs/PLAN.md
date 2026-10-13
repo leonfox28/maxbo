@@ -168,9 +168,9 @@ test/  (fixtures/ 下只放合成数据)
 |---|---|---|
 | 1 | 登录入口与 Cookie | ✅ 桌面入口 `passport.weibo.com/sso/signin?entry=miniblog` 在手机 WebView 中显示为手机布局，支持短信、账号密码、扫码登录；发验证码前会弹网易易盾人机验证，需用户本人完成。登录后 passport 先写好 `.weibo.com` 的 `SUB/SUBP/ALF/SCF`，随后跳转的 `login.sina.com.cn/sso/v2/crossdomain` 在 WebView 中返回 403（Android 实测）。因此**不等页面回到 weibo.com，每次主页面加载完成或失败都校验一次**。跨域失败的后果是 `m.weibo.cn` 没有登录态，v1 只用 weibo.com，不受影响 |
 | 2 | 会话是否绑定 UA | ✅ 不绑定：用手机 UA 请求同一会话的时间线，同样返回 `ok=1` |
-| 3 | `list_id` | ⏳ 不传、传 `11000<uid>`、传分组 gid 都返回 `ok=1`，但测试账号时间线为空，无法区分哪种写法正确，需在有关注的账号上复测。`/ajax/feed/allGroups` 返回分组列表（`groups[].group[]` 含 `gid/uid/title/type/sysgroup`） |
+| 3 | `list_id` | ✅ 「最新微博」是 `list_id=11000<uid>`（`/ajax/feed/allGroups` 中 type 20、title「最新微博」的分组）。同为 type 20 的「原创」`11001<uid>`、「视频」`11002<uid>` 会返回不同内容；「全部关注」`10001<uid>`、「特别关注」、「互相关注」以及不传 `list_id` 都返回与最新微博相同的内容，说明这类分组需要改走 `groupstimeline`（v1 不做）。M2 显式传 `11000<uid>` |
 | 4 | 当前用户 | ✅ `/ajax/config` **不存在**（登录后返回 404；游客的 `ok:-100` 只是统一拦截）。网页版从首页 HTML 内嵌的 `window.$CONFIG`（含 `user{id,idstr,screen_name,…}` 和 `uid`）读取当前用户，我们也这样做。`/ajax/profile/info` 不带参数返回 400 |
-| 5 | 广告字段 | ⏳ 同 3，时间线为空，待复测 |
+| 5 | 广告字段 | ⏳ 部分确认：时间线里的微博带有 `isAd` 字段，普通微博的 `readtimetype` 为 `mblog`；实测 24 条中没有广告，尚未见到真实广告样本。M2 按 `isAd == true` 或 `readtimetype == 'adMblog'` 或 `mark` 含 `mark_ad` 判定并打标签，见到样本后再核实 |
 | 6 | iOS 读 HttpOnly Cookie | ✅ `WKHTTPCookieStore` 能读到页面响应下发的 HttpOnly Cookie（集成测试，本地服务器）；Android 已用真实登录验证可读到 `SUB` |
 
 其他发现：服务端会在响应中轮换下发 `XSRF-TOKEN`、`WBPSESS`，Cookie 存储会自动更新并持久化。
