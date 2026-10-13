@@ -5,20 +5,18 @@ class Account {
   final String uid;
   final String? screenName;
 
-  /// Reads the account from a weibo.com `/ajax/config` or m.weibo.cn
-  /// `/api/config` response, or returns null if it names no signed-in user.
-  static Account? tryFromConfig(Map<String, Object?> json) {
-    final data = json['data'];
-    if (data is! Map || data['login'] == false) return null;
-    final user = data['user'];
+  /// Reads the account from the `$CONFIG` object weibo.com embeds in its
+  /// pages, or returns null if it names no signed-in user (as for visitors).
+  static Account? tryFromPageConfig(Map<String, Object?> config) {
+    final user = config['user'];
     final uid =
-        _string(data['uid']) ??
+        _string(config['uid']) ??
         (user is Map ? _string(user['idstr']) ?? _string(user['id']) : null);
     if (uid == null || uid == '0') return null;
-    final screenName = user is Map
-        ? _string(user['screen_name'])
-        : _string(data['screen_name']);
-    return Account(uid: uid, screenName: screenName);
+    return Account(
+      uid: uid,
+      screenName: user is Map ? _string(user['screen_name']) : null,
+    );
   }
 
   factory Account.fromJson(Map<String, Object?> json) => Account(

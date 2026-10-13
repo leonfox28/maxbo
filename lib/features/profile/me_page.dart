@@ -13,7 +13,17 @@ class MePage extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return Scaffold(
-      appBar: AppBar(title: const Text('我')),
+      appBar: AppBar(
+        title: const Text('我'),
+        actions: [
+          if (kDebugMode)
+            IconButton(
+              tooltip: '开发者诊断',
+              icon: const Icon(Icons.bug_report_outlined),
+              onPressed: () => context.push('/diagnostics'),
+            ),
+        ],
+      ),
       body: switch (ref.watch(sessionProvider)) {
         SignedOut(:final expired) => LoginPrompt(expired: expired),
         SignedIn(:final account) => _AccountView(account: account),
@@ -58,13 +68,6 @@ class _AccountView extends ConsumerWidget {
           subtitle: Text('UID ${account.uid}'),
         ),
         const Divider(),
-        if (kDebugMode)
-          ListTile(
-            leading: const Icon(Icons.bug_report_outlined),
-            title: const Text('开发者诊断'),
-            subtitle: const Text('仅调试版可见'),
-            onTap: () => context.push('/diagnostics'),
-          ),
         ListTile(
           leading: const Icon(Icons.logout),
           title: const Text('退出登录'),

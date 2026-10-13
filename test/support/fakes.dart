@@ -39,6 +39,20 @@ ResponseBody jsonBody(
   },
 );
 
+ResponseBody htmlBody(String html, {int status = 200}) =>
+    ResponseBody.fromString(
+      html,
+      status,
+      headers: {
+        Headers.contentTypeHeader: ['text/html; charset=utf-8'],
+      },
+    );
+
+/// A weibo.com home page whose embedded `$CONFIG` names [uid] (0 = visitor).
+ResponseBody homePage({int uid = 42}) => htmlBody(
+  '<script>try{window.\$CONFIG = {"user":${uid == 0 ? 'null' : '{"idstr":"$uid","screen_name":"测试用户"}'},"uid":$uid};}catch(e){}</script>',
+);
+
 class InMemorySessionStorage implements SessionStorage {
   InMemorySessionStorage([this.stored]);
 

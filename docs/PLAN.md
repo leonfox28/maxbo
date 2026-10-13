@@ -99,7 +99,7 @@ test/  (fixtures/ 下只放合成数据)
    - 桌面入口：`passport.weibo.com/sso/signin?entry=miniblog&url=https://weibo.com/`
    - 移动入口：`passport.weibo.cn/signin/login`，之后再加载一次 `https://weibo.com/` 完成跨域单点登录
 2. 页面加载完成后，通过平台通道读取 `weibo.com` 和 `m.weibo.cn` 两个域的 Cookie，写入 CookieStore。
-3. **登录成功以接口返回为准，不以 Cookie 为准**。游客也会拿到 `SUB`，所以判断条件是 `m.weibo.cn/api/config` 返回 `data.login == true`，或 `/ajax/config` 返回 `ok == 1`，同时取得 uid。
+3. **登录成功以服务端为准，不以 Cookie 为准**。游客也会拿到 `SUB`，所以判断条件是 weibo.com 首页内嵌的 `$CONFIG` 中有当前用户的 uid（见第 8 节）。
 4. 判定会话过期的信号：`ok == -100`、403 加"请登录"、401、跳转到 passport 或 login.sina.com.cn、返回 HTML 页面。过期后清掉本地会话并回到登录页。
 5. 退出登录：同时清空 CookieStore 和 WebView 的 Cookie。
 
@@ -127,7 +127,7 @@ test/  (fixtures/ 下只放合成数据)
 
 | 功能 | 端点 | 分页 |
 |---|---|---|
-| 当前用户 / 登录校验 | GET `/ajax/config`，`m.weibo.cn/api/config` | — |
+| 当前用户 / 登录校验 | GET `https://weibo.com/` 页面，解析内嵌的 `window.$CONFIG` | — |
 | 首页时间线 | GET `/ajax/feed/friendstimeline?refresh=4&count=20&list_id=…` | `since_id` / `max_id` |
 | 微博详情 | GET `/ajax/statuses/show?id=&isGetLongText=1` | — |
 | 长文 | GET `/ajax/statuses/longtext?id=` | — |
@@ -162,14 +162,18 @@ test/  (fixtures/ 下只放合成数据)
 - **手动验证**：Android 模拟器（Pixel_9，API 37）和 iOS 27 模拟器。**登录这一步需要你本人在模拟器里用自己的账号完成**，我无法替你登录。
 - **账号安全**：开发期间建议用小号测试，并控制刷新频率。
 
-## 8. 待验证项（在 M1 中逐项确认）
+## 8. 待验证项（M1 实测结果，2026-10-13）
 
-1. 两种登录入口在手机 WebView 里哪个能正常完成，以及跨域单点登录后 `weibo.com` 的 Cookie 是否齐全。
-2. 会话是否和 UA 绑定（登录和 API 是否必须用同一个 UA）。
-3. `friendstimeline` 的 `list_id` 应该传什么（参考项目里写死的值看起来是某个账号专属的，不能照抄）。
-4. `/ajax/config` 在已登录状态下的返回结构。
-5. `friendstimeline` 中广告用的是哪个字段（`isAd` / `promotion` / `mark` 等）。
-6. iOS 上 `WKHTTPCookieStore` 能否稳定读到 `.weibo.com` 域下 HttpOnly 的 `SUB`。
+| # | 问题 | 结论 |
+|---|---|---|
+| 1 | 登录入口与 Cookie | ✅ 桌面入口 `passport.weibo.com/sso/signin?entry=miniblog` 在手机 WebView 中显示为手机布局，支持短信、账号密码、扫码登录；发验证码前会弹网易易盾人机验证，需用户本人完成。登录后 passport 先写好 `.weibo.com` 的 `SUB/SUBP/ALF/SCF`，随后跳转的 `login.sina.com.cn/sso/v2/crossdomain` 在 WebView 中返回 403（Android 实测）。因此**不等页面回到 weibo.com，每次主页面加载完成或失败都校验一次**。跨域失败的后果是 `m.weibo.cn` 没有登录态，v1 只用 weibo.com，不受影响 |
+| 2 | 会话是否绑定 UA | ✅ 不绑定：用手机 UA 请求同一会话的时间线，同样返回 `ok=1` |
+| 3 | `list_id` | ⏳ 不传、传 `11000<uid>`、传分组 gid 都返回 `ok=1`，但测试账号时间线为空，无法区分哪种写法正确，需在有关注的账号上复测。`/ajax/feed/allGroups` 返回分组列表（`groups[].group[]` 含 `gid/uid/title/type/sysgroup`） |
+| 4 | 当前用户 | ✅ `/ajax/config` **不存在**（登录后返回 404；游客的 `ok:-100` 只是统一拦截）。网页版从首页 HTML 内嵌的 `window.$CONFIG`（含 `user{id,idstr,screen_name,…}` 和 `uid`）读取当前用户，我们也这样做。`/ajax/profile/info` 不带参数返回 400 |
+| 5 | 广告字段 | ⏳ 同 3，时间线为空，待复测 |
+| 6 | iOS 读 HttpOnly Cookie | ✅ `WKHTTPCookieStore` 能读到页面响应下发的 HttpOnly Cookie（集成测试，本地服务器）；Android 已用真实登录验证可读到 `SUB` |
+
+其他发现：服务端会在响应中轮换下发 `XSRF-TOKEN`、`WBPSESS`，Cookie 存储会自动更新并持久化。
 
 ## 9. 分发
 

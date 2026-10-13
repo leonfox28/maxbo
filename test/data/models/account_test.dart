@@ -2,53 +2,35 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:maxbo/data/models/account.dart';
 
 void main() {
-  test('reads uid from data.uid, as numbers or strings', () {
-    expect(
-      Account.tryFromConfig({
-        'ok': 1,
-        'data': {'uid': 1234567890},
-      })?.uid,
-      '1234567890',
-    );
-    expect(
-      Account.tryFromConfig({
-        'data': {'login': true, 'uid': '42'},
-      })?.uid,
-      '42',
-    );
-  });
-
-  test('falls back to data.user and reads the screen name', () {
-    final account = Account.tryFromConfig({
-      'data': {
-        'user': {'idstr': '42', 'screen_name': '测试用户'},
-      },
+  test('reads the user from \$CONFIG', () {
+    final account = Account.tryFromPageConfig({
+      'user': {'id': 42, 'idstr': '42', 'screen_name': '测试用户'},
+      'uid': 42,
     });
 
     expect(account?.uid, '42');
     expect(account?.screenName, '测试用户');
   });
 
-  test('returns null when no signed-in user is named', () {
+  test('falls back to user.idstr, then user.id', () {
     expect(
-      Account.tryFromConfig({
-        'data': {'login': false},
-      }),
-      isNull,
+      Account.tryFromPageConfig({
+        'user': {'idstr': '7'},
+      })?.uid,
+      '7',
     );
     expect(
-      Account.tryFromConfig({
-        'data': {'uid': 0},
-      }),
-      isNull,
+      Account.tryFromPageConfig({
+        'user': {'id': 8},
+      })?.uid,
+      '8',
     );
-    expect(
-      Account.tryFromConfig({
-        'data': {'uid': ''},
-      }),
-      isNull,
-    );
-    expect(Account.tryFromConfig({'ok': 1}), isNull);
+  });
+
+  test('returns null for visitors', () {
+    expect(Account.tryFromPageConfig({'uid': 0}), isNull);
+    expect(Account.tryFromPageConfig({'uid': '', 'user': null}), isNull);
+    expect(Account.tryFromPageConfig({'serverTime': 1}), isNull);
   });
 
   test('round-trips through JSON', () {

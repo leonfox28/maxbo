@@ -1,6 +1,10 @@
+import 'dart:math';
+
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/net/cookie_jar.dart';
 import '../../core/net/request_throttle.dart';
 import '../../core/net/weibo_dio.dart';
 import '../../core/session/session_controller.dart';
@@ -19,9 +23,11 @@ const _adLabels = ['readtimetype', 'mblogtypename', 'mark'];
 /// Debug-only checks against the live API for the open questions in
 /// docs/PLAN.md section 8.
 ///
-/// The report holds field names, counts and cookie names, never cookie
-/// values or post content; the user's uid is masked. Each line is also
-/// printed with a `[maxbo-diag]` prefix so it can be read from the device log.
+/// Runs on the signed-in session, or on the login WebView's cookies when
+/// signed out (to debug a login that didn't complete). The report holds field
+/// names, counts and cookie names, never cookie values or post content;
+/// numbers of 5+ digits and non-ASCII text in page snippets are masked. Each
+/// line is also printed with a `[maxbo-diag]` prefix for reading over adb.
 class DiagnosticsPage extends ConsumerStatefulWidget {
   const DiagnosticsPage({super.key});
 
@@ -35,91 +41,95 @@ class _DiagnosticsPageState extends ConsumerState<DiagnosticsPage> {
 
   void _log(String line) {
     debugPrint('[maxbo-diag] $line');
-    setState(() => _lines.add(line));
+    if (mounted) setState(() => _lines.add(line));
   }
 
   Future<void> _run() async {
-    final session = ref.read(sessionProvider);
-    if (session is! SignedIn) return;
-    final uid = session.account.uid;
-    String mask(String s) => s.replaceAll(uid, '<uid>');
-
     setState(() {
       _lines.clear();
       _running = true;
     });
 
-    // A separate client without the expiry callback: an odd answer to an
-    // experimental request must not sign the user out.
-    final jar = ref.read(cookieJarProvider);
+    final session = ref.read(sessionProvider);
+    final bridge = ref.read(cookieBridgeProvider);
     final throttle = ref.read(requestThrottleProvider);
-    final api = WeiboApi(createWeiboDio(jar: jar, throttle: throttle));
+    final uid = session is SignedIn ? session.account.uid : null;
+    final jar = session is SignedIn
+        ? ref.read(cookieJarProvider)
+        : WeiboCookieJar(await bridge.readWeiboCookies());
+    _log('session: ${session is SignedIn ? 'signed in' : 'webview cookies'}');
+
+    // Separate clients without the expiry callback: an odd answer to an
+    // experimental request must not sign the user out.
+    final dio = createWeiboDio(jar: jar, throttle: throttle);
+    final api = WeiboApi(dio);
+    final mobileApi = WeiboApi(
+      createWeiboDio(jar: jar, throttle: throttle, userAgent: _mobileUserAgent),
+    );
 
     Future<Map<String, Object?>?> fetch(
       String label,
-      String path, [
+      String url, [
       Map<String, Object?>? query,
       WeiboApi? client,
     ]) async {
       try {
-        return await (client ?? api).getJson(
-          'https://weibo.com$path',
-          query: query,
-        );
+        return await (client ?? api).getJson(url, query: query);
       } on Exception catch (e) {
         _log('$label: $e');
         return null;
       }
     }
 
-    _log('== 1/6 Cookies');
-    for (final site in ['weibo.com', 'weibo.cn']) {
+    _log('== 1/6 cookies');
+    for (final site in WeiboCookieJar.sites) {
       _log('jar $site: ${jar.names(site).join(', ')}');
     }
-    try {
-      final web = await ref.read(cookieBridgeProvider).readWeiboCookies();
-      web.forEach((site, cookies) {
-        _log('webview $site: ${cookies.keys.join(', ')}');
-      });
-    } on Exception catch (e) {
-      _log('webview cookies: $e');
-    }
-
-    _log('== 4 /ajax/config');
-    final config = await fetch('config', '/ajax/config');
-    if (config != null) _log(mask(describeShape(config)));
-
-    _log('== 2 UA binding');
-    final mobileApi = WeiboApi(
-      createWeiboDio(jar: jar, throttle: throttle, userAgent: _mobileUserAgent),
+    final web = await bridge.readWeiboCookies();
+    web.forEach(
+      (site, cookies) => _log('webview $site: ${cookies.keys.join(', ')}'),
     );
-    final mobile = await fetch('mobile UA', '/ajax/config', null, mobileApi);
-    if (mobile != null) _log('mobile UA: ok=${mobile['ok']}');
+
+    _log('== 4 who am I');
+    final profile = await fetch(
+      'profile/info',
+      'https://weibo.com/ajax/profile/info',
+    );
+    if (profile != null) _log('profile/info: ${describeShape(profile)}');
+    final mobileConfig = await fetch(
+      'm config',
+      'https://m.weibo.cn/api/config',
+    );
+    if (mobileConfig != null) {
+      _log('m config: ${describeShape(mobileConfig)}');
+    }
+    await _probePage(dio, 'https://weibo.com/');
 
     _log('== 3 groups / list_id');
-    final groups = await fetch('allGroups', '/ajax/feed/allGroups', {
-      'is_new_segment': 1,
-      'fetch_hot': 1,
-    });
+    final groups = await fetch(
+      'allGroups',
+      'https://weibo.com/ajax/feed/allGroups',
+      {'is_new_segment': 1, 'fetch_hot': 1},
+    );
     final gids = <String>[];
     if (groups != null) {
       _log(describeShape(groups, maxDepth: 5));
       _collect(groups, 'gid', gids);
-      _log('gids: ${gids.take(8).map(mask).join(', ')}');
+      _log('gids: ${gids.take(8).map(_redact).join(', ')}');
     }
 
     final variants = <String, String?>{
       'no list_id': null,
-      'list_id=11000<uid>': '11000$uid',
-      for (final gid in gids.take(2)) 'list_id=${mask(gid)}': gid,
+      if (uid != null) 'list_id=11000<uid>': '11000$uid',
+      for (final gid in gids.take(2)) 'list_id=${_redact(gid)}': gid,
     };
     var statuses = <Map<String, Object?>>[];
     for (final MapEntry(key: label, value: listId) in variants.entries) {
-      final feed = await fetch(label, '/ajax/feed/friendstimeline', {
-        'refresh': 4,
-        'count': 20,
-        'list_id': ?listId,
-      });
+      final feed = await fetch(
+        label,
+        'https://weibo.com/ajax/feed/friendstimeline',
+        {'refresh': 4, 'count': 20, 'list_id': ?listId},
+      );
       if (feed == null) continue;
       final items = (feed['statuses'] as List? ?? const [])
           .whereType<Map<String, Object?>>()
@@ -131,6 +141,15 @@ class _DiagnosticsPageState extends ConsumerState<DiagnosticsPage> {
       if (items.length > statuses.length) statuses = items;
     }
 
+    _log('== 2 UA binding');
+    final mobileFeed = await fetch(
+      'mobile UA feed',
+      'https://weibo.com/ajax/feed/friendstimeline',
+      {'refresh': 4, 'count': 1},
+      mobileApi,
+    );
+    if (mobileFeed != null) _log('mobile UA feed: ok=${mobileFeed['ok']}');
+
     _log('== 5 ad markers (${statuses.length} statuses)');
     for (final flag in _adFlags) {
       final count = statuses.where((s) => _truthy(s[flag])).length;
@@ -140,7 +159,7 @@ class _DiagnosticsPageState extends ConsumerState<DiagnosticsPage> {
       final values = {
         for (final s in statuses)
           if (s[label] case final String v when v.isNotEmpty)
-            v.length > 40 ? '${v.substring(0, 40)}…' : v,
+            _redact(v.length > 40 ? '${v.substring(0, 40)}…' : v),
       };
       _log('$label: ${values.join(' | ')}');
     }
@@ -150,6 +169,41 @@ class _DiagnosticsPageState extends ConsumerState<DiagnosticsPage> {
     _log('== done');
     if (mounted) setState(() => _running = false);
   }
+
+  /// Logs where in an HTML page the current user's id might be embedded.
+  Future<void> _probePage(Dio dio, String url) async {
+    try {
+      final response = await dio.get<String>(
+        url,
+        options: Options(
+          responseType: ResponseType.plain,
+          headers: {'Accept': 'text/html,application/xhtml+xml'},
+        ),
+      );
+      final html = response.data ?? '';
+      _log(
+        'page $url -> ${response.statusCode} '
+        'final=${response.realUri.host}${response.realUri.path} '
+        '${html.length} chars',
+      );
+      for (final needle in [r'$CONFIG', 'idstr', '"uid"', 'uid:', 'oid']) {
+        final i = html.indexOf(needle);
+        final snippet = i < 0
+            ? 'absent'
+            : _redact(
+                html.substring(max(0, i - 40), min(html.length, i + 120)),
+              );
+        _log('  $needle: $snippet');
+      }
+    } on Exception catch (e) {
+      _log('page $url: $e');
+    }
+  }
+
+  static String _redact(String s) => s
+      .replaceAll(RegExp(r'\d{5,}'), '<num>')
+      .replaceAll(RegExp(r'[^\x00-\x7F]+'), '<text>')
+      .replaceAll(RegExp(r'\s+'), ' ');
 
   static void _collect(Object? json, String key, List<String> out) {
     switch (json) {

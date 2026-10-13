@@ -42,10 +42,7 @@ void main() {
   setUp(() {
     storage = InMemorySessionStorage();
     bridge = FakeCookieBridge();
-    respond = (_) => jsonBody({
-      'ok': 1,
-      'data': {'uid': '42'},
-    });
+    respond = (o) => o.uri.path == '/' ? homePage() : jsonBody({'ok': 1});
   });
 
   test('starts signed out, or signed in with a restored session', () {
@@ -85,8 +82,7 @@ void main() {
   );
 
   test('completeLogin rejects visitor cookies and keeps nothing', () async {
-    respond = (_) =>
-        jsonBody({'ok': -100, 'url': 'https://weibo.com/login.php'});
+    respond = (_) => homePage(uid: 0);
     final c = container();
 
     await expectLater(
