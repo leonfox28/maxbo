@@ -170,10 +170,18 @@ test/  (fixtures/ 下只放合成数据)
 | 2 | 会话是否绑定 UA | ✅ 不绑定：用手机 UA 请求同一会话的时间线，同样返回 `ok=1` |
 | 3 | `list_id` | ✅ 「最新微博」是 `list_id=11000<uid>`（`/ajax/feed/allGroups` 中 type 20、title「最新微博」的分组）。同为 type 20 的「原创」`11001<uid>`、「视频」`11002<uid>` 会返回不同内容；「全部关注」`10001<uid>`、「特别关注」、「互相关注」以及不传 `list_id` 都返回与最新微博相同的内容，说明这类分组需要改走 `groupstimeline`（v1 不做）。M2 显式传 `11000<uid>` |
 | 4 | 当前用户 | ✅ `/ajax/config` **不存在**（登录后返回 404；游客的 `ok:-100` 只是统一拦截）。网页版从首页 HTML 内嵌的 `window.$CONFIG`（含 `user{id,idstr,screen_name,…}` 和 `uid`）读取当前用户，我们也这样做。`/ajax/profile/info` 不带参数返回 400 |
-| 5 | 广告字段 | ⏳ 部分确认：时间线里的微博带有 `isAd` 字段，普通微博的 `readtimetype` 为 `mblog`；实测 24 条中没有广告，尚未见到真实广告样本。M2 按 `isAd == true` 或 `readtimetype == 'adMblog'` 或 `mark` 含 `mark_ad` 判定并打标签，见到样本后再核实 |
+| 5 | 广告字段 | ⏳ 部分确认：时间线里的微博带有 `isAd` 字段，普通微博的 `readtimetype` 为 `mblog`；M1 的 24 条和 M2 的约 120 条中都没有广告，尚未见到真实广告样本。目前按 `isAd == true` 或 `readtimetype == 'adMblog'` 或 `mark` 含 `mark_ad` 判定并打标签，见到样本后再核实 |
 | 6 | iOS 读 HttpOnly Cookie | ✅ `WKHTTPCookieStore` 能读到页面响应下发的 HttpOnly Cookie（集成测试，本地服务器）；Android 已用真实登录验证可读到 `SUB` |
 
 其他发现：服务端会在响应中轮换下发 `XSRF-TOKEN`、`WBPSESS`，Cookie 存储会自动更新并持久化。
+
+**M2 实测结论（2026-10-13，诊断页「时间线结构」）：**
+
+- **分页**：首屏传 `since_id=0`，翻页传上一页的 `max_id`，两页之间没有重叠。响应里有 `since_id`、`max_id`（int）以及对应的 `since_id_str`、`max_id_str`，我们用 `_str` 版本。`since_id` 等于首条的 id，`max_id` 小于末条的 id。`count=20` 实际返回 24–25 条，所以**不能用条数判断是否到底**，以 `max_id` 为 0 或列表为空为准。
+- **图片尺寸**：`pic_infos` 的尺寸名不代表实际大小（`original` 其实是 `orj*` 中等尺寸，`largest` 才是 `large/` 原图），因此按实际宽高选择：列表从 `thumbnail`/`bmiddle`/`large`/`mw2000` 中取能覆盖显示尺寸的最小一档，原图只留给查看器。
+- **`page_info`**：`object_type` 有 `video`、`topic`、`live` 等。视频封面是 `page_pic`，时长是 `media_info.duration`（秒），宽高在 `media_info.big_pic_info.pic_big`；视频地址（`mp4_720p_mp4`、`mp4_hd_url` 等）带 `Expires`/`ssig` 签名。`page_url` 是 `sinaweibo://` 应用内协议，无法打开。**转发微博的外层会复制一份原微博的 `page_info`**，只在转发框里显示，否则会重复。
+- **正文链接**：@ 的 href 是相对路径 `/n/<昵称>`，带 `usercard` 属性；话题指向 `s.weibo.com/weibo?q=`；带 `data-pid` 的链接是图片（「查看图片」）；`t.cn` 短链在 `url_struct` 里有 `long_url`；很多链接内含 `img.icon-link` 类型图标（网页、商品、视频等）。
+- **`source`**：可能是纯文本，也可能是 `<a>` 片段，需要去掉标签。
 
 ## 9. 分发
 
@@ -194,26 +202,34 @@ test/  (fixtures/ 下只放合成数据)
 |---|---|---|
 | M0 脚手架 | ✅ 完成 | `1d6888b` |
 | M1 登录验证 | ✅ 完成：Android 真实登录通过，重启后保持登录；iOS 的 HttpOnly Cookie 读取已由集成测试验证，真实登录待补测 | `02b3d90` `af0e0e2` `88969f8` |
-| M2 首页时间线 | ⏭ 下一步 | — |
-| M3–M6 | 未开始 | — |
+| M2 首页时间线 | ✅ 完成：Android 真实会话下加载、下拉刷新、滚动翻页（连续 3 页）都正常，图片无 403，浅色和深色主题都核对过；iOS 只验证了能编译 | `984f7bb` `585cc22` |
+| M3 详情与媒体 | ⏭ 下一步 | — |
+| M4–M6 | 未开始 | — |
 
-### M1 已有的基础设施（M2 直接复用）
+### 已有的基础设施（M3 直接复用）
 
 - **网络**：`weiboApiProvider`（`lib/data/api/weibo_api.dart`）。新端点加成 `WeiboApi` 的方法，内部用 `getJson()` / `getPage()`，统一完成错误映射和登录过期处理。请求头、Cookie、XSRF、限流都由 `createWeiboDio()` 的拦截器负责，调用方不用操心。
 - **会话**：`sessionProvider` 为 `SignedIn(account)` 时可拿到 `account.uid`；登录失效时会自动切到 `SignedOut(expired: true)`，界面统一显示 `LoginPrompt`。
 - **错误类型**：`SessionExpiredException` / `CaptchaRequiredException` / `RateLimitedException` / `NetworkException` / `WeiboApiException`，都带有可以直接展示的中文 `message`。
-- **调试**：调试版「我」页右上角的虫子图标进入诊断页，可以对真实会话核对接口；日志前缀 `[maxbo-diag]` / `[maxbo]`，用 `adb logcat` 读取。`devLog()` 只在调试版输出，不得记录 Cookie 值或微博正文。
+- **不自动重试**：`main.dart` 的 `ProviderScope(retry: noRetry)` 关掉了 Riverpod 默认的失败重试（默认最多 10 次），保证每个请求都由用户操作触发。测试里的 `ProviderScope`/`ProviderContainer` 也要传 `noRetry`。
+- **模型**（`lib/data/models/`）：`Status`、`WeiboUser`、`PicInfo`、`VideoInfo`、`PageCard`、`UrlEntity`、`FeedPage`，都用 `tryFromJson` 容错解析，读字段用 `lib/core/util/json_read.dart`。时间、计数、时长的格式化在 `lib/core/util/format.dart`。
+- **图片**：`WeiboImage` / `weiboImageProvider`（`lib/core/media/weibo_image.dart`）自动带 Referer，缓存 key 去掉头像签名；尺寸用 `PicInfo.variantFor(像素)` 选，查看器用 `PicInfo.largest`。
+- **微博卡片**：`StatusCard` + `StatusCardActions`（`lib/widgets/status_card/`），正文由 `parseStatusText()` 解析成片段，再由 `StatusText` 渲染。各处点击统一走 `statusCardActions(context)`（`lib/features/status/status_actions.dart`）：网页链接用外部浏览器打开；@、话题、图片、视频、「展开」目前只弹「将在 M3/M4 实现」，M3、M4 在这里接上真实页面。
+- **时间线**：`timelineProvider`（`lib/features/timeline/timeline_controller.dart`）负责首屏、`refresh()`、`loadMore()`。刷新和翻页并发、或会话中途变化时，过期结果会被丢弃。
+- **调试**：调试版「我」页右上角的虫子图标进入诊断页：▶ 是 M1 的接口检查，▤ 是「时间线结构」探针（字段形状、分页规律）。日志前缀 `[maxbo-diag]` / `[maxbo]`，用 `adb logcat` 读取。`devLog()` 只在调试版输出，不得记录 Cookie 值或微博正文。
 
-### M2 实测要点
+### M3 要点
 
-- **时间线**：`GET /ajax/feed/friendstimeline?list_id=11000<uid>&refresh=4&count=20`，返回 `statuses[]`、`max_id`、`since_id`、`total_number`。翻页按调研结论处理：首屏 `since_id=0`，之后传上一页的 `max_id`，`max_id` 为 0 或列表为空时停止；**翻页规则还没有实测**，实现时用诊断页或日志确认。
-- **微博对象字段**（2026-10-13 实测 24 条样本的字段并集）：`analysis_extra, annotations, attitudes_count, attitudes_status, can_edit, cardid, comment_manage_info, comments_count, content_auth, continue_tag, created_at, edit_count, favorited, geo, id, idstr, isAd, isLongText, isSinglePayAudio, is_controlled_by_server, is_paid, is_show_bulletin, is_show_mixed, mblog_feed_back_menus_format, mblog_vip_type, mblogid, mblogtype, md_render_mark, mid, mixed_count, mlevel, number_display_strategy, pic_bg_new, pic_focus_point, pic_ids, pic_infos, pic_num, pictureViewerSign, rcList, readtimetype, region_name, repost_type, reposts_count, retweeted_status, rid, share_repost_type, showFeedComment, showFeedRepost, showPictureViewer, source, tag_struct, text, textLength, text_raw, topic_struct, url_struct, user, visible`。
-- **正文**：`text` 是 HTML，包含 `<a>`（@ 用户的 href 不带引号）、表情 `<img alt="[xx]">`、`<br />`，截断时末尾带 `span.expand`；`text_raw` 是纯文本。规则见第 4.2 节。
-- **图片**：用 `pic_ids` 加 `pic_infos[pid].{thumbnail,bmiddle,large,largest,mw2000,original}`，每个尺寸都是 `{url,width,height}`；`type` 可能是 `pic`、`gif` 或 `livephoto`。`*.sinaimg.cn` 必须带 `Referer: https://weibo.com/`，否则返回 403。头像 URL 带签名，约 3 小时过期，缓存 key 要去掉签名参数。
-- **广告**：满足 `isAd == true`、`readtimetype == 'adMblog'` 或 `mark` 含 `mark_ad` 中任一条件，就打「广告」标签，**不过滤**。目前还没见到真实广告样本。
-- **时间格式**：`created_at` 形如 `Mon Oct 12 13:17:46 +0800 2026`（英文 locale）。
+- **入口**：在 `statusCardActions` 里把「展开」、图片、视频换成真实页面；点卡片本身进详情页（目前点卡片没有反应）。
+- **长文**：`/ajax/statuses/longtext?id=<mblogid>` 的返回结构**还没有实测**，先用诊断页确认 `longTextContent` 是 HTML 还是纯文本、`url_struct` 在不在里面。
+- **视频**：时间线里已有 `page_info.media_info` 的各档地址，但都带 `Expires` 签名；按第 4.2 节的顺序选地址，播放前检查是否过期，过期就调 `statuses/show` 换新地址。`VideoInfo` 目前只存了封面、时长和宽高。
+- **图片查看器**：`extended_image` 的手势翻页；用 `PicInfo.largest`，gif 和实况照片按第 4.2 节处理。
+- **评论**：`buildComments` 的 `flow`、`max_id` 分页规则也要先实测。
+- **还没做的小项**：验证码（`CaptchaRequiredException`）目前只显示文字，还没有打开 WebView 让用户处理的入口；图片磁盘缓存没有大小上限，留给 M6 的设置页处理。
+- **流畅度**：M2 只在模拟器的调试版上看过，滚动没有明显卡顿；还没在 profile 版或真机上测帧率。
 
 ### 开发环境注意
 
 - 真实登录要过短信验证码和网易易盾人机验证，代价很高。保存着登录态的设备**只能用 `adb install -r` 覆盖安装**；不要在上面运行 `integration_test`（会清空 WebView Cookie），也不要卸载或清除数据。
+- 本机可能同时连着别的模拟器（2026-10-13 有一台 `emulator-5586` 不属于本项目），adb 命令要用 `-s emulator-5554` 指定保存着登录态的 Pixel_9。
 - 部分 Google 域名（如 `dl.google.com`）可能被本机代理规则判为直连而连不上，表现为 TLS 握手中断；这时调整代理分流规则即可，**不要往仓库里写镜像地址**。

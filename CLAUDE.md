@@ -38,8 +38,12 @@ Flutter stable 3.47.x（Dart 3.13），通过 Homebrew cask 安装。
   - 登录 Cookie 经原生平台通道读取（`SUB` 是 HttpOnly，Android 端在 `CookieBridge.kt`，iOS 端在 `ios/Runner/AppDelegate.swift`）
   - `SessionController`（`sessionProvider`）
   - 会话存在 Keystore / Keychain
+- `lib/core/media/`：`WeiboImage`，所有微博图片都经它加载（自动带 Referer，缓存 key 去掉签名参数）
 - `lib/data/api/weibo_api.dart`：所有端点都集中在这里。新增端点时写成 `WeiboApi` 的方法，内部调用 `getJson()` / `getPage()`。当前用户从 weibo.com 首页内嵌的 `window.$CONFIG` 解析得到（`/ajax/config` 不存在）。
-- `lib/features/`：各个页面。登录页是 WebView 加载微博官方登录页，每次主页面加载完成或失败都校验一次会话。
+- `lib/data/models/`：`Status` 等模型，`tryFromJson` 容错解析，字段读取用 `core/util/json_read.dart`
+- `lib/widgets/`：微博卡片 `StatusCard`、正文 `StatusText`（`parseStatusText()` 把 HTML 拆成片段）、九宫格 `PicGrid`
+- `lib/features/`：各个页面。登录页是 WebView 加载微博官方登录页，每次主页面加载完成或失败都校验一次会话。卡片上的点击统一由 `features/status/status_actions.dart` 处理。
+- **不自动重试**：`ProviderScope(retry: noRetry)` 关掉了 Riverpod 默认的失败重试，保证请求都由用户操作触发；测试里的 scope/container 也要传。
 - 诊断页：只在调试版提供，入口是「我」页右上角的虫子图标，用来对真实会话核对接口。
 
 ## 约定
