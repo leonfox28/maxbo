@@ -43,7 +43,8 @@ Flutter stable 3.47.x（Dart 3.13），通过 Homebrew cask 安装。
 - `lib/data/api/weibo_api.dart`：所有端点都集中在这里。新增端点时写成 `WeiboApi` 的方法，内部调用 `getJson()` / `getPage()`。当前用户从 weibo.com 首页内嵌的 `window.$CONFIG` 解析得到（`/ajax/config` 不存在）。
 - `lib/data/models/`：`Status`、`Comment` 等模型，`tryFromJson` 容错解析，字段读取用 `core/util/json_read.dart`
 - `lib/widgets/`：微博卡片 `StatusCard`、正文 `StatusText`（`parseStatusText()` 把 HTML 拆成片段）、九宫格 `PicGrid`、头像 `UserAvatar`
-- `lib/features/`：各个页面。登录页是 WebView 加载微博官方登录页，每次主页面加载完成或失败都校验一次会话。详情页在 `status/`，评论和楼中楼在 `comments/`，图片查看器和视频播放在 `media_viewer/`。卡片和评论上的点击统一由 `features/status/status_actions.dart` 处理。
+- `lib/features/`：各个页面。登录页是 WebView 加载微博官方登录页，每次主页面加载完成或失败都校验一次会话。详情页在 `status/`，评论和楼中楼在 `comments/`，图片查看器和视频播放在 `media_viewer/`，用户主页在 `profile/`（`/u/:uid`，@ 用 `/n/:name`），热搜在 `hot_search/`。卡片和评论上的点击统一由 `features/status/status_actions.dart` 处理。
+- `lib/features/webview/`：应用内 WebView（`openWebPage()`），与登录页共用 Cookie 和 UA。搜索走 `m.weibo.cn`（`weiboSearchUrl()`），因为 `s.weibo.com` 只有 PC 版布局。验证码也在这里由用户本人完成（`ErrorRetry` 上的「去验证」）。
 - **不自动重试**：`ProviderScope(retry: noRetry)` 关掉了 Riverpod 默认的失败重试，保证请求都由用户操作触发；测试里的 scope/container 也要传。
 - 诊断页：只在调试版提供，入口是「我」页右上角的虫子图标，用来对真实会话核对接口。
 
@@ -51,5 +52,5 @@ Flutter stable 3.47.x（Dart 3.13），通过 Homebrew cask 安装。
 
 - **语言**：代码注释用英文，界面文案用中文。
 - **数据**：ID 一律用字符串；JSON 手写容错解析，不用代码生成。
-- **依赖注入**：Riverpod 3（不用代码生成）。测试通过覆盖 `weiboDioFactoryProvider`、`sessionStorageProvider`、`cookieBridgeProvider` 注入假实现，假实现见 `test/support/fakes.dart`。
+- **依赖注入**：Riverpod 3（不用代码生成）。测试通过覆盖 `weiboDioFactoryProvider`、`sessionStorageProvider`、`cookieBridgeProvider` 注入假实现，假实现见 `test/support/fakes.dart`（`signedInOverrides()` 一次给齐）。测跳转用 `test/support/routes.dart` 的 `stubRouter()`。
 - **提交**：用英文写提交信息，先一句话概括，再空一行写原因。每完成一个里程碑或一个独立修复就提交一次。

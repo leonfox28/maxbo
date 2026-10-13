@@ -135,8 +135,9 @@ test/  (fixtures/ 下只放合成数据)
 | 楼中楼 | 同上，`id=<根评论id>&fetch_level=1&is_mix=1`，首页 `max_id=0` | `max_id` |
 | 转发列表 | GET `/ajax/statuses/repostTimeline?id&page&moduleID=feed` | `page`（到 `max_page` 为止） |
 | 用户资料 | GET `/ajax/profile/info?uid=` 或 `?screen_name=` | — |
-| 用户微博 | GET `/ajax/statuses/mymblog?uid&page&feature=0` | `page` |
+| 用户微博 | GET `/ajax/statuses/mymblog?uid&page&feature=0` | `page`（`since_id` 为空时到底） |
 | 热搜 | GET `/ajax/side/hotSearch` | — |
+| 搜索（应用内 WebView） | `https://m.weibo.cn/search?containerid=231522`（话题）或 `100103`（普通词）`&q=` | — |
 | 表情 | GET `/ajax/statuses/config` | — |
 | 点赞 / 取消 | POST `/ajax/statuses/setLike`、`/ajax/statuses/cancelLike`（`id=<mid>`） | — |
 | 评论 / 回复 | POST `/ajax/comments/create`、`/ajax/comments/reply` | — |
@@ -191,6 +192,13 @@ test/  (fixtures/ 下只放合成数据)
 - **楼中楼**：`fetch_level=1`，`id` 为根评论 id，`max_id` 从 0 开始。回复按时间倒序返回，`text` 自带「回复@xx:」前缀，并带有 `reply_comment`。`total_number` 可能比实际返回的条数多（有的回复被折叠或删除）。
 - **转发**：`repostTimeline` 返回 `data[]`（完整的 status，含 `retweeted_status`）、`total_number`、`max_page`、`next_cursor`。`count` 参数不起作用，每页 20 条左右；按时间倒序，两页之间没有重叠。
 
+**M4 实测结论（2026-10-13，诊断页「主页与热搜结构」）：**
+
+- **用户资料**：`profile/info` 返回 `data{user, tabList, blockText}`。`user` 里有 `description`、`location`、`gender`（`m`/`f`）、`followers_count`（另有已格式化的 `followers_count_str`）、`friends_count`、`statuses_count`、`verified_reason`、`following`、`follow_me`、`cover_image_phone` 等。`cover_image_phone` 有时是用 `;` 连起来的多个地址，取第一个。`?screen_name=` 查到的和按 uid 查到的是同一个人。**查不存在的昵称仍返回 `ok=1`**，只是没有 `data`，而是顶层一个空的 `user:{}` 加 `message`，所以要按"有没有 user"判断。
+- **用户微博**：`mymblog` 返回 `data{since_id(str), list, status_visible, bottom_tips_visible, bottom_tips_text, topicList, total}`。只传 `page` 就能翻页（第 2 页加不加 `since_id` 结果完全一样），两页之间没有重叠，每页约 20 条。**最后一页 `since_id` 为空字符串**，再往后是空列表。第 1 页开头是置顶微博（`isTop=1`、`mblogtype=2`，可能有多条），所以第 1 页不是严格按时间排序。样本里的 `bottom_tips_visible` 都是 false，提示文案（例如"仅展示半年内的微博"）还没见到实例，暂不显示。
+- **热搜**：`side/hotSearch` 返回 `data{realtime, hotgovs, hotgov}`。`realtime` 约 50 条加上插入的条目（两次分别是 51、52 条）。排名看 `realpos`（从 1 开始）；`rank` 从 0 开始，而且插入的条目会与相邻条目重复，不能用。**插入的条目没有 `realpos`，`is_ad=1`**，但 `is_ad` 不等于商业推广：一次是付费的（`small_icon_desc`「商」、`icon_desc`「首发」），另一次是「辟谣」。所以标签取 `small_icon_desc`（付费条目上写着「商」），为空时取 `icon_desc`；`is_ad` 但没有任何标签的显示「荐」。`word_scheme` 是 `#word#`（话题）或与 `word` 相同（普通词），用作搜索词。置顶条目在 `hotgovs`（列表）和 `hotgov`（单个，多了 `url`/`mid`）里都有，`word` 带 `#`，没有排名和热度。条目里的 `monitors` 是广告曝光监测地址，我们不请求。
+- **应用内 WebView 打开搜索**：桌面 UA 下的 `s.weibo.com` 是 PC 版布局（侧栏占半屏、正文被截断），在手机上没法用；手机 UA 访问时，它会 302 到 **http://**`m.weibo.cn/search?containerid=…&q=…`，话题用 `231522`、普通词用 `100103`。`m.weibo.cn` 对桌面 UA 同样给出手机布局，所以 **WebView 保持与登录页相同的桌面 UA 和 Cookie，直接打开 `m.weibo.cn` 的搜索页**。`m.weibo.cn` 没有登录态（见第 1 项），以游客身份浏览，搜索结果和话题页都能正常显示。WebView 会把 http 的主框架跳转改成 https，否则 Android 会以 `ERR_CLEARTEXT_NOT_PERMITTED` 拒绝。
+
 ## 9. 分发
 
 - **Android**：GitHub Releases 发布按 ABI 拆分的 APK。签名密钥只保存在本地（`key.properties` 已 gitignore）。国行手机通常没有 GMS，暂不受 Google 开发者验证影响；2027 年该政策全球生效后再评估。
@@ -212,36 +220,40 @@ test/  (fixtures/ 下只放合成数据)
 | M1 登录验证 | ✅ 完成：Android 真实登录通过，重启后保持登录；iOS 的 HttpOnly Cookie 读取已由集成测试验证，真实登录待补测 | `02b3d90` `af0e0e2` `88969f8` |
 | M2 首页时间线 | ✅ 完成：Android 真实会话下加载、下拉刷新、滚动翻页（连续 3 页）都正常，图片无 403，浅色和深色主题都核对过；iOS 只验证了能编译 | `984f7bb` `585cc22` |
 | M3 详情与媒体 | ✅ 完成：Android 真实会话下核对了详情页（长文全文、评论按热度/按时间、评论翻页、楼中楼、转发页签）、图片查看器（翻页、点击或下滑关闭）、视频播放、深色主题；视频地址过期后自动换新地址（时间线加载 1 小时后点视频，先请求一次 `statuses/show` 再播放，无播放错误）；iOS 只验证了能编译 | `41e7e80` `544dc60` |
-| M4 主页与热搜 | ⏭ 下一步 | — |
-| M5–M6 | 未开始 | — |
+| M4 主页与热搜 | ✅ 完成：Android 真实会话下核对了从头像、昵称、@ 进主页（@ 先按昵称查资料再加载微博）、主页翻页、置顶标签、「我」进自己的主页（1 条微博，按 `since_id` 为空判断到底，没有多发请求）、热搜榜（置顶、前三名配色、付费条目的「商」标签、热度）、点热搜条目在应用内打开搜索页（普通词和 `#话题#` 两种），以及浅色和深色主题。正文里的话题链接与热搜条目调用同一个函数，没有在真机上点过，只由 Widget 测试覆盖；iOS 只验证了能编译 | `41a27b1` `bfdda6e` |
+| M5 轻互动 | ⏭ 下一步 | — |
+| M6 | 未开始 | — |
 
-### 已有的基础设施（M4 直接复用）
+### 已有的基础设施（M5 直接复用）
 
 - **网络**：`weiboApiProvider`（`lib/data/api/weibo_api.dart`）。新端点加成 `WeiboApi` 的方法，内部用 `getJson()` / `getPage()`，统一完成错误映射和登录过期处理。请求头、Cookie、XSRF、限流都由 `createWeiboDio()` 的拦截器负责，调用方不用操心。
 - **会话**：`sessionProvider` 为 `SignedIn(account)` 时可拿到 `account.uid`；登录失效时会自动切到 `SignedOut(expired: true)`，界面统一显示 `LoginPrompt`。
 - **错误类型**：`SessionExpiredException` / `CaptchaRequiredException` / `RateLimitedException` / `NetworkException` / `WeiboApiException`，都带有可以直接展示的中文 `message`；界面上用 `loadErrorMessage(error)` 取。
 - **不自动重试**：`main.dart` 的 `ProviderScope(retry: noRetry)` 关掉了 Riverpod 默认的失败重试（默认最多 10 次），保证每个请求都由用户操作触发。测试里的 `ProviderScope`/`ProviderContainer` 也要传 `noRetry`。
-- **模型**（`lib/data/models/`）：`Status`、`WeiboUser`、`PicInfo`、`VideoInfo`、`PageCard`、`UrlEntity`、`FeedPage`、`Comment`、`Paged<T>`，都用 `tryFromJson` 容错解析，读字段用 `lib/core/util/json_read.dart`。时间、计数、时长的格式化在 `lib/core/util/format.dart`。`picsOf(json)` 解析任何带 `pic_ids`/`pic_infos` 的对象。
+- **模型**（`lib/data/models/`）：`Status`、`WeiboUser`、`PicInfo`、`VideoInfo`、`PageCard`、`UrlEntity`、`FeedPage`、`Comment`、`Paged<T>`、`UserProfile`、`HotSearch`，都用 `tryFromJson`/`fromJson` 容错解析，读字段用 `lib/core/util/json_read.dart`。时间、计数、时长的格式化在 `lib/core/util/format.dart`。`picsOf(json)` 解析任何带 `pic_ids`/`pic_infos` 的对象。
 - **分页列表**：`PagedController<T>`（`lib/core/paging/`）实现首屏、`loadMore()`、去重和过期结果丢弃，子类只需写 `fetchPage(cursor)` 和 `idOf(item)`，游标是字符串（`max_id` 或页码）。界面用 `PagedSliverList`（加载中、错误重试、空列表、页脚）和 `LoadMoreTrigger`（滚到接近底部时加载下一页），都在 `lib/widgets/load_state.dart`。示例见 `features/comments/comments_controller.dart` 和 `features/status/status_detail_providers.dart`（转发，按页码翻页）。
 - **图片**：`WeiboImage` / `weiboImageProvider`（`lib/core/media/weibo_image.dart`）自动带 Referer，缓存 key 去掉头像签名；列表尺寸用 `PicInfo.variantFor(像素)` 选，查看器用 `PicInfo.viewerVariant`（`mw2000` 一档，GIF 用原图）。
 - **视频**：`lib/core/media/video_source.dart` 的 `resolveVideoUrl()` 负责选地址、判断过期、必要时重新请求 `statuses/show`；播放请求带 `videoHttpHeaders`。
-- **路由与入口**：`/status/:id`（详情）、`/comments/:id`（楼中楼）、`/video/:id`、`/viewer`，`extra` 传上一页已有的数据（`Status`、`CommentThread`、`ImageViewerArgs`）。卡片和评论上的各种点击统一走 `statusCardActions(context)`（`lib/features/status/status_actions.dart`）：点卡片和「展开」进详情，图片进查看器，视频进播放页，网页链接用外部浏览器打开；**@、头像、话题目前只弹「将在 M4 实现」**。`UserAvatar`（`lib/widgets/user_avatar.dart`）是通用的圆形头像。
+- **路由与入口**：`/status/:id`（详情）、`/comments/:id`（楼中楼）、`/video/:id`、`/viewer`、`/u/:uid`（主页）、`/n/:name`（按昵称打开主页）、`/web?url=`（应用内 WebView），`extra` 传上一页已有的数据（`Status`、`CommentThread`、`ImageViewerArgs`、`WeiboUser`）。卡片和评论上的各种点击统一走 `statusCardActions(context)`（`lib/features/status/status_actions.dart`）：点卡片和「展开」进详情，图片进查看器，视频进播放页，头像和昵称进主页，@ 按昵称进主页，话题在应用内打开搜索页，网页链接用外部浏览器打开。只想改其中一项时用 `StatusCardActions.copyWith`（例如主页里点这个用户自己的头像不再跳转）。`UserAvatar`、`VerifiedIcon`（`lib/widgets/user_avatar.dart`）、`TagLabel`（`lib/widgets/tag_label.dart`，广告/置顶/已关注/热搜标签）是通用组件。
+- **应用内 WebView**：`openWebPage(context, url)`（`lib/features/webview/web_page.dart`）。它与登录页共用 WebView 的 Cookie 存储，UA 也相同，只放行 http(s)（http 会改成 https），可以后退、刷新或用外部浏览器打开。搜索地址用 `weiboSearchUrl(query)`。
+- **验证码**：`ErrorRetry(error:)` 和 `LoadMoreFooter(error:)` 遇到 `CaptchaRequiredException` 时显示「去验证」，用户在应用内 WebView 里自己完成验证，返回后自动重试一次。
 - **详情页**：`StatusDetailPage` 先显示上一页传来的 `Status`，再用 `statusDetailProvider` 取全文和最新计数。评论和转发列表在页面存续期间保持已加载状态，切换页签或排序不会重复请求。
-- **调试**：调试版「我」页右上角的虫子图标进入诊断页：▶ 是 M1 的接口检查，▤ 是「时间线结构」探针，📄 是「详情结构」探针（长文、视频地址和有效期、评论/楼中楼/转发的分页）。日志前缀 `[maxbo-diag]` / `[maxbo]`，用 `adb logcat` 读取。`devLog()` 只在调试版输出，不得记录 Cookie 值或微博正文。
+- **测试**：`test/support/fakes.dart` 的 `signedInOverrides(adapter)` 一次性给出"已登录（uid 7）+ 假网络"所需的覆盖；`test/support/routes.dart` 的 `stubRouter(home)` 把 `/u`、`/n`、`/status`、`/web` 换成只显示参数的占位页，用来测"点了会跳到哪里"。合成数据的构造函数都在 `test/support/statuses.dart`。
+- **调试**：调试版「我」页右上角的虫子图标进入诊断页：▶ 是 M1 的接口检查，▤ 是「时间线结构」探针，📄 是「详情结构」探针（长文、视频地址和有效期、评论/楼中楼/转发的分页），👤 是「主页与热搜结构」探针。日志前缀 `[maxbo-diag]` / `[maxbo]`，用 `adb logcat` 读取。`devLog()` 只在调试版输出，不得记录 Cookie 值或微博正文。
 
-### M4 要点
+### M5 要点
 
-- **入口**：在 `statusCardActions` 里把 `onUser`（头像）、`MentionLink`（@昵称，只有昵称没有 uid）、`TopicLink` 换成真实页面。
-- **用户主页**：`/ajax/profile/info?uid=` 或 `?screen_name=`（@ 链接只能用后者），用户微博 `/ajax/statuses/mymblog?uid&page&feature=0`。这两个端点的结构**还没有实测**，先在诊断页加探针确认字段和翻页规则。微博列表可以直接用 `PagedController`（页码游标）配合 `StatusCard`。
-- **热搜**：`/ajax/side/hotSearch`；点某条或点话题，在应用内 WebView 打开 `s.weibo.com/weibo?q=`。应用内 WebView 要沿用登录页的 UA 和 Cookie。
-- **还没做的小项**：验证码（`CaptchaRequiredException`）目前只显示文字，还没有打开 WebView 让用户处理的入口，应用内 WebView 做好后可一并接上；图片磁盘缓存没有大小上限，留给 M6 的设置页处理；评论的点赞数只显示（M5）。
-- **M3 未在真机上验证的部分**：查看器的双击放大（adb 连点两次太慢，触发不了双击）；长图在查看器里按屏幕宽度铺满（没遇到真实长图样本）；GIF 和实况照片（时间线里还没出现过样本）。
-- **流畅度**：M2、M3 都只在模拟器的调试版上看过，滚动没有明显卡顿；还没在 profile 版或真机上测帧率。
+- **端点**：点赞 `POST /ajax/statuses/setLike`、取消 `POST /ajax/statuses/cancelLike`（`id=<mid>`），评论 `POST /ajax/comments/create`、回复 `POST /ajax/comments/reply`。请求体格式和返回结构**都还没实测**。拦截器已经给非 GET 请求带上 `Origin` 和 `X-XSRF-TOKEN`，但 `WeiboApi` 里还没有 POST 的封装（`getJson` 只管 GET），需要加一个 `postForm()` 并复用 `unwrapResponse` 的错误映射。
+- **合规**：写操作都要由用户点击触发，请求期间按钮禁用，失败要回滚并提示（PLAN §2）。**用真实账号点赞或发评论属于以用户身份对外操作，每次实测前都要先问用户**，最好让用户指定一条可以用来测试的微博。
+- **界面状态**：卡片上的计数（`_Counts`）和详情页页签右侧的「赞」现在都只是展示。评论的 `liked`/`like_counts` 已经解析好了（`Comment`）。点赞后需要同时更新时间线、详情页和主页列表里的同一条微博，可以考虑按 id 保存一份本地覆盖状态。
+- **还没做的小项**：图片磁盘缓存没有大小上限，留给 M6 的设置页；`mymblog` 的 `bottom_tips_text` 没有显示（还没见过实例）；验证码的「去验证」只用合成数据测过，还没遇到真实验证码，也不知道验证完成后要不要把 WebView 的 Cookie 同步回 API。
+- **未在真机上验证的部分**：M3 的双击放大、长图、GIF 和实况照片；M4 在 iOS 上只验证了能编译（iOS 模拟器没有真实登录），包括应用内 WebView。
+- **流畅度**：M2–M4 都只在模拟器的调试版上看过，滚动没有明显卡顿；还没在 profile 版或真机上测帧率。
 
 ### 开发环境注意
 
 - 真实登录要过短信验证码和网易易盾人机验证，代价很高。保存着登录态的设备**只能用 `adb install -r` 覆盖安装**；不要在上面运行 `integration_test`（会清空 WebView Cookie），也不要卸载或清除数据。
-- 本机可能同时连着别的模拟器（2026-10-13 有一台 `emulator-5586` 不属于本项目），adb 命令要用 `-s emulator-5554` 指定保存着登录态的 Pixel_9。
+- 本机可能同时连着别的模拟器（2026-10-13 先后见过 `emulator-5586`、`emulator-5558`，都不属于本项目），adb 命令要用 `-s emulator-5554` 指定保存着登录态的 Pixel_9；不确定时用 `adb -s <设备> emu avd name` 确认是 `Pixel_9`。adb 偶尔会短暂掉线（`install` 无报错失败、`device offline`），稍等再试即可。
 - 部分 Google 域名（如 `dl.google.com`）可能被本机代理规则判为直连而连不上，表现为 TLS 握手中断；这时调整代理分流规则即可，**不要往仓库里写镜像地址**。
-- `adb shell uiautomator dump` 看不到 Flutter 的界面元素，操作模拟器只能靠截图（`adb exec-out screencap -p`）加坐标点击。截图是 1080×2424，按缩小后的图量出的坐标要乘回原始比例。
+- `adb shell uiautomator dump` 看不到 Flutter 的界面元素，操作模拟器只能靠截图（`adb exec-out screencap -p`）加坐标点击。截图是 1080×2424，按缩小后的图量出的坐标要乘回原始比例；目测容易偏几十像素，点小目标（如正文里的 @）前先用 `sips -c <高> <宽> --cropOffset <y> <x>` 裁出原图对应区域核对。
 - 核对深色主题可用 `adb -s emulator-5554 shell cmd uimode night yes`，看完记得改回 `no`。
