@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/media/weibo_image.dart';
+import '../../core/settings/app_settings.dart';
 import '../../data/models/pic_info.dart';
 
 /// The pictures of a status: one sized to its shape, otherwise a grid of
@@ -66,7 +68,7 @@ class PicGrid extends StatelessWidget {
   }
 }
 
-class _PicTile extends StatelessWidget {
+class _PicTile extends ConsumerWidget {
   const _PicTile({
     required this.pic,
     required this.width,
@@ -82,9 +84,14 @@ class _PicTile extends StatelessWidget {
   final VoidCallback? onTap;
 
   @override
-  Widget build(BuildContext context) {
-    final dpr = MediaQuery.devicePixelRatioOf(context);
-    final variant = pic.variantFor((width < height ? width : height) * dpr);
+  Widget build(BuildContext context, WidgetRef ref) {
+    final quality = ref.watch(settingsProvider.select((s) => s.imageQuality));
+    final variant = pic.variantFor(
+      quality.listPixels(
+        width < height ? width : height,
+        MediaQuery.devicePixelRatioOf(context),
+      ),
+    );
     final badge = switch (pic.type) {
       PicType.gif => 'GIF',
       PicType.livePhoto => '实况',

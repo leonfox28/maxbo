@@ -3,9 +3,11 @@ import 'dart:math';
 import 'package:extended_image/extended_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/media/weibo_image.dart';
+import '../../core/settings/app_settings.dart';
 import '../../data/models/pic_info.dart';
 import '../../widgets/pic_grid/pic_grid.dart';
 
@@ -108,16 +110,17 @@ class _ImageViewerPageState extends State<ImageViewerPage> {
   }
 }
 
-class _ViewerImage extends StatelessWidget {
+class _ViewerImage extends ConsumerWidget {
   const _ViewerImage(this.pic);
 
   final PicInfo pic;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final screen = MediaQuery.sizeOf(context);
+    final quality = ref.watch(settingsProvider.select((s) => s.imageQuality));
     return ExtendedImage(
-      image: weiboImageProvider(pic.viewerVariant.url),
+      image: weiboImageProvider(quality.viewerVariant(pic).url),
       fit: BoxFit.contain,
       mode: ExtendedImageMode.gesture,
       enableSlideOutPage: true,

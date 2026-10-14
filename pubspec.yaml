@@ -45,6 +45,7 @@ dependencies:
   url_launcher: ^6.3.3
   flutter_localizations:
     sdk: flutter
+  path_provider: ^2.1.6
 
 dev_dependencies:
   flutter_test:

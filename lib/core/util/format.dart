@@ -73,4 +73,14 @@ String formatDuration(int seconds) {
   return h > 0 ? '$h:${_two(m)}:$s' : '$m:$s';
 }
 
+/// A byte size in MB from below 1 GB, else in GB: `0 MB`, `2.5 MB`,
+/// `300 MB`, `1 GB`, `1.5 GB`.
+String formatBytes(int bytes) {
+  const mb = 1024 * 1024;
+  String trim(double v) =>
+      v == v.roundToDouble() || v >= 10 ? '${v.round()}' : v.toStringAsFixed(1);
+  if (bytes >= 1024 * mb) return '${trim(bytes / (1024 * mb))} GB';
+  return '${trim(bytes / mb)} MB';
+}
+
 String _two(int n) => n.toString().padLeft(2, '0');

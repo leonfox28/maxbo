@@ -4,12 +4,14 @@ import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/misc.dart';
+import 'package:maxbo/core/media/image_disk_cache.dart';
 import 'package:maxbo/core/net/cookie_jar.dart';
 import 'package:maxbo/core/net/request_throttle.dart';
 import 'package:maxbo/core/net/weibo_dio.dart';
 import 'package:maxbo/core/session/cookie_bridge.dart';
 import 'package:maxbo/core/session/session_controller.dart';
 import 'package:maxbo/core/session/session_storage.dart';
+import 'package:maxbo/core/settings/app_settings.dart';
 import 'package:maxbo/data/api/weibo_api.dart';
 import 'package:maxbo/data/models/account.dart';
 
@@ -135,5 +137,45 @@ class FakeCookieBridge implements CookieBridge {
   Future<void> clearAll() async {
     cleared = true;
     cookies = {};
+  }
+}
+
+class InMemorySettingsStorage implements SettingsStorage {
+  InMemorySettingsStorage([this.stored = const AppSettings()]);
+
+  AppSettings stored;
+  int saves = 0;
+
+  @override
+  Future<AppSettings> load() async => stored;
+
+  @override
+  Future<void> save(AppSettings settings) async {
+    saves++;
+    stored = settings;
+  }
+}
+
+/// A picture cache of [bytes] that records trims and clears.
+class FakeImageDiskCache implements ImageDiskCache {
+  FakeImageDiskCache([this.bytes = 0]);
+
+  int bytes;
+  final trims = <int>[];
+  int clears = 0;
+
+  @override
+  Future<int> sizeBytes() async => bytes;
+
+  @override
+  Future<void> clear() async {
+    clears++;
+    bytes = 0;
+  }
+
+  @override
+  Future<void> trim(int maxBytes) async {
+    trims.add(maxBytes);
+    if (bytes > maxBytes) bytes = maxBytes;
   }
 }

@@ -13,6 +13,8 @@ import '../features/media_viewer/image_viewer_page.dart';
 import '../features/media_viewer/video_player_page.dart';
 import '../features/profile/me_page.dart';
 import '../features/profile/profile_page.dart';
+import '../features/settings/about_page.dart';
+import '../features/settings/settings_page.dart';
 import '../features/shell/home_shell.dart';
 import '../features/status/status_detail_page.dart';
 import '../features/timeline/timeline_page.dart';
@@ -102,6 +104,8 @@ final routerProvider = Provider<GoRouter>((ref) {
         pageBuilder: (_, _) =>
             const MaterialPage(fullscreenDialog: true, child: LoginPage()),
       ),
+      GoRoute(path: '/settings', builder: (_, _) => const SettingsPage()),
+      GoRoute(path: '/about', builder: (_, _) => const AboutPage()),
       if (kDebugMode)
         GoRoute(
           path: '/diagnostics',

@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/media/weibo_image.dart';
+import '../../core/settings/app_settings.dart';
 import '../../core/util/format.dart';
 import '../../data/models/comment.dart';
 import '../../data/models/pic_info.dart';
@@ -195,7 +197,7 @@ class _AuthorLabel extends StatelessWidget {
   }
 }
 
-class _Pictures extends StatelessWidget {
+class _Pictures extends ConsumerWidget {
   const _Pictures({required this.pics, this.onTap});
 
   final List<PicInfo> pics;
@@ -204,8 +206,10 @@ class _Pictures extends StatelessWidget {
   static const _size = 96.0;
 
   @override
-  Widget build(BuildContext context) {
-    final pixels = _size * MediaQuery.devicePixelRatioOf(context);
+  Widget build(BuildContext context, WidgetRef ref) {
+    final pixels = ref
+        .watch(settingsProvider.select((s) => s.imageQuality))
+        .listPixels(_size, MediaQuery.devicePixelRatioOf(context));
     return Wrap(
       spacing: 4,
       runSpacing: 4,

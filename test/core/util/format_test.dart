@@ -54,4 +54,14 @@ void main() {
     expect(formatDuration(754), '12:34');
     expect(formatDuration(3725), '1:02:05');
   });
+
+  test('formatBytes', () {
+    const mb = 1024 * 1024;
+    expect(formatBytes(0), '0 MB');
+    expect(formatBytes(mb * 5 ~/ 2), '2.5 MB');
+    expect(formatBytes(mb * 123 + 1000), '123 MB');
+    expect(formatBytes(300 * mb), '300 MB');
+    expect(formatBytes(1024 * mb), '1 GB');
+    expect(formatBytes(1536 * mb), '1.5 GB');
+  });
 }

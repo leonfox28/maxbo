@@ -23,6 +23,11 @@ class MePage extends ConsumerWidget {
               icon: const Icon(Icons.bug_report_outlined),
               onPressed: () => context.push('/diagnostics'),
             ),
+          IconButton(
+            tooltip: '设置',
+            icon: const Icon(Icons.settings_outlined),
+            onPressed: () => context.push('/settings'),
+          ),
         ],
       ),
       body: switch (ref.watch(sessionProvider)) {
