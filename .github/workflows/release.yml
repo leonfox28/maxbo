@@ -1,13 +1,14 @@
 name: Release
 
-# Pushing a tag like v0.2.0 builds signed APKs and attaches them to a draft
-# release. Notes are written and the release is published by hand.
+# Pushing a tag like v0.2.0 builds signed APKs and an unsigned IPA and
+# attaches them to a draft release. Notes are written and the release is
+# published by hand.
 on:
   push:
     tags: ['v*']
 
 permissions:
-  contents: write
+  contents: read
 
 env:
   FLUTTER_VERSION: 3.47.7
@@ -84,13 +85,54 @@ jobs:
             fi
           done
 
+      - uses: actions/upload-artifact@v7
+        with:
+          name: android
+          path: build/app/outputs/flutter-apk/app-*-release.apk
+          if-no-files-found: error
+
+  ios:
+    name: Build unsigned iOS IPA
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      # Unsigned: users sign it themselves (docs/ios-sideload.md).
+      - run: flutter build ios --release --no-codesign
+      - name: Package IPA
+        run: |
+          mkdir -p dist/Payload
+          cp -R build/ios/iphoneos/Runner.app dist/Payload/
+          cd dist && zip -qry maxbo-unsigned.ipa Payload
+      - uses: actions/upload-artifact@v7
+        with:
+          name: ios
+          path: dist/maxbo-unsigned.ipa
+          if-no-files-found: error
+
+  release:
+    name: Create draft release
+    needs: [android, ios]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          path: dist
+          merge-multiple: true
       - name: Create draft release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          cd build/app/outputs/flutter-apk
-          sha256sum app-*-release.apk > SHA256SUMS.txt
+          cd dist
+          sha256sum app-*-release.apk maxbo-unsigned.ipa > SHA256SUMS.txt
           gh release create "$GITHUB_REF_NAME" --draft --verify-tag \
             --repo "$GITHUB_REPOSITORY" --title "$GITHUB_REF_NAME" \
             --notes "Draft created by CI. Write the release notes before publishing." \
-            app-*-release.apk SHA256SUMS.txt
+            app-*-release.apk maxbo-unsigned.ipa SHA256SUMS.txt
