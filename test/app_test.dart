@@ -18,6 +18,7 @@ void main() {
     StoredSession? restored,
     FakeCookieBridge? bridge,
     AppSettings settings = const AppSettings(),
+    List<Map<String, Object?>>? feed,
   }) => ProviderScope(
     retry: noRetry,
     overrides: [
@@ -33,7 +34,8 @@ void main() {
                 throttle: RequestThrottle(minInterval: Duration.zero),
               )
               ..httpClientAdapter = FakeAdapter(
-                (_) => jsonBody(feedJson([statusJson(text: '首页的一条微博')])),
+                (_) =>
+                    jsonBody(feedJson(feed ?? [statusJson(text: '首页的一条微博')])),
               ),
       ),
     ],
@@ -43,10 +45,10 @@ void main() {
   testWidgets('signed out: tabs prompt to log in', (tester) async {
     await tester.pumpWidget(app());
 
-    expect(find.byType(NavigationBar), findsOneWidget);
+    expect(find.byTooltip('首页'), findsOneWidget);
     expect(find.text('登录后即可浏览关注的人的微博'), findsOneWidget);
 
-    await tester.tap(find.text('热搜'));
+    await tester.tap(find.byTooltip('热搜'));
     await tester.pumpAndSettle();
     // The home tab's prompt is offstage now.
     expect(find.text('登录后即可浏览关注的人的微博'), findsOneWidget);
@@ -72,7 +74,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('首页的一条微博'), findsOneWidget);
 
-    await tester.tap(find.text('我'));
+    await tester.tap(find.byTooltip('我'));
     await tester.pumpAndSettle();
     expect(find.text('测试用户'), findsOneWidget);
     expect(find.text('UID 42'), findsOneWidget);
@@ -86,6 +88,47 @@ void main() {
     expect(bridge.cleared, isTrue);
   });
 
+  testWidgets('the tab bar hides while scrolling down, returns going up', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      app(
+        restored: const StoredSession(
+          account: Account(uid: '42'),
+          cookies: {
+            'weibo.com': {'SUB': 'x'},
+          },
+        ),
+        feed: [
+          for (var i = 0; i < 20; i++)
+            statusJson(id: 5000000000000001 + i, text: '第 $i 条'),
+        ],
+      ),
+    );
+    await tester.pumpAndSettle();
+    Offset navOffset() =>
+        tester.widget<AnimatedSlide>(find.byType(AnimatedSlide)).offset;
+    expect(navOffset(), Offset.zero);
+
+    final gesture = await tester.startGesture(
+      tester.getCenter(find.byType(ListView)),
+    );
+    for (var i = 0; i < 10; i++) {
+      await gesture.moveBy(const Offset(0, -30));
+      await tester.pump();
+    }
+    expect(navOffset(), isNot(Offset.zero));
+    // A few pixels back, as when lifting a finger, leave it hidden.
+    await gesture.moveBy(const Offset(0, 10));
+    await gesture.up();
+    await tester.pumpAndSettle();
+    expect(navOffset(), isNot(Offset.zero));
+
+    await tester.drag(find.byType(ListView), const Offset(0, 100));
+    await tester.pumpAndSettle();
+    expect(navOffset(), Offset.zero);
+  });
+
   testWidgets('applies the saved theme; settings open from Me', (tester) async {
     await tester.pumpWidget(
       app(settings: const AppSettings(themeMode: ThemeMode.dark)),
@@ -93,7 +136,7 @@ void main() {
     final material = tester.widget<MaterialApp>(find.byType(MaterialApp));
     expect(material.themeMode, ThemeMode.dark);
 
-    await tester.tap(find.text('我'));
+    await tester.tap(find.byTooltip('我'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('设置'));
     await tester.pumpAndSettle();

@@ -11,6 +11,7 @@ import '../features/debug/diagnostics_page.dart';
 import '../features/hot_search/hot_search_page.dart';
 import '../features/media_viewer/image_viewer_page.dart';
 import '../features/media_viewer/video_player_page.dart';
+import '../features/notifications/notifications_page.dart';
 import '../features/profile/me_page.dart';
 import '../features/profile/profile_page.dart';
 import '../features/settings/about_page.dart';
@@ -34,6 +35,14 @@ final routerProvider = Provider<GoRouter>((ref) {
           StatefulShellBranch(
             routes: [
               GoRoute(path: '/hot', builder: (_, _) => const HotSearchPage()),
+            ],
+          ),
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: '/notifications',
+                builder: (_, _) => const NotificationsPage(),
+              ),
             ],
           ),
           StatefulShellBranch(
