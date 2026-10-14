@@ -51,3 +51,8 @@ coverage/
 **/captured/
 *.har
 cookies*.json
+
+# Local agent & MCP configs (contain tokens/credentials)
+.mcp.json
+.pi/
+
