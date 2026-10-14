@@ -75,12 +75,16 @@ jobs:
 
       - name: Verify signing certificate
         run: |
+          set -o pipefail
           apksigner=$(find "$ANDROID_HOME/build-tools" -name apksigner | sort -V | tail -1)
           for apk in build/app/outputs/flutter-apk/app-*-release.apk; do
-            digest=$("$apksigner" verify --print-certs "$apk" \
-              | sed -n 's/^Signer #1 certificate SHA-256 digest: //p')
-            if [ "$digest" != "$CERT_SHA256" ]; then
-              echo "::error::$apk is signed with $digest, expected $CERT_SHA256"
+            # build-tools 37 prints "V2 Signer: certificate SHA-256 digest:",
+            # older ones "Signer #1 certificate SHA-256 digest:". Every signer
+            # must be ours.
+            digests=$("$apksigner" verify --print-certs "$apk" \
+              | sed -n 's/^.*certificate SHA-256 digest: //p' | sort -u)
+            if [ "$digests" != "$CERT_SHA256" ]; then
+              echo "::error::$apk is signed with '${digests//$'\n'/ }', expected $CERT_SHA256"
               exit 1
             fi
           done
