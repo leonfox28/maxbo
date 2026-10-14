@@ -217,7 +217,7 @@ test/  (fixtures/ 下只放合成数据)
   - `ci.yml`：push 到 main 和每个 PR 时运行格式检查、`flutter analyze`、`flutter test`、debug APK 构建，并在 macOS 上构建 iOS 模拟器包。不接触签名密钥。
   - `release.yml`：推送 `v*` tag 时触发，分三个 job。`android`：先核对 tag 和 `pubspec.yaml` 的版本号一致，再跑 analyze 和 test，然后用 Secrets 里的密钥打按 ABI 拆分的 release APK，核对签名证书指纹必须等于上面的 SHA-256（防止误用调试密钥）。`ios`：在 macOS 上打无签名 IPA，不接触任何密钥。`release`：等前两个完成，下载产物，生成 `SHA256SUMS.txt`，建一个**草稿** Release。只有 `release` 有写仓库的权限。发布说明手写，确认后手动发布。
   - Secrets（放在 `release` 环境里，只允许 `v*` tag 使用）：`ANDROID_KEYSTORE_BASE64`（`base64 -i release.jks`）、`ANDROID_STORE_PASSWORD`、`ANDROID_KEY_ALIAS`、`ANDROID_KEY_PASSWORD`。
-  - 发版流程：改 `pubspec.yaml` 的 `version`，**同时改 `lib/core/app_info.dart` 的 `appVersion`**（关于页显示它，有测试核对两者一致）→ 提交 → `git tag vX.Y.Z && git push origin vX.Y.Z` → 在 GitHub 上编辑草稿并发布。
+  - 发版流程：改 `pubspec.yaml` 的 `version`，**同时改 `lib/core/app_info.dart` 的 `appVersion`**（关于页显示它，有测试核对两者一致）→ 提交 → `git tag vX.Y.Z && git push origin vX.Y.Z` → 在 GitHub 上编辑草稿并发布。Release 标题就用 tag 名 `vX.Y.Z`（workflow 默认如此，不要改成别的格式）。
 
 ## 10. 已定事项
 
