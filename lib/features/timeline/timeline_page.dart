@@ -14,12 +14,15 @@ class TimelinePage extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // No app bar: the tab bar names the tab.
     return Scaffold(
-      appBar: AppBar(title: const Text('首页')),
-      body: switch (ref.watch(sessionProvider)) {
-        SignedOut(:final expired) => LoginPrompt(expired: expired),
-        SignedIn() => const _Timeline(),
-      },
+      body: SafeArea(
+        bottom: false,
+        child: switch (ref.watch(sessionProvider)) {
+          SignedOut(:final expired) => LoginPrompt(expired: expired),
+          SignedIn() => const _Timeline(),
+        },
+      ),
     );
   }
 }

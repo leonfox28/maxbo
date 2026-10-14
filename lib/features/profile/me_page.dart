@@ -8,32 +8,54 @@ import '../../data/models/account.dart';
 import '../../data/models/weibo_user.dart';
 import '../auth/login_prompt.dart';
 
+// No app bar: the tab bar names the tab, and what an app bar would offer
+// is listed here.
 class MePage extends ConsumerWidget {
   const MePage({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('我'),
-        actions: [
-          if (kDebugMode)
-            IconButton(
-              tooltip: '开发者诊断',
-              icon: const Icon(Icons.bug_report_outlined),
-              onPressed: () => context.push('/diagnostics'),
-            ),
-          IconButton(
-            tooltip: '设置',
-            icon: const Icon(Icons.settings_outlined),
-            onPressed: () => context.push('/settings'),
+      body: SafeArea(
+        bottom: false,
+        child: switch (ref.watch(sessionProvider)) {
+          // Settings stay within reach before logging in.
+          SignedOut(:final expired) => ListView(
+            children: [
+              LoginPrompt(expired: expired),
+              const Divider(),
+              const _AppLinks(),
+            ],
           ),
-        ],
+          SignedIn(:final account) => _AccountView(account: account),
+        },
       ),
-      body: switch (ref.watch(sessionProvider)) {
-        SignedOut(:final expired) => LoginPrompt(expired: expired),
-        SignedIn(:final account) => _AccountView(account: account),
-      },
+    );
+  }
+}
+
+/// Settings, and diagnostics in debug builds.
+class _AppLinks extends StatelessWidget {
+  const _AppLinks();
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        ListTile(
+          leading: const Icon(Icons.settings_outlined),
+          title: const Text('设置'),
+          trailing: const Icon(Icons.chevron_right),
+          onTap: () => context.push('/settings'),
+        ),
+        if (kDebugMode)
+          ListTile(
+            leading: const Icon(Icons.bug_report_outlined),
+            title: const Text('开发者诊断'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => context.push('/diagnostics'),
+          ),
+      ],
     );
   }
 }
@@ -82,6 +104,7 @@ class _AccountView extends ConsumerWidget {
           ),
         ),
         const Divider(),
+        const _AppLinks(),
         ListTile(
           leading: const Icon(Icons.logout),
           title: const Text('退出登录'),

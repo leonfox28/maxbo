@@ -21,12 +21,15 @@ class HotSearchPage extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // No app bar: the tab bar names the tab.
     return Scaffold(
-      appBar: AppBar(title: const Text('热搜')),
-      body: switch (ref.watch(sessionProvider)) {
-        SignedOut(:final expired) => LoginPrompt(expired: expired),
-        SignedIn() => const _HotSearchList(),
-      },
+      body: SafeArea(
+        bottom: false,
+        child: switch (ref.watch(sessionProvider)) {
+          SignedOut(:final expired) => LoginPrompt(expired: expired),
+          SignedIn() => const _HotSearchList(),
+        },
+      ),
     );
   }
 }
