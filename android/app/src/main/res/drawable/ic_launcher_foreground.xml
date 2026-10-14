@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- maxbo's mark: a lowercase m of two arches. The PNG icons in mipmap-*
+     and the iOS app icons are renders of the same shape. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:pathData="M33,70 L33,48 A10.5,10.5 0 0 1 54,48 L54,70 M54,48 A10.5,10.5 0 0 1 75,48 L75,70"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="9"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
+</vector>
