@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:maxbo/core/net/request_throttle.dart';
 import 'package:maxbo/features/hot_search/hot_search_page.dart';
+import 'package:maxbo/widgets/tab_reselect.dart';
 
 import '../../support/fakes.dart';
 import '../../support/routes.dart';
@@ -12,6 +13,8 @@ import '../../support/statuses.dart';
 void main() {
   late FakeAdapter adapter;
   late ResponseBody Function(RequestOptions) respond;
+  final taps = ChangeNotifier();
+  tearDownAll(taps.dispose);
 
   Future<void> pumpPage(WidgetTester tester) async {
     adapter = FakeAdapter((o) => respond(o));
@@ -20,7 +23,9 @@ void main() {
         retry: noRetry,
         overrides: signedInOverrides(adapter),
         child: MaterialApp.router(
-          routerConfig: stubRouter(const HotSearchPage()),
+          routerConfig: stubRouter(
+            TabReselect(taps: taps, child: const HotSearchPage()),
+          ),
         ),
       ),
     );
@@ -75,6 +80,17 @@ void main() {
       'containerid': '100103',
       'q': '第二条',
     });
+  });
+
+  testWidgets('tapping the tab while at the top refreshes', (tester) async {
+    respond = (_) => jsonBody(list);
+    await pumpPage(tester);
+    expect(adapter.requests, hasLength(1));
+
+    taps.notifyListeners();
+    await tester.pumpAndSettle();
+    expect(adapter.requests, hasLength(2));
+    expect(find.text('第一条'), findsOneWidget);
   });
 
   testWidgets('a failed load can be retried', (tester) async {

@@ -19,6 +19,7 @@ void main() {
     FakeCookieBridge? bridge,
     AppSettings settings = const AppSettings(),
     List<Map<String, Object?>>? feed,
+    FakeAdapter? adapter,
   }) => ProviderScope(
     retry: noRetry,
     overrides: [
@@ -33,10 +34,13 @@ void main() {
                 jar: jar,
                 throttle: RequestThrottle(minInterval: Duration.zero),
               )
-              ..httpClientAdapter = FakeAdapter(
-                (_) =>
-                    jsonBody(feedJson(feed ?? [statusJson(text: '首页的一条微博')])),
-              ),
+              ..httpClientAdapter =
+                  adapter ??
+                  FakeAdapter(
+                    (_) => jsonBody(
+                      feedJson(feed ?? [statusJson(text: '首页的一条微博')]),
+                    ),
+                  ),
       ),
     ],
     child: const MaxboApp(),
@@ -127,6 +131,52 @@ void main() {
     await tester.drag(find.byType(ListView), const Offset(0, 100));
     await tester.pumpAndSettle();
     expect(navOffset(), Offset.zero);
+  });
+
+  testWidgets('tapping the open tab scrolls to the top, then refreshes', (
+    tester,
+  ) async {
+    final adapter = FakeAdapter(
+      (_) => jsonBody(
+        feedJson([
+          for (var i = 0; i < 20; i++)
+            statusJson(id: 5000000000000001 + i, text: '第 $i 条'),
+        ]),
+      ),
+    );
+    await tester.pumpWidget(
+      app(
+        adapter: adapter,
+        restored: const StoredSession(
+          account: Account(uid: '42'),
+          cookies: {
+            'weibo.com': {'SUB': 'x'},
+          },
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    int feedRequests() => adapter.requests
+        .where((o) => o.uri.path == '/ajax/feed/friendstimeline')
+        .length;
+    expect(feedRequests(), 1);
+
+    // Scrolled without dragging, which would hide the tab bar.
+    tester
+        .state<ScrollableState>(find.byType(Scrollable).first)
+        .position
+        .jumpTo(1500);
+    await tester.pumpAndSettle();
+    expect(find.text('第 0 条'), findsNothing);
+
+    await tester.tap(find.byTooltip('首页'));
+    await tester.pumpAndSettle();
+    expect(find.text('第 0 条'), findsOneWidget);
+    expect(feedRequests(), 1);
+
+    await tester.tap(find.byTooltip('首页'));
+    await tester.pumpAndSettle();
+    expect(feedRequests(), 2);
   });
 
   testWidgets('applies the saved theme; settings open from Me', (tester) async {

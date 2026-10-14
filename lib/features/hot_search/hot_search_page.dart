@@ -7,6 +7,7 @@ import '../../core/util/format.dart';
 import '../../data/api/weibo_api.dart';
 import '../../data/models/hot_search.dart';
 import '../../widgets/load_state.dart';
+import '../../widgets/tab_reselect.dart';
 import '../../widgets/tag_label.dart';
 import '../auth/login_prompt.dart';
 import '../webview/web_page.dart';
@@ -62,9 +63,10 @@ class _HotSearchList extends ConsumerWidget {
           : const Center(child: CircularProgressIndicator());
     }
     final pinned = hot.pinned.length;
-    return RefreshIndicator(
+    return TabRefreshIndicator(
       onRefresh: () => _refresh(context, ref),
       child: ListView.builder(
+        primary: true,
         physics: const AlwaysScrollableScrollPhysics(),
         itemCount: pinned + hot.items.length,
         itemBuilder: (context, i) => i < pinned

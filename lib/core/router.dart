@@ -24,8 +24,10 @@ import '../features/webview/web_page.dart';
 final routerProvider = Provider<GoRouter>((ref) {
   final router = GoRouter(
     routes: [
-      StatefulShellRoute.indexedStack(
-        builder: (context, state, shell) => HomeShell(shell: shell),
+      StatefulShellRoute(
+        builder: (_, _, shell) => shell,
+        navigatorContainerBuilder: (_, shell, branches) =>
+            HomeShell(shell: shell, branches: branches),
         branches: [
           StatefulShellBranch(
             routes: [

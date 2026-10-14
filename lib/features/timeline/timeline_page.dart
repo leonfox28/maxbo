@@ -5,6 +5,7 @@ import '../../core/net/weibo_exception.dart';
 import '../../core/session/session_controller.dart';
 import '../../widgets/load_state.dart';
 import '../../widgets/status_card/status_card.dart';
+import '../../widgets/tab_reselect.dart';
 import '../auth/login_prompt.dart';
 import '../status/status_actions.dart';
 import 'timeline_controller.dart';
@@ -68,10 +69,11 @@ class _StatusList extends ConsumerWidget {
       onNearEnd: timeline.loadMoreError == null
           ? ref.read(timelineProvider.notifier).loadMore
           : null,
-      child: RefreshIndicator(
+      child: TabRefreshIndicator(
         onRefresh: () => _refresh(context, ref),
         child: statuses.isEmpty
             ? ListView(
+                primary: true,
                 physics: const AlwaysScrollableScrollPhysics(),
                 children: const [
                   SizedBox(height: 160),
@@ -79,6 +81,7 @@ class _StatusList extends ConsumerWidget {
                 ],
               )
             : ListView.separated(
+                primary: true,
                 physics: const AlwaysScrollableScrollPhysics(),
                 itemCount: statuses.length + 1,
                 separatorBuilder: (_, _) => const Divider(height: 1),

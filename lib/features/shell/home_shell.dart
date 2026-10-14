@@ -3,13 +3,18 @@ import 'package:go_router/go_router.dart';
 
 import '../../widgets/bars_on_scroll.dart';
 import '../../widgets/floating_pill.dart';
+import '../../widgets/tab_reselect.dart';
 
 /// Scaffold hosting the top-level tabs, switched by a floating pill that
 /// hides while the user scrolls down and comes back when they scroll up.
+/// Tapping the open tab again tells its pages through [TabReselect].
 class HomeShell extends StatefulWidget {
-  const HomeShell({super.key, required this.shell});
+  const HomeShell({super.key, required this.shell, required this.branches});
 
   final StatefulNavigationShell shell;
+
+  /// The tabs' navigators, in the order of the tab bar.
+  final List<Widget> branches;
 
   @override
   State<HomeShell> createState() => _HomeShellState();
@@ -28,6 +33,7 @@ class _HomeShellState extends State<HomeShell> {
   ];
 
   final _bars = BarsOnScroll();
+  late final _reselected = [for (final _ in widget.branches) _Taps()];
 
   @override
   void didUpdateWidget(HomeShell oldWidget) {
@@ -38,6 +44,14 @@ class _HomeShellState extends State<HomeShell> {
     }
   }
 
+  @override
+  void dispose() {
+    for (final taps in _reselected) {
+      taps.dispose();
+    }
+    super.dispose();
+  }
+
   bool _onScroll(ScrollUpdateNotification n) {
     if (_bars.onScroll(n)) setState(() {});
     return false;
@@ -46,18 +60,35 @@ class _HomeShellState extends State<HomeShell> {
   void _select(int index) {
     final shell = widget.shell;
     setState(_bars.show);
-    // Tapping the current tab again returns it to its first page.
-    shell.goBranch(index, initialLocation: index == shell.currentIndex);
+    if (index == shell.currentIndex) {
+      _reselected[index].tap();
+    } else {
+      shell.goBranch(index);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
+    final current = widget.shell.currentIndex;
     return Scaffold(
       // Lists scroll on behind the pill; the scaffold pads them for it.
       extendBody: true,
       body: NotificationListener<ScrollUpdateNotification>(
         onNotification: _onScroll,
-        child: widget.shell,
+        child: IndexedStack(
+          index: current,
+          children: [
+            for (final (i, branch) in widget.branches.indexed)
+              // As StatefulShellRoute.indexedStack has it.
+              Offstage(
+                offstage: i != current,
+                child: TickerMode(
+                  enabled: i == current,
+                  child: TabReselect(taps: _reselected[i], child: branch),
+                ),
+              ),
+          ],
+        ),
       ),
       bottomNavigationBar: AnimatedSlide(
         offset: _bars.visible ? Offset.zero : const Offset(0, 1.5),
@@ -65,12 +96,16 @@ class _HomeShellState extends State<HomeShell> {
         curve: BarsOnScroll.curve,
         child: _FloatingNavBar(
           destinations: _destinations,
-          selectedIndex: widget.shell.currentIndex,
+          selectedIndex: current,
           onSelected: _select,
         ),
       ),
     );
   }
+}
+
+class _Taps extends ChangeNotifier {
+  void tap() => notifyListeners();
 }
 
 class _Destination {
