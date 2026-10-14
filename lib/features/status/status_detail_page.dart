@@ -10,6 +10,7 @@ import '../../core/util/format.dart';
 import '../../data/api/weibo_api.dart';
 import '../../data/models/comment.dart';
 import '../../data/models/status.dart';
+import '../../widgets/bars_on_scroll.dart';
 import '../../widgets/load_state.dart';
 import '../../widgets/rich_text/status_text.dart';
 import '../../widgets/status_card/status_card.dart';
@@ -41,6 +42,8 @@ class StatusDetailPage extends ConsumerStatefulWidget {
 
 enum _Tab { reposts, comments }
 
+const _title = '微博正文';
+
 class _StatusDetailPageState extends ConsumerState<StatusDetailPage> {
   var _tab = _Tab.comments;
   var _order = CommentOrder.hot;
@@ -54,6 +57,7 @@ class _StatusDetailPageState extends ConsumerState<StatusDetailPage> {
   /// status they were counted on loaded: newer data already has them.
   ({Status on, int added})? _commentsChange;
   final _drafts = <String, String>{};
+  final _bars = BarsOnScroll();
   final _deleting = <String>{};
 
   void _showTab(_Tab tab) => setState(() {
@@ -183,12 +187,52 @@ class _StatusDetailPageState extends ConsumerState<StatusDetailPage> {
     final detail = ref.watch(statusDetailProvider(widget.id));
     final status = detail.value ?? widget.initial;
     return Scaffold(
-      appBar: AppBar(title: const Text('微博正文')),
+      // Once there is a status, its bars give way while the user reads down
+      // it, as the home tab bar does.
+      appBar: status == null ? AppBar(title: const Text(_title)) : null,
+      extendBody: true,
       bottomNavigationBar: status == null || status.user == null
           ? null
-          : _bottomBar(status),
+          : AnimatedSlide(
+              offset: _bars.visible ? Offset.zero : const Offset(0, 1.5),
+              duration: BarsOnScroll.duration,
+              curve: BarsOnScroll.curve,
+              child: _bottomBar(status),
+            ),
       body: status != null
-          ? _content(context, status, detail)
+          ? SafeArea(
+              bottom: false,
+              child: Column(
+                children: [
+                  ClipRect(
+                    child: AnimatedAlign(
+                      alignment: Alignment.bottomCenter,
+                      heightFactor: _bars.visible ? 1 : 0,
+                      duration: BarsOnScroll.duration,
+                      curve: BarsOnScroll.curve,
+                      child: AppBar(
+                        title: const Text(_title),
+                        primary: false,
+                        // It sits above the list, never over it.
+                        notificationPredicate: (_) => false,
+                      ),
+                    ),
+                  ),
+                  Expanded(
+                    child: NotificationListener<ScrollUpdateNotification>(
+                      onNotification: (n) {
+                        if (_bars.onScroll(n)) setState(() {});
+                        return false;
+                      },
+                      // Under the scaffold, which pads for the comment bar.
+                      child: Builder(
+                        builder: (context) => _content(context, status, detail),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            )
           : detail.hasError
           ? ErrorRetry(
               error: detail.error,
@@ -329,6 +373,10 @@ class _StatusDetailPageState extends ConsumerState<StatusDetailPage> {
                 child: _OrderSwitch(order: _order, onChanged: _showOrder),
               ),
             list,
+            // Room to scroll the last item out from under the comment bar.
+            SliverToBoxAdapter(
+              child: SizedBox(height: MediaQuery.paddingOf(context).bottom),
+            ),
           ],
         ),
       ),

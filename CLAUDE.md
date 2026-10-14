@@ -44,12 +44,12 @@ Flutter stable 3.47.x（Dart 3.13），通过 Homebrew cask 安装。
 - `lib/core/paging/`：`PagedController<T>`，分页列表（评论、转发等）都继承它，界面用 `widgets/load_state.dart` 里的 `PagedSliverList` 和 `LoadMoreTrigger`
 - `lib/data/api/weibo_api.dart`：所有端点都集中在这里。新增端点时写成 `WeiboApi` 的方法，内部调用 `getJson()` / `getPage()`。当前用户从 weibo.com 首页内嵌的 `window.$CONFIG` 解析得到（`/ajax/config` 不存在）。
 - `lib/data/models/`：`Status`、`Comment` 等模型，`tryFromJson` 容错解析，字段读取用 `core/util/json_read.dart`
-- `lib/widgets/`：微博卡片 `StatusCard`、正文 `StatusText`（`parseStatusText()` 把 HTML 拆成片段）、九宫格 `PicGrid`、头像 `UserAvatar`
+- `lib/widgets/`：微博卡片 `StatusCard`、正文 `StatusText`（`parseStatusText()` 把 HTML 拆成片段）、九宫格 `PicGrid`、头像 `UserAvatar`、底部悬浮胶囊 `FloatingPill`（导航栏和评论栏共用）、`BarsOnScroll`（往下滚隐藏、往回滚出现的判断，首页导航栏和详情页顶栏/底栏共用）
 - `lib/features/`：各个页面。登录页是 WebView 加载微博官方登录页，每次主页面加载完成或失败都校验一次会话。详情页在 `status/`，评论和楼中楼在 `comments/`，图片查看器和视频播放在 `media_viewer/`，用户主页在 `profile/`（`/u/:uid`，@ 用 `/n/:name`），热搜在 `hot_search/`，设置页和关于页在 `settings/`（关于页的声明文案与 README 保持一致）。卡片和评论上的点击统一由 `features/status/status_actions.dart` 处理。
 - `lib/features/interactions/`：点赞和评论。`likesProvider` 让同一条微博或评论的点赞状态在所有页面一致（改动只套用在改动时的那份数据上，新加载的数据优先）；`showCommentComposer()` 是写评论/回复的弹层。写接口在 `WeiboApi` 里都走 `postForm()`。
 - `lib/features/webview/`：应用内 WebView（`openWebPage()`），与登录页共用 Cookie 和 UA。搜索走 `m.weibo.cn`（`weiboSearchUrl()`），因为 `s.weibo.com` 只有 PC 版布局。验证码也在这里由用户本人完成（`ErrorRetry` 上的「去验证」）。
 - **不自动重试**：`ProviderScope(retry: noRetry)` 关掉了 Riverpod 默认的失败重试，保证请求都由用户操作触发；测试里的 scope/container 也要传。
-- 诊断页：只在调试版提供，入口是「我」页右上角的虫子图标，用来对真实会话核对接口；「互动结构」探针会真实点赞和评论，跑之前要问用户。
+- 诊断页：只在调试版提供，入口是「我」页列表里的「开发者诊断」，用来对真实会话核对接口；「互动结构」探针会真实点赞和评论，跑之前要问用户。
 
 ## 约定
 

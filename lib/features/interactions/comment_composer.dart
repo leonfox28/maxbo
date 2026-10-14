@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/net/weibo_exception.dart';
+import '../../widgets/floating_pill.dart';
 import '../webview/web_page.dart';
 
 /// Opens a sheet to write a comment or reply, which [send] posts when the
@@ -150,8 +151,8 @@ class _ComposerState extends State<_Composer> {
   }
 }
 
-/// The bar under a status or a thread: a field that opens the composer, and
-/// optionally [trailing] buttons.
+/// The bar floating under a status or a thread: a field that opens the
+/// composer, and optionally [trailing] buttons.
 class CommentBar extends StatelessWidget {
   const CommentBar({
     super.key,
@@ -168,48 +169,36 @@ class CommentBar extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final trailing = this.trailing;
-    return Material(
-      color: theme.colorScheme.surface,
-      child: SafeArea(
-        top: false,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Divider(height: 1),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(12, 8, 8, 8),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Material(
-                      color: theme.colorScheme.surfaceContainerHighest,
-                      borderRadius: BorderRadius.circular(18),
-                      clipBehavior: Clip.antiAlias,
-                      child: InkWell(
-                        onTap: onTap,
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 14,
-                            vertical: 9,
-                          ),
-                          child: Text(
-                            hint,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: theme.textTheme.bodyMedium?.copyWith(
-                              color: theme.colorScheme.onSurfaceVariant,
-                            ),
-                          ),
-                        ),
-                      ),
+    return FloatingPill(
+      stretch: true,
+      child: Row(
+        children: [
+          Expanded(
+            // A field look-alike, as tall as the tab bar's items.
+            child: Material(
+              color: theme.colorScheme.surface,
+              shape: const StadiumBorder(),
+              clipBehavior: Clip.antiAlias,
+              child: InkWell(
+                onTap: onTap,
+                child: Container(
+                  height: 48,
+                  alignment: Alignment.centerLeft,
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: Text(
+                    hint,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
                     ),
                   ),
-                  if (trailing != null) ...[const SizedBox(width: 4), trailing],
-                ],
+                ),
               ),
             ),
-          ],
-        ),
+          ),
+          if (trailing != null) ...[const SizedBox(width: 4), trailing],
+        ],
       ),
     );
   }

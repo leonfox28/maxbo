@@ -261,8 +261,8 @@ test/  (fixtures/ 下只放合成数据)
   - 详情页：底部条写评论和点赞，点评论回复它，长按自己的评论删除。楼中楼页：底部条回复根评论，点任一条回复它，长按自己的回复删除。楼中楼页的改动通过 `editOpenCommentLists()` 同步到详情页里已打开的评论列表（只改已加载的列表，不会因此发请求）。评论数在详情页本地加减，刷新后以服务端为准。
 - **设置**（`lib/core/settings/app_settings.dart`）：`settingsProvider` 是 `AppSettings`（主题、`ImageQuality`、图片缓存上限），存在 `shared_preferences` 里，`main()` 在第一帧前读入（`initialSettingsProvider`），避免主题闪一下。改设置用 `settingsProvider.notifier.update((s) => s.copyWith(...))`，会立即生效并保存。列表里的图片尺寸用 `quality.listPixels(逻辑尺寸, dpr)` 再交给 `PicInfo.variantFor()`，查看器用 `quality.viewerVariant(pic)`。测试用 `test/support/fakes.dart` 的 `InMemorySettingsStorage`。
 - **图片磁盘缓存**（`lib/core/media/image_disk_cache.dart`）：`extended_image` 把图片存在临时目录的 `cacheimage/` 下，自己不清理。`ImageDiskCache` 负责统计大小、清空和按上限删除最早写入的文件；启动时和调低上限时各执行一次。测试用 `FakeImageDiskCache`。
-- **设置页和关于页**：`/settings`（入口是「我」页右上角的齿轮）、`/about`。关于页的声明和隐私文案要与 README 保持一致。应用固定使用中文的系统控件文案（`MaterialApp.locale`）。
-- **调试**：调试版「我」页右上角的虫子图标进入诊断页：▶ 是 M1 的接口检查，▤ 是「时间线结构」探针，📄 是「详情结构」探针（长文、视频地址和有效期、评论/楼中楼/转发的分页），👤 是「主页与热搜结构」探针，📢 是「广告字段」探针（只读，输入 `@昵称` 或 uid，列出被判为广告的微博的日期和相关字段，以及只有它们才有的字段），👍 是「互动结构」探针（**会真实点赞、评论再删除**，输入 `@昵称` 时只对当前账号关注的人生效，可以只测点赞），↗ 可以输入路由直接打开页面（如 `/n/昵称`、`/status/<id>`，用来进入应用里还没有入口的页面）。日志前缀 `[maxbo-diag]` / `[maxbo]`，用 `adb logcat` 读取。`devLog()` 只在调试版输出，不得记录 Cookie 值或微博正文。
+- **设置页和关于页**：`/settings`（入口是「我」页列表里的「设置」，未登录时也有）、`/about`。关于页的声明和隐私文案要与 README 保持一致。应用固定使用中文的系统控件文案（`MaterialApp.locale`）。
+- **调试**：调试版「我」页列表里的「开发者诊断」进入诊断页：▶ 是 M1 的接口检查，▤ 是「时间线结构」探针，📄 是「详情结构」探针（长文、视频地址和有效期、评论/楼中楼/转发的分页），👤 是「主页与热搜结构」探针，📢 是「广告字段」探针（只读，输入 `@昵称` 或 uid，列出被判为广告的微博的日期和相关字段，以及只有它们才有的字段），👍 是「互动结构」探针（**会真实点赞、评论再删除**，输入 `@昵称` 时只对当前账号关注的人生效，可以只测点赞），↗ 可以输入路由直接打开页面（如 `/n/昵称`、`/status/<id>`，用来进入应用里还没有入口的页面）。日志前缀 `[maxbo-diag]` / `[maxbo]`，用 `adb logcat` 读取。`devLog()` 只在调试版输出，不得记录 Cookie 值或微博正文。
 
 ### 后续要点（M6 之后）
 

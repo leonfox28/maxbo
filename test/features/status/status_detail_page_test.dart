@@ -106,6 +106,31 @@ void main() {
     expect(requestsTo('/ajax/statuses/repostTimeline'), 0);
   });
 
+  testWidgets('the bars hide scrolling down, return scrolling up', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(400, 400);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    await pumpPage(tester);
+    await tester.pumpAndSettle();
+    final title = find.text('微博正文').hitTestable();
+    Offset commentBar() =>
+        tester.widget<AnimatedSlide>(find.byType(AnimatedSlide)).offset;
+    expect(title, findsOneWidget);
+    expect(commentBar(), Offset.zero);
+
+    await tester.drag(find.text('完整的正文'), const Offset(0, -150));
+    await tester.pumpAndSettle();
+    expect(title, findsNothing);
+    expect(commentBar(), isNot(Offset.zero));
+
+    await tester.drag(find.text('最热的评论'), const Offset(0, 60));
+    await tester.pumpAndSettle();
+    expect(title, findsOneWidget);
+    expect(commentBar(), Offset.zero);
+  });
+
   testWidgets('loads each list once, however often it is shown', (
     tester,
   ) async {
