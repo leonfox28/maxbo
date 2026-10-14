@@ -107,11 +107,17 @@ class Status {
     );
   }
 
-  // Not yet confirmed against a real ad; see PLAN §8 item 5.
-  static bool _isAd(Map<String, Object?> map) =>
-      map['isAd'] == true ||
-      map['readtimetype'] == 'adMblog' ||
-      (readString(map['mark'])?.contains('mark_ad') ?? false);
+  // Not yet confirmed against a real feed ad; see PLAN §8 item 5. Weibo also
+  // sets all of these on ordinary posts it classes as advertising content
+  // (mark ending `WeiboADNatural`, seen on users' own reposts); those are
+  // not ads placed in the feed, so they get no label.
+  static bool _isAd(Map<String, Object?> map) {
+    final mark = readString(map['mark']) ?? '';
+    if (mark.contains('WeiboADNatural')) return false;
+    return map['isAd'] == true ||
+        map['readtimetype'] == 'adMblog' ||
+        mark.contains('mark_ad');
+  }
 
   // `source` is plain text or an HTML fragment like `<a href=…>荣耀Magic</a>`.
   static String? _plainText(String? fragment) {

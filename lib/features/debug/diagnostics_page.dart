@@ -16,6 +16,7 @@ import '../../core/util/json_read.dart';
 import '../../core/util/json_shape.dart';
 import '../../data/api/weibo_api.dart';
 import '../../data/models/comment.dart';
+import '../../data/models/status.dart';
 
 const _mobileUserAgent =
     'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) '
@@ -951,6 +952,111 @@ class _DiagnosticsPageState extends ConsumerState<DiagnosticsPage> {
     );
   }
 
+  /// Logs the ad-related fields of a user's statuses, to see why a normal
+  /// post got the 广告 label (PLAN §11). Read-only; logs post dates and field
+  /// values, never post text.
+  Future<void> _probeAds() async {
+    final session = ref.read(sessionProvider);
+    if (session is! SignedIn) {
+      setState(() => _lines.clear());
+      _log('ad probe needs a signed-in session');
+      return;
+    }
+    var text = '';
+    final input = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('广告字段'),
+        content: TextField(
+          autofocus: true,
+          onChanged: (v) => text = v,
+          decoration: const InputDecoration(hintText: '@昵称 或 uid'),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('取消'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, text.trim()),
+            child: const Text('开始'),
+          ),
+        ],
+      ),
+    );
+    if (input == null || input.isEmpty || !mounted) return;
+    setState(() {
+      _lines.clear();
+      _running = true;
+    });
+    final api = WeiboApi(
+      createWeiboDio(
+        jar: ref.read(cookieJarProvider),
+        throttle: ref.read(requestThrottleProvider),
+      ),
+    );
+    try {
+      final user = input.startsWith('@')
+          ? (await api.fetchProfile(screenName: input.substring(1))).user.id
+          : input;
+      final flagged = <Map<String, Object?>>[];
+      final normal = <Map<String, Object?>>[];
+      for (var page = 1; page <= 3; page++) {
+        final json = await api.getJson(
+          'https://weibo.com/ajax/statuses/mymblog',
+          query: {'uid': user, 'page': page, 'feature': 0},
+        );
+        final list = _maps(readMap(json['data'])?['list']).toList();
+        _log('p$page: ${list.length} statuses');
+        for (final s in list) {
+          final status = Status.tryFromJson(s);
+          (status?.isAd ?? false ? flagged : normal).add(s);
+          if (status?.isAd != true) continue;
+          final date = status?.createdAt?.toIso8601String().substring(0, 10);
+          final mark = '${s['mark'] ?? ''}';
+          _log(
+            '  $date isAd=${s['isAd']} readtimetype=${s['readtimetype']} '
+            'own=${status?.user?.id == user} '
+            'retweet=${s['retweeted_status'] != null} '
+            'mblogtype=${s['mblogtype']} '
+            'mblogtypename=${_redact('${s['mblogtypename'] ?? ''}')} '
+            'mark=${_redact(mark.length > 60 ? '${mark.substring(0, 60)}…' : mark)}',
+          );
+        }
+        if (list.isEmpty || readMap(json['data'])?['since_id'] == '') break;
+      }
+      // Fields that only flagged statuses have, or that they all share with
+      // a value no normal status has.
+      final flaggedKeys = {for (final s in flagged) ...s.keys};
+      final normalKeys = {for (final s in normal) ...s.keys};
+      _log('flagged=${flagged.length} normal=${normal.length}');
+      _log('only flagged: ${flaggedKeys.difference(normalKeys).join(', ')}');
+      for (final key in flaggedKeys.difference(normalKeys)) {
+        _log(
+          '  $key: ${{for (final s in flagged) describeShape(s[key], maxDepth: 3)}.join(' | ')}',
+        );
+      }
+      for (final key in flaggedKeys.intersection(normalKeys)) {
+        // Scalars by value (masked), anything else by shape.
+        String value(Map<String, Object?> s) => switch (s[key]) {
+          final bool v => '$v',
+          final num v => _redact('$v'),
+          final String v when v.length <= 40 => _redact(v),
+          final v => describeShape(v, maxDepth: 2),
+        };
+        final a = {for (final s in flagged) value(s)};
+        final b = {for (final s in normal) value(s)};
+        if (a.length == 1 && !b.contains(a.single)) {
+          _log('  $key: flagged=${a.single} normal=${b.take(3).join(' | ')}');
+        }
+      }
+    } on Exception catch (e) {
+      _log('ad probe: $e');
+    }
+    _log('== done');
+    if (mounted) setState(() => _running = false);
+  }
+
   /// Logs what liking and commenting answer, on one status the user picked
   /// for testing (PLAN §11): likes and takes back a like on it, comments,
   /// replies, likes the comment, then deletes both comments again. Leaves the
@@ -1558,6 +1664,11 @@ class _DiagnosticsPageState extends ConsumerState<DiagnosticsPage> {
             tooltip: '互动结构（会真实点赞和评论）',
             icon: const Icon(Icons.thumb_up_outlined),
             onPressed: _running ? null : _probeInteractions,
+          ),
+          IconButton(
+            tooltip: '广告字段（只读）',
+            icon: const Icon(Icons.campaign_outlined),
+            onPressed: _running ? null : _probeAds,
           ),
           IconButton(
             tooltip: '主页与热搜结构',

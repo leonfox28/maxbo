@@ -84,6 +84,15 @@ void main() {
       expect(isAd({'readtimetype': 'adMblog'}), isTrue);
       expect(isAd({'mark': '1_reallog_mark_ad:123|abc'}), isTrue);
       expect(isAd({'mark': 'something_else'}), isFalse);
+      // Content Weibo classed as advertising, not an ad placed in the feed.
+      expect(
+        isAd({
+          'isAd': true,
+          'readtimetype': 'adMblog',
+          'mark': '999_reallog_mark_ad:999|WeiboADNatural',
+        }),
+        isFalse,
+      );
 
       final page = FeedPage.fromJson(
         feedJson([
