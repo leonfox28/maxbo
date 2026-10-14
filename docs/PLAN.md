@@ -211,9 +211,13 @@ test/  (fixtures/ 下只放合成数据)
 
 ## 9. 分发
 
-- **Android**：GitHub Releases 发布按 ABI 拆分的 APK（`flutter build apk --release --split-per-abi`）。签名密钥只保存在本地：密钥库是 `~/.config/maxbo/release.jks`（别名 `maxbo`），密码在 `android/key.properties`（已 gitignore）。证书 SHA-256 是 `A1:7A:66:0B:CA:65:D7:BB:89:D6:F3:07:AB:A4:61:06:F3:F8:AF:CB:90:F5:D0:B3:EC:40:EB:28:6D:71:79:E2`。**密钥丢了，已安装的用户就无法覆盖升级**，这两个文件要另外备份。没有 `key.properties` 时 release 包退回调试密钥签名。调试版的包名带 `.debug` 后缀，名称是「maxbo debug」，和 release 版可以同时安装。国行手机通常没有 GMS，暂不受 Google 开发者验证影响；2027 年该政策全球生效后再评估。
+- **Android**：GitHub Releases 发布按 ABI 拆分的 APK（`flutter build apk --release --split-per-abi`）。签名密钥不进 git：本地密钥库是 `~/.config/maxbo/release.jks`（别名 `maxbo`），密码在 `android/key.properties`（已 gitignore）；CI 用的副本存在 GitHub 仓库 `release` 环境的 Secrets 里（见下方 CI）。Secrets 写入后读不回来，不能当备份。证书 SHA-256 是 `A1:7A:66:0B:CA:65:D7:BB:89:D6:F3:07:AB:A4:61:06:F3:F8:AF:CB:90:F5:D0:B3:EC:40:EB:28:6D:71:79:E2`。**密钥丢了，已安装的用户就无法覆盖升级**，这两个文件要另外备份。没有 `key.properties` 时 release 包退回调试密钥签名。调试版的包名带 `.debug` 后缀，名称是「maxbo debug」，和 release 版可以同时安装。国行手机通常没有 GMS，暂不受 Google 开发者验证影响；2027 年该政策全球生效后再评估。
 - **iOS**：发布无签名 IPA，文档说明如何用 SideStore/AltStore 或自己的开发者账号签名。不上 App Store。
-- **CI**：等你建好 GitHub 远程仓库后，再加 GitHub Actions 自动构建。
+- **CI**（`.github/workflows/`）：
+  - `ci.yml`：push 到 main 和每个 PR 时运行格式检查、`flutter analyze`、`flutter test`、debug APK 构建，并在 macOS 上构建 iOS 模拟器包。不接触签名密钥。
+  - `release.yml`：推送 `v*` tag 时触发。先核对 tag 和 `pubspec.yaml` 的版本号一致，再跑 analyze 和 test，然后用 Secrets 里的密钥打按 ABI 拆分的 release APK，核对签名证书指纹必须等于上面的 SHA-256（防止误用调试密钥），最后生成 `SHA256SUMS.txt`，建一个**草稿** Release。发布说明手写，确认后手动发布。
+  - Secrets（放在 `release` 环境里，只允许 `v*` tag 使用）：`ANDROID_KEYSTORE_BASE64`（`base64 -i release.jks`）、`ANDROID_STORE_PASSWORD`、`ANDROID_KEY_ALIAS`、`ANDROID_KEY_PASSWORD`。
+  - 发版流程：改 `pubspec.yaml` 的 `version` → 提交 → `git tag vX.Y.Z && git push origin vX.Y.Z` → 在 GitHub 上编辑草稿并发布。
 
 ## 10. 已定事项
 
