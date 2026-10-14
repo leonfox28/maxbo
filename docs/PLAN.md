@@ -173,7 +173,7 @@ test/  (fixtures/ 下只放合成数据)
 | 2 | 会话是否绑定 UA | ✅ 不绑定：用手机 UA 请求同一会话的时间线，同样返回 `ok=1` |
 | 3 | `list_id` | ✅ 「最新微博」是 `list_id=11000<uid>`（`/ajax/feed/allGroups` 中 type 20、title「最新微博」的分组）。同为 type 20 的「原创」`11001<uid>`、「视频」`11002<uid>` 会返回不同内容；「全部关注」`10001<uid>`、「特别关注」、「互相关注」以及不传 `list_id` 都返回与最新微博相同的内容，说明这类分组需要改走 `groupstimeline`（v1 不做）。M2 显式传 `11000<uid>` |
 | 4 | 当前用户 | ✅ `/ajax/config` **不存在**（登录后返回 404；游客的 `ok:-100` 只是统一拦截）。网页版从首页 HTML 内嵌的 `window.$CONFIG`（含 `user{id,idstr,screen_name,…}` 和 `uid`）读取当前用户，我们也这样做。`/ajax/profile/info` 不带参数返回 400 |
-| 5 | 广告字段 | ⏳ 部分确认：时间线里的微博带有 `isAd` 字段，普通微博的 `readtimetype` 为 `mblog`；M1 的 24 条和 M2 的约 120 条中都没有广告，尚未见到真实广告样本。目前按 `isAd == true` 或 `readtimetype == 'adMblog'` 或 `mark` 含 `mark_ad` 判定并打标签，见到样本后再核实 |
+| 5 | 广告字段 | ⏳ 部分确认：时间线里的微博带有 `isAd` 字段，普通微博的 `readtimetype` 为 `mblog`；M1 的 24 条和 M2 的约 120 条中都没有广告，尚未见到信息流里插入的真实广告。目前按 `isAd == true` 或 `readtimetype == 'adMblog'` 或 `mark` 含 `mark_ad` 判定并打标签，见到样本后再核实。**例外（M6 实测）**：微博会给它判定为广告内容的普通微博也打上 `isAd=true`、`readtimetype=adMblog`、`mark=999_reallog_mark_ad:999\|WeiboADNatural`（测试账号关注的用户主页 71 条中有 8 条，都是该用户自己转发的商业内容）。这是对内容的暗中分类，不是信息流里插入的广告，所以 `mark` 含 `WeiboADNatural` 时不打标签 |
 | 6 | iOS 读 HttpOnly Cookie | ✅ `WKHTTPCookieStore` 能读到页面响应下发的 HttpOnly Cookie（集成测试，本地服务器）；Android 已用真实登录验证可读到 `SUB` |
 
 其他发现：服务端会在响应中轮换下发 `XSRF-TOKEN`、`WBPSESS`，Cookie 存储会自动更新并持久化。
@@ -212,12 +212,12 @@ test/  (fixtures/ 下只放合成数据)
 ## 9. 分发
 
 - **Android**：GitHub Releases 发布按 ABI 拆分的 APK（`flutter build apk --release --split-per-abi`）。签名密钥不进 git：本地密钥库是 `~/.config/maxbo/release.jks`（别名 `maxbo`），密码在 `android/key.properties`（已 gitignore）；CI 用的副本存在 GitHub 仓库 `release` 环境的 Secrets 里（见下方 CI）。Secrets 写入后读不回来，不能当备份。证书 SHA-256 是 `A1:7A:66:0B:CA:65:D7:BB:89:D6:F3:07:AB:A4:61:06:F3:F8:AF:CB:90:F5:D0:B3:EC:40:EB:28:6D:71:79:E2`。**密钥丢了，已安装的用户就无法覆盖升级**，这两个文件要另外备份。没有 `key.properties` 时 release 包退回调试密钥签名。调试版的包名带 `.debug` 后缀，名称是「maxbo debug」，和 release 版可以同时安装。国行手机通常没有 GMS，暂不受 Google 开发者验证影响；2027 年该政策全球生效后再评估。
-- **iOS**：发布无签名 IPA，文档说明如何用 SideStore/AltStore 或自己的开发者账号签名。不上 App Store。
+- **iOS**：发布无签名 IPA（`flutter build ios --release --no-codesign`，把 `Runner.app` 放进 `Payload/` 后打 zip，命名为 `maxbo-unsigned.ipa`），用户自己签名安装，步骤见 [ios-sideload.md](ios-sideload.md)（AltStore/SideStore、Sideloadly、Xcode）。不上 App Store。
 - **CI**（`.github/workflows/`）：
   - `ci.yml`：push 到 main 和每个 PR 时运行格式检查、`flutter analyze`、`flutter test`、debug APK 构建，并在 macOS 上构建 iOS 模拟器包。不接触签名密钥。
-  - `release.yml`：推送 `v*` tag 时触发。先核对 tag 和 `pubspec.yaml` 的版本号一致，再跑 analyze 和 test，然后用 Secrets 里的密钥打按 ABI 拆分的 release APK，核对签名证书指纹必须等于上面的 SHA-256（防止误用调试密钥），最后生成 `SHA256SUMS.txt`，建一个**草稿** Release。发布说明手写，确认后手动发布。
+  - `release.yml`：推送 `v*` tag 时触发，分三个 job。`android`：先核对 tag 和 `pubspec.yaml` 的版本号一致，再跑 analyze 和 test，然后用 Secrets 里的密钥打按 ABI 拆分的 release APK，核对签名证书指纹必须等于上面的 SHA-256（防止误用调试密钥）。`ios`：在 macOS 上打无签名 IPA，不接触任何密钥。`release`：等前两个完成，下载产物，生成 `SHA256SUMS.txt`，建一个**草稿** Release。只有 `release` 有写仓库的权限。发布说明手写，确认后手动发布。
   - Secrets（放在 `release` 环境里，只允许 `v*` tag 使用）：`ANDROID_KEYSTORE_BASE64`（`base64 -i release.jks`）、`ANDROID_STORE_PASSWORD`、`ANDROID_KEY_ALIAS`、`ANDROID_KEY_PASSWORD`。
-  - 发版流程：改 `pubspec.yaml` 的 `version` → 提交 → `git tag vX.Y.Z && git push origin vX.Y.Z` → 在 GitHub 上编辑草稿并发布。
+  - 发版流程：改 `pubspec.yaml` 的 `version`，**同时改 `lib/core/app_info.dart` 的 `appVersion`**（关于页显示它，有测试核对两者一致）→ 提交 → `git tag vX.Y.Z && git push origin vX.Y.Z` → 在 GitHub 上编辑草稿并发布。
 
 ## 10. 已定事项
 
@@ -226,7 +226,7 @@ test/  (fixtures/ 下只放合成数据)
 - **Flutter**：stable 3.47.7（Dart 3.13.5）。
 - **包名**：`io.github.leonfox28.maxbo`（v0.1.0 起不再改；iOS Bundle ID 和平台通道名 `io.github.leonfox28.maxbo/cookies` 同步改过）。
 
-## 11. 进度与交接（更新于 2026-10-13，M5 完成后）
+## 11. 进度与交接（更新于 2026-10-14，M6 完成后）
 
 | 里程碑 | 状态 | 提交 |
 |---|---|---|
@@ -237,7 +237,7 @@ test/  (fixtures/ 下只放合成数据)
 | M4 主页与热搜 | ✅ 完成：Android 真实会话下核对了从头像、昵称、@ 进主页（@ 先按昵称查资料再加载微博）、主页翻页、置顶标签、「我」进自己的主页（1 条微博，按 `since_id` 为空判断到底，没有多发请求）、热搜榜（置顶、前三名配色、付费条目的「商」标签、热度）、点热搜条目在应用内打开搜索页（普通词和 `#话题#` 两种），以及浅色和深色主题。正文里的话题链接与热搜条目调用同一个函数，没有在真机上点过，只由 Widget 测试覆盖；iOS 只验证了能编译 | `41a27b1` `bfdda6e` |
 | M5 轻互动 | ✅ 完成：Android 真实会话下，在用户指定的测试微博上核对了卡片和详情页点赞/取消（主页、详情页之间状态同步，刷新后与服务端一致）、发评论（出现在列表顶部，计数 +1）、评论点赞/取消、回复评论（楼中楼预览更新）、在楼中楼页删除自己的回复、在详情页删除自己的评论；测试结束后这条微博恢复为未赞、0 评论。深色主题核对过；iOS 只验证了能编译 | `7d12372` `53d9951` |
 | v0.1.0 | ✅ 2026-10-13 在 GitHub Releases 发布（Pre-release，只有 Android）。包名改为 `io.github.leonfox28.maxbo`，加了 release 签名。release 包在模拟器上只验证了未登录时的启动、登录页和热搜页，登录后的功能没有在 release 包上测过 | 见 `v0.1.0` 标签 |
-| M6 打磨与打包 | ⏭ 下一步（release APK 已在 v0.1.0 出过） | — |
+| M6 打磨与打包 | ✅ 完成：设置页（主题、图片质量、图片缓存上限、清除缓存）、关于页（声明、隐私、项目链接、开源许可）、自己的应用图标（Android 自适应图标，Android 12+ 启动页也用它）、广告标签误判修正、`release.yml` 增加无签名 IPA、iOS 自签文档、README。Android 真实会话下核对了设置页各项、切换深色主题立即生效、关于页和许可页、新图标和启动页；iOS 模拟器上只验证了未登录时能启动 | `05a5e0b` `5e45c45` `b5dd5e4` |
 
 ### 已有的基础设施
 
@@ -258,21 +258,26 @@ test/  (fixtures/ 下只放合成数据)
   - `likesProvider`（`likes.dart`）按 `(kind, id)` 保存用户在应用里改过的点赞，所有列表和页面共用，所以同一条微博或评论在时间线、主页、详情页、楼中楼页显示一致。每条改动记着改动时页面数据的样子（`base`），**只有页面数据还是那个样子时才套用改动**；之后加载的数据已经包含这次改动，以新数据为准。界面用 `LikeBuilder`：点了立即显示，请求期间不能再点，失败时回滚并用 `showErrorSnackBar()` 提示（验证码时给「去验证」，验证后由用户自己再点一次）。
   - `showCommentComposer()`（`comment_composer.dart`）是写评论/回复的底部弹层：发送中禁用、失败时在弹层里显示原因、关掉弹层不丢草稿（草稿存在页面的 `Map` 里）。`CommentBar` 是详情页和楼中楼页底部的输入条，`confirmDeleteComment()` 是删除前的菜单加二次确认。
   - 详情页：底部条写评论和点赞，点评论回复它，长按自己的评论删除。楼中楼页：底部条回复根评论，点任一条回复它，长按自己的回复删除。楼中楼页的改动通过 `editOpenCommentLists()` 同步到详情页里已打开的评论列表（只改已加载的列表，不会因此发请求）。评论数在详情页本地加减，刷新后以服务端为准。
-- **调试**：调试版「我」页右上角的虫子图标进入诊断页：▶ 是 M1 的接口检查，▤ 是「时间线结构」探针，📄 是「详情结构」探针（长文、视频地址和有效期、评论/楼中楼/转发的分页），👤 是「主页与热搜结构」探针，👍 是「互动结构」探针（**会真实点赞、评论再删除**，输入 `@昵称` 时只对当前账号关注的人生效，可以只测点赞），↗ 可以输入路由直接打开页面（如 `/n/昵称`、`/status/<id>`，用来进入应用里还没有入口的页面）。日志前缀 `[maxbo-diag]` / `[maxbo]`，用 `adb logcat` 读取。`devLog()` 只在调试版输出，不得记录 Cookie 值或微博正文。
+- **设置**（`lib/core/settings/app_settings.dart`）：`settingsProvider` 是 `AppSettings`（主题、`ImageQuality`、图片缓存上限），存在 `shared_preferences` 里，`main()` 在第一帧前读入（`initialSettingsProvider`），避免主题闪一下。改设置用 `settingsProvider.notifier.update((s) => s.copyWith(...))`，会立即生效并保存。列表里的图片尺寸用 `quality.listPixels(逻辑尺寸, dpr)` 再交给 `PicInfo.variantFor()`，查看器用 `quality.viewerVariant(pic)`。测试用 `test/support/fakes.dart` 的 `InMemorySettingsStorage`。
+- **图片磁盘缓存**（`lib/core/media/image_disk_cache.dart`）：`extended_image` 把图片存在临时目录的 `cacheimage/` 下，自己不清理。`ImageDiskCache` 负责统计大小、清空和按上限删除最早写入的文件；启动时和调低上限时各执行一次。测试用 `FakeImageDiskCache`。
+- **设置页和关于页**：`/settings`（入口是「我」页右上角的齿轮）、`/about`。关于页的声明和隐私文案要与 README 保持一致。应用固定使用中文的系统控件文案（`MaterialApp.locale`）。
+- **调试**：调试版「我」页右上角的虫子图标进入诊断页：▶ 是 M1 的接口检查，▤ 是「时间线结构」探针，📄 是「详情结构」探针（长文、视频地址和有效期、评论/楼中楼/转发的分页），👤 是「主页与热搜结构」探针，📢 是「广告字段」探针（只读，输入 `@昵称` 或 uid，列出被判为广告的微博的日期和相关字段，以及只有它们才有的字段），👍 是「互动结构」探针（**会真实点赞、评论再删除**，输入 `@昵称` 时只对当前账号关注的人生效，可以只测点赞），↗ 可以输入路由直接打开页面（如 `/n/昵称`、`/status/<id>`，用来进入应用里还没有入口的页面）。日志前缀 `[maxbo-diag]` / `[maxbo]`，用 `adb logcat` 读取。`devLog()` 只在调试版输出，不得记录 Cookie 值或微博正文。
 
-### M6 要点
+### 后续要点（M6 之后）
 
-- **范围**（§6）：设置页（主题、图片质量、图片缓存上限）、关于与免责声明、深色模式打磨、release APK（按 ABI 拆分）、iOS 无签名 IPA 和自签文档、README。
-- **疑似广告误判**：M5 测试时，测试账号主页上一条 2025-06-13 的普通原创微博被标成了「广告」。判定规则还是 M2 的猜测（`isAd`、`readtimetype == 'adMblog'`、`mark` 含 `mark_ad`，§8 第 5 项），可能是 `mymblog` 里的某个字段命中了。建议先在诊断页加一个只读探针看这条微博的 `isAd`、`mark`、`readtimetype` 等字段，再收紧判定。标签只影响显示，不影响合规边界（广告只打标签、不过滤）。
+- **发版**：M6 的改动还没有发布。发 v0.2.0 时按 §9 的发版流程改两处版本号，推 tag 后 CI 会建草稿 Release（第一次带 IPA，`release.yml` 的 iOS job 和三段式流程还没在 CI 上真正跑过，推 tag 后要看一眼运行结果）。
+- **iOS 真机/真实登录**：iOS 上只验证过能编译、模拟器上未登录能启动。真实登录、Cookie 读取（`AppDelegate.swift`）、视频播放和 WebView 都没在 iOS 上跑过，需要用户本人在 iOS 模拟器或真机上登录一次。
+- **信息流广告**：还没见到信息流里插入的真实广告，判定规则（§8 第 5 项）仍是推测；见到后用诊断页的「时间线结构」核对。
 - **互动的已知局限**：转发数和时间线卡片上的评论数不会因为用户评论而变化（只有详情页本地加减）；从详情页的楼中楼预览里不能直接删回复（要进楼中楼页）；没有表情面板和 @ 补全；评论字数没有在客户端限制，超长时显示服务端的错误信息。
-- **还没做的小项**（沿用）：图片磁盘缓存没有大小上限；`mymblog` 的 `bottom_tips_text` 没有显示；验证码的「去验证」还没遇到真实验证码（M5 的写操作也没触发过），不知道验证完成后要不要把 WebView 的 Cookie 同步回 API。
-- **未在真机上验证的部分**：M3 的双击放大、长图、GIF 和实况照片；M4、M5 在 iOS 上只验证了能编译（iOS 模拟器没有真实登录）。
-- **流畅度**：M2–M5 都只在模拟器的调试版上看过，滚动没有明显卡顿；还没在 profile 版或真机上测帧率。
+- **还没做的小项**：`mymblog` 的 `bottom_tips_text` 没有显示（还没见到实例）；验证码的「去验证」还没遇到真实验证码，不知道验证完成后要不要把 WebView 的 Cookie 同步回 API；图片缓存只在启动和调低上限时清理，一次使用中途不会清理。
+- **未在真机上验证的部分**：M3 的双击放大、长图、GIF 和实况照片；「原图」画质下特别大的长图的内存占用。
+- **流畅度**：只在模拟器的调试版上看过，滚动没有明显卡顿；还没在 profile 版或真机上测帧率。
 - **测试写操作**：测试目标由用户指定。2026-10-13 指定的是测试账号关注的用户大号主页上的第一条微博（2025-08-29 发布），昵称问用户，诊断页里用 `@昵称` 定位。每次真实点赞或评论前仍要先问用户；测试完把它恢复成未赞、无测试评论。
+- **应用图标**：图标是代码画的（两段圆弧组成的小写 m，底色是主题色 `#3F51B5`）。Android 的前景是矢量图 `res/drawable/ic_launcher_foreground.xml`；`mipmap-*` 和 iOS 的 PNG 是同一图形的渲染结果，改图形时要一起重新生成。
 
 ### 开发环境注意
 
-- **包名变更（v0.1.0）**：emulator-5554 上保存着真实登录态的是旧包名 `app.maxbo` 的调试版，它不会再更新，也不要卸载。新的调试版是 `io.github.leonfox28.maxbo.debug`，这台模拟器上还没有登录，需要真实会话时请用户在新调试版里重新登录。同一台模拟器上还装着未登录的 release 版 `io.github.leonfox28.maxbo`。
+- **包名变更（v0.1.0）**：emulator-5554 上新的调试版 `io.github.leonfox28.maxbo.debug` 已由用户重新登录（2026-10-14 确认），之后用它做真实会话测试。旧包名 `app.maxbo` 的调试版也还保存着登录态，不再更新，也不要卸载。同一台模拟器上还装着未登录的 release 版 `io.github.leonfox28.maxbo`。
 - 真实登录要过短信验证码和网易易盾人机验证，代价很高。保存着登录态的设备**只能用 `adb install -r` 覆盖安装**；不要在上面运行 `integration_test`（会清空 WebView Cookie），也不要卸载或清除数据。
 - 本机可能同时连着别的模拟器（2026-10-13 先后见过 `emulator-5586`、`emulator-5558`，都不属于本项目），adb 命令要用 `-s emulator-5554` 指定保存着登录态的 Pixel_9；不确定时用 `adb -s <设备> emu avd name` 确认是 `Pixel_9`。adb 偶尔会短暂掉线（`install` 无报错失败、`device offline`），稍等再试即可。
 - 部分 Google 域名（如 `dl.google.com`）可能被本机代理规则判为直连而连不上，表现为 TLS 握手中断；这时调整代理分流规则即可，**不要往仓库里写镜像地址**。
