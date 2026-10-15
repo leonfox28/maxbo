@@ -144,6 +144,38 @@ void main() {
       expect(parseStatusText(long.text).last, isA<ExpandSegment>());
     });
 
+    test("takes a mentions retweet source's author from the retweeting "
+        "post's page_info", () {
+      final source = {
+        ...statusJson(id: 9, text: '', extra: {'text_raw': '原文'}),
+      }..remove('user');
+      Status? retweetOf(Map<String, Object?> card) => Status.tryFromJson(
+        statusJson(text: '转发', retweeted: source, pageInfo: card),
+      )!.retweeted;
+      // As in `statuses/mentions`: a card for the source, not a link preview.
+      final card = {
+        'object_type': 'meaasgeObjType',
+        'content1': '@原作者',
+        'content2': '原文摘要',
+        'page_pic': 'https://wx1.sinaimg.cn/thumbnail/a.jpg',
+        'uidPageInfo': '42',
+        'mblogid': 'Abc9',
+      };
+
+      final author = retweetOf(card)!.user!;
+      expect(author.id, '42');
+      expect(author.screenName, '原作者');
+      expect(author.avatarUrl, isNull);
+      expect(retweetOf({...card, 'mblogid': 'Abc8'})!.user, isNull);
+      expect(retweetOf({...card, 'content1': '原作者'})!.user, isNull);
+
+      final outer = Status.tryFromJson(
+        statusJson(text: '转发', retweeted: source, pageInfo: card),
+      )!;
+      expect(outer.pageCard, isNull);
+      expect(outer.video, isNull);
+    });
+
     test('links up text_raw as text would, titling links from the '
         'retweeting post', () {
       final s = Status.tryFromJson(

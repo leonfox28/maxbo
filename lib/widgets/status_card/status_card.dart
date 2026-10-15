@@ -98,7 +98,7 @@ class _Retweeted extends StatelessWidget {
   Widget build(BuildContext context) {
     final onOpen = actions.onOpen;
     // Deleted or hidden posts come without an author or time and can't be
-    // opened; those in `statuses/mentions` lack only the author.
+    // opened; those in `statuses/mentions` may lack only the author.
     final canOpen =
         onOpen != null && (status.user != null || status.createdAt != null);
     return Material(

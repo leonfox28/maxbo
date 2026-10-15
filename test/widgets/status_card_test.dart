@@ -225,6 +225,31 @@ void main() {
     expect(opened, ['9', 'expand 9']);
   });
 
+  testWidgets('a mentions retweet source shows the author from its card', (
+    tester,
+  ) async {
+    final source = {
+      ...statusJson(id: 9, text: '', extra: {'text_raw': '原文开头'}),
+    }..remove('user');
+    await pumpCard(
+      tester,
+      statusJson(
+        id: 1,
+        text: '转发理由',
+        retweeted: source,
+        pageInfo: {
+          'object_type': 'meaasgeObjType',
+          'content1': '@原作者',
+          'uidPageInfo': '42',
+          'mblogid': 'Abc9',
+        },
+      ),
+    );
+
+    expect(find.textContaining('@原作者'), findsOneWidget);
+    expect(find.textContaining('原文开头'), findsOneWidget);
+  });
+
   testWidgets('in detail mode the card is inert and has no counts', (
     tester,
   ) async {

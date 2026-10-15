@@ -36,8 +36,8 @@ class Status {
   /// The short id used in web URLs (`weibo.com/<uid>/<mblogid>`).
   final String? mblogId;
 
-  /// Null for deleted or hidden posts, which still appear as retweet sources,
-  /// and for every retweet source in `statuses/mentions`.
+  /// Null for deleted or hidden posts, which still appear as retweet sources.
+  /// Retweet sources in `statuses/mentions` have only an id and a name.
   final WeiboUser? user;
   final DateTime? createdAt;
 
@@ -74,10 +74,12 @@ class Status {
   final bool pinned;
 
   /// [parentUrls] is the `url_struct` of the post retweeting this one,
-  /// which also covers the links in this one's text.
+  /// which also covers the links in this one's text, and [parentPage] its
+  /// `page_info`.
   static Status? tryFromJson(
     Object? json, {
     List<Map<String, Object?>> parentUrls = const [],
+    Map<String, Object?>? parentPage,
   }) {
     final map = readMap(json);
     if (map == null) return null;
@@ -95,7 +97,7 @@ class Status {
     return Status(
       id: id,
       mblogId: readString(map['mblogid']),
-      user: WeiboUser.tryFromJson(map['user']),
+      user: WeiboUser.tryFromJson(map['user']) ?? _authorOf(map, parentPage),
       createdAt: parseWeiboDate(readString(map['created_at'])),
       source: _plainText(readString(map['source'])),
       region: readString(map['region_name']),
@@ -108,6 +110,7 @@ class Status {
       retweeted: Status.tryFromJson(
         map['retweeted_status'],
         parentUrls: ownUrls,
+        parentPage: pageInfo,
       ),
       repostsCount: readInt(map['reposts_count']) ?? 0,
       commentsCount: readInt(map['comments_count']) ?? 0,
@@ -128,6 +131,26 @@ class Status {
     return map['isAd'] == true ||
         map['readtimetype'] == 'adMblog' ||
         mark.contains('mark_ad');
+  }
+
+  // Retweet sources in `statuses/mentions` come without `user`. Their
+  // retweeting post's page_info is a card for them instead, titled
+  // `@author`, which weibo.com shows in their place (PLAN §8).
+  static WeiboUser? _authorOf(
+    Map<String, Object?> map,
+    Map<String, Object?>? parentPage,
+  ) {
+    final mblogId = readString(map['mblogid']);
+    if (parentPage == null ||
+        mblogId == null ||
+        readString(parentPage['mblogid']) != mblogId) {
+      return null;
+    }
+    final id = readString(parentPage['uidPageInfo']);
+    final title = readString(parentPage['content1']);
+    if (id == null || title == null || !title.startsWith('@')) return null;
+    final name = title.substring(1).trim();
+    return name.isEmpty ? null : WeiboUser(id: id, screenName: name);
   }
 
   // Retweet sources in `statuses/mentions` come without `text` or `user`,

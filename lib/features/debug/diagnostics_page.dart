@@ -1142,7 +1142,8 @@ class _DiagnosticsPageState extends ConsumerState<DiagnosticsPage> {
 
     // Retweet sources in statuses/mentions lack their author (PLAN §8):
     // looks each up in full and reports where its author and short links
-    // turn up in the mention item or in m.weibo.cn's list. Paths only.
+    // turn up in the mention item or in m.weibo.cn's list, and whether the
+    // retweeting post's page_info card names it. Paths only.
     Future<void> mentionSources() async {
       _log('== mention retweet sources');
       final needles = <String, String>{};
@@ -1181,6 +1182,13 @@ class _DiagnosticsPageState extends ConsumerState<DiagnosticsPage> {
           );
           _log(
             '  item $n buttons: ${buttons.map((b) => '${b['type']} ${describeShape(b, maxDepth: 2)}').join(' | ')}',
+          );
+          final card = readMap(item['page_info']);
+          _log(
+            '  item $n card: ${describeShape(card, maxDepth: 1)} '
+            'content1 is @name ${readString(card?['content1']) == '@${needles['name']}'} '
+            'uidPageInfo is uid ${readString(card?['uidPageInfo']) == needles['uid']} '
+            'mblogid is source ${readString(card?['mblogid']) == readString(source?['mblogid'])}',
           );
           _log(
             '  item $n button uid is author: '
