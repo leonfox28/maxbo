@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:html/parser.dart' as html;
 
 import '../../core/util/format.dart';
@@ -34,7 +36,8 @@ class Status {
   /// The short id used in web URLs (`weibo.com/<uid>/<mblogid>`).
   final String? mblogId;
 
-  /// Null for deleted or hidden posts, which still appear as retweet sources.
+  /// Null for deleted or hidden posts, which still appear as retweet sources,
+  /// and for every retweet source in `statuses/mentions`.
   final WeiboUser? user;
   final DateTime? createdAt;
 
@@ -89,7 +92,7 @@ class Status {
       createdAt: parseWeiboDate(readString(map['created_at'])),
       source: _plainText(readString(map['source'])),
       region: readString(map['region_name']),
-      text: readString(map['text']) ?? '',
+      text: _textOf(map),
       urls: [
         for (final u in readMaps(map['url_struct'])) ?UrlEntity.tryFromJson(u),
       ],
@@ -117,6 +120,19 @@ class Status {
     return map['isAd'] == true ||
         map['readtimetype'] == 'adMblog' ||
         mark.contains('mark_ad');
+  }
+
+  // Retweet sources in `statuses/mentions` come without `text` or `user`,
+  // only the plain `text_raw`, cut short with no marker if the post is long
+  // (PLAN §8).
+  static String _textOf(Map<String, Object?> map) {
+    if (readString(map['text']) case final text?) return text;
+    final raw = readString(map['text_raw']);
+    if (raw == null) return '';
+    final escaped = const HtmlEscape(HtmlEscapeMode.element).convert(raw);
+    return map['isLongText'] == true
+        ? '$escaped ...<span class="expand">展开</span>'
+        : escaped;
   }
 
   // `source` is plain text or an HTML fragment like `<a href=…>荣耀Magic</a>`.

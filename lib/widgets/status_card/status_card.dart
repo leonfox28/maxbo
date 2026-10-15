@@ -97,8 +97,10 @@ class _Retweeted extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final onOpen = actions.onOpen;
-    // Deleted or hidden posts come without an author and can't be opened.
-    final canOpen = onOpen != null && status.user != null;
+    // Deleted or hidden posts come without an author or time and can't be
+    // opened; those in `statuses/mentions` lack only the author.
+    final canOpen =
+        onOpen != null && (status.user != null || status.createdAt != null);
     return Material(
       color: Theme.of(context).colorScheme.surfaceContainerHigh,
       borderRadius: BorderRadius.circular(8),

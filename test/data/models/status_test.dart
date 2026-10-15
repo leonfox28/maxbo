@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:maxbo/data/models/feed_page.dart';
 import 'package:maxbo/data/models/pic_info.dart';
 import 'package:maxbo/data/models/status.dart';
+import 'package:maxbo/widgets/rich_text/status_text_parser.dart';
 
 import '../../support/statuses.dart';
 
@@ -124,6 +125,23 @@ void main() {
       expect(s.retweeted?.id, '9');
       expect(s.retweeted?.user, isNull);
       expect(s.retweeted?.text, '抱歉，此微博已被作者删除。');
+    });
+
+    test('falls back to text_raw for a retweet source in mentions', () {
+      Status? retweetOf(Map<String, Object?> source) =>
+          Status.tryFromJson(statusJson(text: '转发', retweeted: source))!
+              .retweeted;
+      final stub = {
+        ...statusJson(id: 9, text: '', extra: {'text_raw': 'a<b>\n第二行'}),
+      }..remove('user');
+
+      final short = retweetOf(stub)!;
+      expect(short.user, isNull);
+      expect(short.text, 'a&lt;b&gt;\n第二行');
+      expect(plainStatusText(short.text), 'a<b> 第二行');
+
+      final long = retweetOf({...stub, 'isLongText': true})!;
+      expect(parseStatusText(long.text).last, isA<ExpandSegment>());
     });
 
     test('reads a video cover, length and shape', () {

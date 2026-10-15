@@ -201,6 +201,30 @@ void main() {
     expect(opened, ['1']); // The tap falls through to the outer card.
   });
 
+  testWidgets('a retweet source without its author still opens', (
+    tester,
+  ) async {
+    final opened = <String>[];
+    // As in `statuses/mentions`: no `user`, the text only in `text_raw`.
+    final source = {
+      ...statusJson(id: 9, text: '', extra: {'text_raw': '原文开头'}),
+      'isLongText': true,
+    }..remove('user');
+    await pumpCard(
+      tester,
+      statusJson(id: 1, text: '转发理由', retweeted: source),
+      actions: StatusCardActions(
+        onOpen: (s) => opened.add(s.id),
+        onExpand: (s) => opened.add('expand ${s.id}'),
+      ),
+    );
+
+    await tester.tapOnText(find.textRange.ofSubstring('原文开头'));
+    await tester.tapOnText(find.textRange.ofSubstring('展开'));
+
+    expect(opened, ['9', 'expand 9']);
+  });
+
   testWidgets('in detail mode the card is inert and has no counts', (
     tester,
   ) async {

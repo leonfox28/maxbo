@@ -972,6 +972,32 @@ class _DiagnosticsPageState extends ConsumerState<DiagnosticsPage> {
         'parsed=${list.where((s) => Status.tryFromJson(s) != null).length} '
         'retweets=${list.where((s) => s['retweeted_status'] != null).length}',
       );
+      final retweets = _maps([for (final s in list) s['retweeted_status']])
+          .toList();
+      if (retweets.isEmpty) return;
+      _log(
+        '  .retweeted_status sizes: '
+        '${retweets.map((r) => r.length).join(',')} '
+        'user=${retweets.where((r) => r['user'] != null).length} '
+        'text=${retweets.where((r) => '${r['text'] ?? ''}'.isNotEmpty).length} '
+        'parsed=${retweets.where((r) => Status.tryFromJson(r) != null).length}',
+      );
+      final keys = {for (final r in retweets) ...r.keys}.toList()..sort();
+      _log('  .retweeted_status keys: ${keys.join(', ')}');
+      for (final r in retweets) {
+        _log(
+          '  .retweeted_status: '
+          'text_raw=${'${r['text_raw'] ?? ''}'.length} '
+          'textLength=${r['textLength']} isLongText=${r['isLongText']} '
+          'ellipsis=${RegExp(r'(\.\.\.|…)\s*$').hasMatch('${r['text_raw'] ?? ''}')} '
+          'newlines=${'\n'.allMatches('${r['text_raw'] ?? ''}').length} '
+          'pic_num=${r['pic_num']} '
+          'pic_ids=${(r['pic_ids'] as List?)?.length} '
+          'visible=${describeShape(r['visible'], maxDepth: 2)} '
+          'page_info=${describeShape(r['page_info'], maxDepth: 0)} '
+          'counts=${r['reposts_count']}/${r['comments_count']}/${r['attitudes_count']}',
+        );
+      }
     }
 
     void logItems(String label, String key, List<Map<String, Object?>> items) {
