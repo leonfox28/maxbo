@@ -123,6 +123,17 @@ List<TextSegment> parseStatusText(
   return segments;
 }
 
+/// The HTML `text` of a status or comment as one line of plain text, for
+/// previews: emoticons become their `[name]`, line breaks spaces.
+String plainStatusText(String text) => [
+  for (final segment in parseStatusText(text))
+    switch (segment) {
+      PlainSegment(:final text) || LinkSegment(:final text) => text,
+      EmoticonSegment(:final alt) => alt,
+      ExpandSegment() => '',
+    },
+].join().replaceAll(RegExp(r'\s+'), ' ').trim();
+
 StatusLink? _linkOf(dom.Element a, String label, List<UrlEntity> urls) {
   final href = a.attributes['href']?.trim();
   if (href == null || href.isEmpty) return null;

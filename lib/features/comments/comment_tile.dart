@@ -22,6 +22,7 @@ class CommentTile extends StatelessWidget {
     this.onThread,
     this.onTap,
     this.onLongPress,
+    this.below,
   });
 
   final Comment comment;
@@ -34,6 +35,9 @@ class CommentTile extends StatelessWidget {
   /// Tapping the comment, e.g. to reply to it.
   final VoidCallback? onTap;
   final VoidCallback? onLongPress;
+
+  /// Shown last, e.g. the post a notification's comment is on.
+  final Widget? below;
 
   @override
   Widget build(BuildContext context) {
@@ -122,6 +126,7 @@ class CommentTile extends StatelessWidget {
                     onTap: onThread!,
                   ),
                 ],
+                if (below != null) ...[const SizedBox(height: 8), below!],
               ],
             ),
           ),

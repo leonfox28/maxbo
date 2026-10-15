@@ -104,4 +104,15 @@ void main() {
   test('unknown elements keep their text', () {
     expect(describe(parseStatusText('<b>粗</b><span>体</span>')), ['text:粗体']);
   });
+
+  test('plainStatusText flattens a body to one line', () {
+    expect(
+      plainStatusText(
+        '看<a href=/n/某人 usercard="name=某人">@某人</a> '
+        '<img alt="[doge]" src="https://face.t.sinajs.cn/doge.png">'
+        '<br>第二行<span class="expand">展开</span>',
+      ),
+      '看@某人 [doge] 第二行',
+    );
+  });
 }

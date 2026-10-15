@@ -1,14 +1,22 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../core/session/session_controller.dart';
+import '../../core/theme.dart';
 import '../../widgets/bars_on_scroll.dart';
 import '../../widgets/floating_pill.dart';
 import '../../widgets/tab_reselect.dart';
+import '../notifications/notices_controller.dart';
 
 /// Scaffold hosting the top-level tabs, switched by a floating pill that
 /// hides while the user scrolls down and comes back when they scroll up.
 /// Tapping the open tab again tells its pages through [TabReselect].
-class HomeShell extends StatefulWidget {
+///
+/// Unread notifications turn the notifications icon red. They are checked
+/// when the user signs in or opens the app, and when they come back to it
+/// (at most once a minute), never in between (PLAN §2).
+class HomeShell extends ConsumerStatefulWidget {
   const HomeShell({super.key, required this.shell, required this.branches});
 
   final StatefulNavigationShell shell;
@@ -17,10 +25,12 @@ class HomeShell extends StatefulWidget {
   final List<Widget> branches;
 
   @override
-  State<HomeShell> createState() => _HomeShellState();
+  ConsumerState<HomeShell> createState() => _HomeShellState();
 }
 
-class _HomeShellState extends State<HomeShell> {
+class _HomeShellState extends ConsumerState<HomeShell> {
+  static const _notificationsTab = 2;
+
   static const _destinations = [
     _Destination(Icons.home_outlined, Icons.home, '首页'),
     _Destination(
@@ -34,6 +44,33 @@ class _HomeShellState extends State<HomeShell> {
 
   final _bars = BarsOnScroll();
   late final _reselected = [for (final _ in widget.branches) _Taps()];
+  late final AppLifecycleListener _lifecycle;
+
+  @override
+  void initState() {
+    super.initState();
+    ref.listenManual(
+      sessionProvider.select((s) => s is SignedIn ? s.account.uid : null),
+      (_, uid) {
+        if (uid != null) _checkUnread();
+      },
+      fireImmediately: true,
+    );
+    _lifecycle = AppLifecycleListener(
+      onResume: () => _checkUnread(minInterval: const Duration(minutes: 1)),
+    );
+  }
+
+  // After the frame: providers can't change while widgets build.
+  void _checkUnread({Duration minInterval = Duration.zero}) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        ref
+            .read(unreadNoticesProvider.notifier)
+            .check(minInterval: minInterval);
+      }
+    });
+  }
 
   @override
   void didUpdateWidget(HomeShell oldWidget) {
@@ -46,6 +83,7 @@ class _HomeShellState extends State<HomeShell> {
 
   @override
   void dispose() {
+    _lifecycle.dispose();
     for (final taps in _reselected) {
       taps.dispose();
     }
@@ -97,6 +135,10 @@ class _HomeShellState extends State<HomeShell> {
         child: _FloatingNavBar(
           destinations: _destinations,
           selectedIndex: current,
+          alerts: {
+            if (ref.watch(unreadNoticesProvider.select((u) => u.any)))
+              _notificationsTab,
+          },
           onSelected: _select,
         ),
       ),
@@ -120,11 +162,15 @@ class _FloatingNavBar extends StatelessWidget {
   const _FloatingNavBar({
     required this.destinations,
     required this.selectedIndex,
+    required this.alerts,
     required this.onSelected,
   });
 
   final List<_Destination> destinations;
   final int selectedIndex;
+
+  /// The tabs with something new, whose icons are red.
+  final Set<int> alerts;
   final ValueChanged<int> onSelected;
 
   @override
@@ -139,6 +185,7 @@ class _FloatingNavBar extends StatelessWidget {
             _NavItem(
               destination,
               selected: i == selectedIndex,
+              alert: alerts.contains(i),
               onTap: () => onSelected(i),
             ),
         ],
@@ -149,10 +196,19 @@ class _FloatingNavBar extends StatelessWidget {
 
 /// An icon, which when selected widens into a chip with its label.
 class _NavItem extends StatelessWidget {
-  const _NavItem(this.destination, {required this.selected, this.onTap});
+  const _NavItem(
+    this.destination, {
+    required this.selected,
+    this.alert = false,
+    this.onTap,
+  });
 
   final _Destination destination;
   final bool selected;
+
+  /// Something new is there: the icon turns red, except on the selected
+  /// chip, where red would hardly show against the primary colour.
+  final bool alert;
   final VoidCallback? onTap;
 
   static const _duration = Duration(milliseconds: 250);
@@ -165,7 +221,7 @@ class _NavItem extends StatelessWidget {
     return Semantics(
       button: true,
       selected: selected,
-      label: destination.label,
+      label: alert ? '${destination.label}，有未读' : destination.label,
       child: Tooltip(
         message: destination.label,
         excludeFromSemantics: true,
@@ -187,7 +243,7 @@ class _NavItem extends StatelessWidget {
                 children: [
                   Icon(
                     selected ? destination.selectedIcon : destination.icon,
-                    color: foreground,
+                    color: alert && !selected ? unreadColor : foreground,
                   ),
                   AnimatedSize(
                     duration: _duration,

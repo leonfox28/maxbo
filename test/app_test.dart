@@ -8,6 +8,7 @@ import 'package:maxbo/core/net/weibo_dio.dart';
 import 'package:maxbo/core/session/session_controller.dart';
 import 'package:maxbo/core/session/session_storage.dart';
 import 'package:maxbo/core/settings/app_settings.dart';
+import 'package:maxbo/core/theme.dart';
 import 'package:maxbo/data/models/account.dart';
 
 import 'support/fakes.dart';
@@ -193,5 +194,60 @@ void main() {
     await tester.tap(find.text('关于 maxbo'));
     await tester.pumpAndSettle();
     expect(find.textContaining('maxbo 是非官方客户端'), findsOneWidget);
+  });
+
+  testWidgets('unread notifications turn the tab icon red until seen', (
+    tester,
+  ) async {
+    final adapter = FakeAdapter(
+      (o) => switch (o.uri.path) {
+        '/2/remind/push_count.json' => jsonBody({'cmt': 1, 'dm_unread': 3}),
+        '/ajax/message/cmt' => jsonBody(
+          noticePageJson('comments', [commentNoticeJson()]),
+        ),
+        _ => jsonBody(feedJson([statusJson(text: '首页的一条微博')])),
+      },
+    );
+    await tester.pumpWidget(
+      app(
+        adapter: adapter,
+        restored: const StoredSession(
+          account: Account(uid: '42'),
+          cookies: {
+            'weibo.com': {'SUB': 'x'},
+          },
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    int checks() => adapter.requests
+        .where((o) => o.uri.path == '/2/remind/push_count.json')
+        .length;
+    Color? bellColor() =>
+        tester.widget<Icon>(find.byIcon(Icons.notifications_outlined)).color;
+    expect(checks(), 1);
+    expect(bellColor(), unreadColor);
+
+    // Coming back to the app checks again, but not within a minute.
+    for (final state in [
+      AppLifecycleState.inactive,
+      AppLifecycleState.hidden,
+      AppLifecycleState.paused,
+      AppLifecycleState.hidden,
+      AppLifecycleState.inactive,
+      AppLifecycleState.resumed,
+    ]) {
+      tester.binding.handleAppLifecycleStateChanged(state);
+    }
+    await tester.pumpAndSettle();
+    expect(checks(), 1);
+
+    await tester.tap(find.byTooltip('通知'));
+    await tester.pumpAndSettle();
+    expect(find.text('一条评论通知'), findsOneWidget);
+
+    await tester.tap(find.byTooltip('首页'));
+    await tester.pumpAndSettle();
+    expect(bellColor(), isNot(unreadColor));
   });
 }

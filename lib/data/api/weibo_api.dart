@@ -11,6 +11,7 @@ import '../models/account.dart';
 import '../models/comment.dart';
 import '../models/feed_page.dart';
 import '../models/hot_search.dart';
+import '../models/notice.dart';
 import '../models/paged.dart';
 import '../models/status.dart';
 import '../models/user_profile.dart';
@@ -223,6 +224,95 @@ class WeiboApi {
   Future<HotSearch> fetchHotSearch() async {
     final json = await getJson('$_web/ajax/side/hotSearch');
     return HotSearch.fromJson(readMap(json['data']) ?? const {});
+  }
+
+  /// Which kinds of notifications are unread.
+  ///
+  /// weibo.com polls these every 30 s, by JSONP and with its own `source`;
+  /// we ask only when the user opens the app (PLAN §2), and plain JSON comes
+  /// back without a callback. A failure here never ends the session: this
+  /// host isn't the API the session is checked against.
+  Future<UnreadNotices> fetchUnreadNotices() async {
+    final Response<Object?> response;
+    try {
+      response = await _dio.get<Object?>(
+        'https://rm.api.weibo.com/2/remind/push_count.json',
+        queryParameters: {
+          'trim_null': 1,
+          'with_dm_group': 1,
+          'with_reminding': 1,
+          'with_settings': 1,
+          // weibo.com leaves likes out; we want them.
+          'exclude_attitude': 0,
+          'with_chat_group_notice': 1,
+          'source': 339644097,
+          'with_chat_group': 1,
+          'with_dm_unread': 1,
+        },
+      );
+    } on DioException catch (e) {
+      throw mapDioException(e);
+    }
+    final data = response.data;
+    _logResponse(response, data is Map ? 'map' : '${data.runtimeType}');
+    if (response.statusCode != 200 || data is! Map<String, Object?>) {
+      throw WeiboApiException(
+        '未读消息获取失败（${response.statusCode}）',
+        statusCode: response.statusCode,
+      );
+    }
+    return UnreadNotices.fromJson(data);
+  }
+
+  /// A page of the comments on the user's posts and replies to them, or
+  /// after [maxId] (a previous page's `Paged.nextCursor`).
+  Future<Paged<CommentNotice>> fetchCommentNotices({String? maxId}) =>
+      _noticePage('message/cmt', 'comments', CommentNotice.tryFromJson, maxId);
+
+  /// A page of the comments that mention the user.
+  Future<Paged<CommentNotice>> fetchMentionComments({String? maxId}) =>
+      _noticePage(
+        'comments/mentions',
+        'comments',
+        CommentNotice.tryFromJson,
+        maxId,
+      );
+
+  /// A page of the posts that mention the user.
+  Future<Paged<Status>> fetchMentionStatuses({String? maxId}) =>
+      _noticePage('statuses/mentions', 'statuses', Status.tryFromJson, maxId);
+
+  /// A page of the likes of the user's posts and comments.
+  Future<Paged<LikeNotice>> fetchLikeNotices({String? maxId}) => _noticePage(
+    'message/attitudes',
+    'attitudes',
+    LikeNotice.tryFromJson,
+    maxId,
+  );
+
+  // The 消息 lists: items under `data.<key>`, newest first, continuing from
+  // `next_cursor`, which is 0 on the last page (PLAN §8). Fetching one marks
+  // its kind read on Weibo's side.
+  Future<Paged<T>> _noticePage<T>(
+    String path,
+    String key,
+    T? Function(Object? json) parse,
+    String? maxId,
+  ) async {
+    final json = await getJson(
+      '$_web/ajax/$path',
+      query: {'max_id': maxId ?? 0},
+    );
+    final data = readMap(json['data']);
+    final items = [for (final i in readMaps(data?[key])) ?parse(i)];
+    final next = readString(data?['next_cursor']);
+    final more = items.isNotEmpty && next != null && next != '0';
+    devLog('$path: ${items.length}, more=$more');
+    return Paged(
+      items,
+      nextCursor: more ? next : null,
+      total: readInt(data?['total_number']),
+    );
   }
 
   /// Likes status [id], or takes the like back when [liked] is false.

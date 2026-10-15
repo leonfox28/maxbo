@@ -269,3 +269,60 @@ Map<String, Object?> hotSearchJson({
   'ok': 1,
   'data': {'realtime': realtime, 'hotgovs': hotgovs, 'hotgov': ?hotgov},
 };
+
+/// One of the 消息 lists (message/cmt, comments/mentions, statuses/mentions,
+/// message/attitudes): items under `data.<key>`; [nextCursor] 0 marks the
+/// last page.
+Map<String, Object?> noticePageJson(
+  String key,
+  List<Map<String, Object?>> items, {
+  int nextCursor = 0,
+}) => {
+  'ok': 1,
+  'data': {
+    key: items,
+    'next_cursor': nextCursor,
+    'previous_cursor': 0,
+    'total_number': items.length,
+    'miss_ids': [],
+  },
+};
+
+/// A comment as the notification lists have it, with the post it is on.
+Map<String, Object?> commentNoticeJson({
+  int id = 6000000000000001,
+  String text = '一条评论通知',
+  Map<String, Object?>? status,
+  Map<String, Object?>? replyTo,
+}) => {
+  ...commentJson(id: id, text: text),
+  'status': status ?? statusJson(text: '被评论的微博'),
+  'reply_comment': ?replyTo,
+};
+
+/// A like as message/attitudes has it. With [cut], the post is the cut-down
+/// form Weibo sometimes sends, without pictures or counts.
+Map<String, Object?> likeNoticeJson({
+  int id = 7000000000000001,
+  Map<String, Object?>? status,
+  Map<String, Object?>? comment,
+  bool cut = false,
+}) {
+  final post = status ?? statusJson(text: '被赞的微博');
+  return {
+    'id': id,
+    'idStr': '$id',
+    'created_at': 'Mon Oct 12 14:00:00 +0800 2026',
+    'attitude': 'heart',
+    'user': userJson(id: 3001, name: '点赞的人'),
+    'status': ?(cut
+        ? {
+            for (final k in ['id', 'idstr', 'mid', 'mblogid', 'text', 'user'])
+              k: post[k],
+          }
+        : comment == null
+        ? post
+        : null),
+    'comment': ?comment,
+  };
+}

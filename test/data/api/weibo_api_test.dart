@@ -6,6 +6,7 @@ import 'package:maxbo/core/net/weibo_dio.dart';
 import 'package:maxbo/core/net/weibo_exception.dart';
 import 'package:maxbo/data/api/weibo_api.dart';
 import 'package:maxbo/data/models/comment.dart';
+import 'package:maxbo/data/models/notice.dart';
 
 import '../../support/fakes.dart';
 import '../../support/statuses.dart';
@@ -206,6 +207,93 @@ void main() {
 
     expect(adapter.requests.single.uri.path, '/ajax/side/hotSearch');
     expect(hot.items.single.word, '第一条');
+  });
+
+  group('fetchUnreadNotices', () {
+    test('reads which kinds have counts, zero ones left out', () async {
+      respond = (_) =>
+          jsonBody({'cmt': 2, 'mention_cmt': 0, 'attitude': 1, 'messages': 3});
+
+      final unread = await fakeApi(adapter).fetchUnreadNotices();
+
+      final request = adapter.requests.single;
+      expect(request.uri.host, 'rm.api.weibo.com');
+      expect(request.uri.path, '/2/remind/push_count.json');
+      expect(query()['exclude_attitude'], '0');
+      expect(query().containsKey('callback'), isFalse);
+      // The session's cookies go along, as they do from weibo.com.
+      expect(request.headers['Cookie'], contains('SUB=x'));
+      expect(unread.kinds, {NoticeKind.comments, NoticeKind.likes});
+    });
+
+    test('a refusal is an error, but never ends the session', () async {
+      respond = (_) =>
+          jsonBody({'error': 'auth faild!', 'error_code': 21301}, status: 403);
+      var expired = false;
+      final api = WeiboApi(
+        createWeiboDio(
+          jar: WeiboCookieJar({
+            'weibo.com': {'SUB': 'x'},
+          }),
+          throttle: RequestThrottle(minInterval: Duration.zero),
+        )..httpClientAdapter = adapter,
+        onSessionExpired: () => expired = true,
+      );
+
+      await expectLater(
+        api.fetchUnreadNotices(),
+        throwsA(isA<WeiboApiException>()),
+      );
+      expect(expired, isFalse);
+    });
+  });
+
+  group('notice lists', () {
+    test('page from next_cursor until it is 0', () async {
+      respond = (_) => jsonBody(
+        noticePageJson('comments', [commentNoticeJson(id: 9)], nextCursor: 8),
+      );
+      final api = fakeApi(adapter);
+
+      final first = await api.fetchCommentNotices();
+      expect(adapter.requests.last.uri.path, '/ajax/message/cmt');
+      expect(query(), {'max_id': '0'});
+      expect(first.items.single.id, '9');
+      expect(first.items.single.status?.text, '被评论的微博');
+      expect(first.nextCursor, '8');
+
+      respond = (_) =>
+          jsonBody(noticePageJson('comments', [commentNoticeJson(id: 7)]));
+      final last = await api.fetchCommentNotices(maxId: '8');
+      expect(query(), {'max_id': '8'});
+      expect(last.nextCursor, isNull);
+    });
+
+    test('an empty page ends the list whatever next_cursor says', () async {
+      respond = (_) => jsonBody(noticePageJson('statuses', [], nextCursor: 8));
+
+      final page = await fakeApi(adapter).fetchMentionStatuses();
+
+      expect(adapter.requests.single.uri.path, '/ajax/statuses/mentions');
+      expect(page.nextCursor, isNull);
+    });
+
+    test('mentioning comments and likes come from their own lists', () async {
+      respond = (o) => jsonBody(
+        o.uri.path.endsWith('attitudes')
+            ? noticePageJson('attitudes', [likeNoticeJson(id: 5)])
+            : noticePageJson('comments', [commentNoticeJson(id: 4)]),
+      );
+      final api = fakeApi(adapter);
+
+      final mentions = await api.fetchMentionComments();
+      expect(adapter.requests.last.uri.path, '/ajax/comments/mentions');
+      expect(mentions.items.single.id, '4');
+
+      final likes = await api.fetchLikeNotices();
+      expect(adapter.requests.last.uri.path, '/ajax/message/attitudes');
+      expect(likes.items.single.id, '5');
+    });
   });
 
   group('writes', () {

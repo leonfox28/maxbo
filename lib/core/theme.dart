@@ -11,3 +11,7 @@ ThemeData buildTheme(Brightness brightness) {
     ),
   );
 }
+
+/// Marks what has something new for the user, such as unread notifications.
+/// The same red in light and dark themes, unlike the scheme's error colour.
+const unreadColor = Color(0xFFF5222D);
