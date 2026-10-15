@@ -176,12 +176,25 @@ class _TabLabel extends StatelessWidget {
     return Semantics(
       label: unread ? '$label，有未读' : label,
       excludeSemantics: true,
-      child: Badge(
-        isLabelVisible: unread,
-        smallSize: 6,
-        backgroundColor: unreadColor,
-        offset: const Offset(4, -2),
-        child: Text(label),
+      // Not a Badge: its dot sits inside the corner, over the last glyph.
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          Text(label),
+          if (unread)
+            Positioned(
+              top: -2,
+              right: -9,
+              child: Container(
+                width: 6,
+                height: 6,
+                decoration: const BoxDecoration(
+                  color: unreadColor,
+                  shape: BoxShape.circle,
+                ),
+              ),
+            ),
+        ],
       ),
     );
   }
