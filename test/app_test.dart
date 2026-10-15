@@ -196,14 +196,21 @@ void main() {
     expect(find.textContaining('maxbo 是非官方客户端'), findsOneWidget);
   });
 
-  testWidgets('unread notifications turn the tab icon red until seen', (
+  testWidgets('unread notifications turn the tab icon red until all seen', (
     tester,
   ) async {
     final adapter = FakeAdapter(
       (o) => switch (o.uri.path) {
-        '/2/remind/push_count.json' => jsonBody({'cmt': 1, 'dm_unread': 3}),
+        '/2/remind/push_count.json' => jsonBody({
+          'cmt': 1,
+          'attitude': 1,
+          'dm_unread': 3,
+        }),
         '/ajax/message/cmt' => jsonBody(
           noticePageJson('comments', [commentNoticeJson()]),
+        ),
+        '/ajax/message/attitudes' => jsonBody(
+          noticePageJson('attitudes', [likeNoticeJson()]),
         ),
         _ => jsonBody(feedJson([statusJson(text: '首页的一条微博')])),
       },
@@ -242,10 +249,20 @@ void main() {
     await tester.pumpAndSettle();
     expect(checks(), 1);
 
+    // The comments tab opens first; the likes are still unread.
     await tester.tap(find.byTooltip('通知'));
     await tester.pumpAndSettle();
     expect(find.text('一条评论通知'), findsOneWidget);
+    await tester.tap(find.byTooltip('首页'));
+    await tester.pumpAndSettle();
+    expect(bellColor(), unreadColor);
 
+    await tester.tap(find.byTooltip('通知'));
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.descendant(of: find.byType(TabBar), matching: find.text('赞')),
+    );
+    await tester.pumpAndSettle();
     await tester.tap(find.byTooltip('首页'));
     await tester.pumpAndSettle();
     expect(bellColor(), isNot(unreadColor));

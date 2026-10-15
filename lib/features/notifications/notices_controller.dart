@@ -14,11 +14,12 @@ final unreadNoticesProvider =
       UnreadNoticesController.new,
     );
 
-/// Which kinds of notifications are unread, which the tab bar marks.
+/// Which kinds of notifications are unread, which the tab bar and the
+/// notification page's tabs mark.
 ///
 /// Checked only when the user opens the app or signs in ([check]), never
-/// polled (PLAN §2). Loading a list marks its kind read, as it does on
-/// Weibo's side ([markRead]).
+/// polled (PLAN §2). A kind stays marked until the user opens its tab
+/// ([markRead]); a check only adds marks.
 class UnreadNoticesController extends Notifier<UnreadNotices> {
   DateTime? _checkedAt;
 
@@ -50,7 +51,11 @@ class UnreadNoticesController extends Notifier<UnreadNotices> {
     try {
       final unread = await ref.read(weiboApiProvider).fetchUnreadNotices();
       if (!buildRef.mounted) return;
-      state = UnreadNotices({...unread.kinds}..removeAll(_readDuringCheck));
+      // Loading a list marks it read on Weibo's side, so a tab opened since
+      // the check went out is up to date.
+      state = UnreadNotices(
+        {...state.kinds, ...unread.kinds}..removeAll(_readDuringCheck),
+      );
     } on WeiboException catch (e) {
       devLog('unread notices: $e');
     } finally {
@@ -58,6 +63,7 @@ class UnreadNoticesController extends Notifier<UnreadNotices> {
     }
   }
 
+  /// The user opened the tab of [kind].
   void markRead(NoticeKind kind) {
     if (_checking) _readDuringCheck.add(kind);
     if (state.has(kind)) state = state.without(kind);
@@ -81,25 +87,11 @@ final likeNoticesProvider =
       PagedState<LikeNotice>
     >(LikeNoticesController.new);
 
-/// One of the notification lists. Its first page clears the unread mark of
-/// its [kind].
-abstract class _NoticeList<T> extends PagedController<T> {
-  NoticeKind get kind;
-
-  @override
-  Future<PagedState<T>> build() async {
-    final list = await super.build();
-    if (ref.mounted) ref.read(unreadNoticesProvider.notifier).markRead(kind);
-    return list;
-  }
-}
-
 /// [NoticeKind.comments] or [NoticeKind.mentionComments].
-class CommentNoticesController extends _NoticeList<CommentNotice> {
+class CommentNoticesController extends PagedController<CommentNotice> {
   CommentNoticesController(this.kind)
     : assert(kind == NoticeKind.comments || kind == NoticeKind.mentionComments);
 
-  @override
   final NoticeKind kind;
 
   @override
@@ -114,10 +106,7 @@ class CommentNoticesController extends _NoticeList<CommentNotice> {
   String idOf(CommentNotice item) => item.id;
 }
 
-class MentionStatusesController extends _NoticeList<Status> {
-  @override
-  NoticeKind get kind => NoticeKind.mentionStatuses;
-
+class MentionStatusesController extends PagedController<Status> {
   @override
   Future<Paged<Status>> fetchPage(String? cursor) =>
       ref.read(weiboApiProvider).fetchMentionStatuses(maxId: cursor);
@@ -126,10 +115,7 @@ class MentionStatusesController extends _NoticeList<Status> {
   String idOf(Status item) => item.id;
 }
 
-class LikeNoticesController extends _NoticeList<LikeNotice> {
-  @override
-  NoticeKind get kind => NoticeKind.likes;
-
+class LikeNoticesController extends PagedController<LikeNotice> {
   @override
   Future<Paged<LikeNotice>> fetchPage(String? cursor) =>
       ref.read(weiboApiProvider).fetchLikeNotices(maxId: cursor);

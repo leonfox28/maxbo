@@ -33,7 +33,8 @@ const _tabs = [
 /// The notifications tab: comments, mentions and likes, one list each.
 ///
 /// A list loads when its tab is first shown, which marks its kind read on
-/// Weibo's side too. Shown again while marked unread, it reloads.
+/// Weibo's side. Opening a tab marked unread clears the mark, and reloads
+/// the list if it was loaded before.
 class NotificationsPage extends ConsumerWidget {
   const NotificationsPage({super.key});
 
@@ -62,7 +63,7 @@ class _Notices extends ConsumerStatefulWidget {
 class _NoticesState extends ConsumerState<_Notices>
     with SingleTickerProviderStateMixin {
   late final _tabController = TabController(length: _tabs.length, vsync: this)
-    ..addListener(_reloadShownIfUnread);
+    ..addListener(_openShownTab);
 
   // Each list scrolls on its own, and only the shown one answers a tap on
   // the open home tab.
@@ -83,7 +84,7 @@ class _NoticesState extends ConsumerState<_Notices>
     final shown = TickerMode.valuesOf(context).enabled;
     if (shown != _shown) {
       _shown = shown;
-      _reloadShownIfUnread();
+      _openShownTab();
     }
   }
 
@@ -102,13 +103,15 @@ class _NoticesState extends ConsumerState<_Notices>
 
   void _onHomeTap() => _taps[_tabController.index].tap();
 
-  /// Reloads the list in view if it is marked unread: it was loaded before
-  /// whatever is new. Lists not loaded yet will be once built.
-  void _reloadShownIfUnread() {
+  /// The user is looking at the open tab: clears its unread mark, and
+  /// reloads its list if that came before whatever is new. A list not
+  /// loaded yet loads once built.
+  void _openShownTab() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || !_shown) return;
       final kind = _tabs[_tabController.index].kind;
       if (!ref.read(unreadNoticesProvider).has(kind)) return;
+      ref.read(unreadNoticesProvider.notifier).markRead(kind);
       final provider = _listProvider(kind);
       if (ref.exists(provider) && !ref.read(provider).isLoading) {
         ref.invalidate(provider);
@@ -126,7 +129,7 @@ class _NoticesState extends ConsumerState<_Notices>
 
   @override
   Widget build(BuildContext context) {
-    ref.listen(unreadNoticesProvider, (_, _) => _reloadShownIfUnread());
+    ref.listen(unreadNoticesProvider, (_, _) => _openShownTab());
     final unread = ref.watch(unreadNoticesProvider);
     return Column(
       children: [
@@ -161,7 +164,7 @@ class _Taps extends ChangeNotifier {
   void tap() => notifyListeners();
 }
 
-/// A tab's name, with a dot while it has something unread.
+/// A tab's name, with a dot at its top right while it has something unread.
 class _TabLabel extends StatelessWidget {
   const _TabLabel(this.label, {required this.unread});
 
@@ -173,21 +176,12 @@ class _TabLabel extends StatelessWidget {
     return Semantics(
       label: unread ? '$label，有未读' : label,
       excludeSemantics: true,
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(label),
-          if (unread)
-            Container(
-              width: 6,
-              height: 6,
-              margin: const EdgeInsets.only(left: 3, bottom: 8),
-              decoration: const BoxDecoration(
-                color: unreadColor,
-                shape: BoxShape.circle,
-              ),
-            ),
-        ],
+      child: Badge(
+        isLabelVisible: unread,
+        smallSize: 6,
+        backgroundColor: unreadColor,
+        offset: const Offset(4, -2),
+        child: Text(label),
       ),
     );
   }

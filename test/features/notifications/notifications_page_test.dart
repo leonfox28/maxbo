@@ -109,7 +109,7 @@ void main() {
     expect(paths().where((p) => p == '/ajax/message/cmt'), hasLength(1));
   });
 
-  testWidgets('a dot marks unread tabs until their list loads', (tester) async {
+  testWidgets('a dot marks unread tabs until they are opened', (tester) async {
     await pumpPage(tester);
     unreadCounts = {'cmt': 1, 'attitude': 2};
     await checkUnread(tester);
@@ -125,6 +125,34 @@ void main() {
     expect(paths().last, '/ajax/message/attitudes');
     expect(container.read(unreadNoticesProvider).any, isFalse);
     expect(find.bySemanticsLabel(RegExp('赞，有未读')), findsNothing);
+  });
+
+  testWidgets('a loaded list keeps its dot until its tab is opened', (
+    tester,
+  ) async {
+    await pumpPage(tester);
+    await tester.tap(tab('赞'));
+    await tester.pumpAndSettle();
+    await tester.tap(tab('评论'));
+    await tester.pumpAndSettle();
+    int likeLoads() =>
+        paths().where((p) => p == '/ajax/message/attitudes').length;
+    expect(likeLoads(), 1);
+
+    unreadCounts = {'attitude': 1};
+    await checkUnread(tester);
+    expect(likeLoads(), 1);
+    expect(find.bySemanticsLabel(RegExp('赞，有未读')), findsOneWidget);
+
+    // Read elsewhere, say: the dot still waits for the user.
+    unreadCounts = {};
+    await checkUnread(tester);
+    expect(find.bySemanticsLabel(RegExp('赞，有未读')), findsOneWidget);
+
+    await tester.tap(tab('赞'));
+    await tester.pumpAndSettle();
+    expect(likeLoads(), 2);
+    expect(container.read(unreadNoticesProvider).any, isFalse);
   });
 
   testWidgets('notices open the post they are about', (tester) async {
