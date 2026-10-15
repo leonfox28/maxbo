@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:math';
 
 import 'package:dio/dio.dart';
@@ -876,6 +877,277 @@ class _DiagnosticsPageState extends ConsumerState<DiagnosticsPage> {
     if (mounted) setState(() => _running = false);
   }
 
+  /// Read-only: the unread counts and the lists behind weibo.com's 消息
+  /// page (mentions, comments, likes), and which list clears which count.
+  ///
+  /// Logs shapes, counts and cursors only, never names or text.
+  Future<void> _probeNotifications() async {
+    setState(() {
+      _lines.clear();
+      _running = true;
+    });
+    if (ref.read(sessionProvider) is! SignedIn) {
+      _log('notifications probe needs a signed-in session');
+      setState(() => _running = false);
+      return;
+    }
+    final dio = createWeiboDio(
+      jar: ref.read(cookieJarProvider),
+      throttle: ref.read(requestThrottleProvider),
+    );
+    final api = WeiboApi(dio);
+
+    // weibo.com reads these with JSONP every 30 s, passing its own web
+    // source id and trim_null=1 (which leaves out zero counts); we read them
+    // once without a callback, with every count.
+    Map<String, Object?>? previous;
+    Future<void> unread(String label) async {
+      try {
+        final response = await dio.get<String>(
+          'https://rm.api.weibo.com/2/remind/push_count.json',
+          queryParameters: {
+            'trim_null': 0,
+            'with_dm_group': 1,
+            'with_reminding': 1,
+            'with_settings': 1,
+            'exclude_attitude': 0,
+            'with_chat_group_notice': 1,
+            'source': 339644097,
+            'with_chat_group': 1,
+            'with_dm_unread': 1,
+          },
+          options: Options(responseType: ResponseType.plain),
+        );
+        final body = response.data ?? '';
+        Object? json;
+        try {
+          json = jsonDecode(body);
+        } on FormatException {
+          json = null;
+        }
+        if (json is! Map<String, Object?>) {
+          _log(
+            'unread $label: ${response.statusCode} '
+            '${response.headers.value('content-type')} not JSON, '
+            '${body.length} chars, starts '
+            '${_redact(body.substring(0, min(body.length, 40)))}',
+          );
+          return;
+        }
+        final counts = {
+          for (final e in json.entries)
+            if (e.value is int) e.key: e.value,
+        };
+        if (previous == null) {
+          _log(
+            'unread $label: ${response.statusCode} '
+            '${response.headers.value('content-type')} '
+            '${describeShape({for (final e in json.entries)
+              if (e.value is! int) e.key: e.value}, maxDepth: 2)}',
+          );
+          _log(
+            'unread counts: ${counts.entries.map((e) => '${e.key}=${e.value}').join(' ')}',
+          );
+        } else {
+          final changed = {
+            ...counts.keys,
+            ...previous!.keys,
+          }.where((k) => counts[k] != previous![k]);
+          _log(
+            'unread $label: '
+            '${changed.isEmpty ? 'no change' : changed.map((k) => '$k ${previous![k]}->${counts[k]}').join(' ')}',
+          );
+        }
+        previous = counts;
+      } on DioException catch (e) {
+        _log('unread $label: ${mapDioException(e)}');
+      }
+    }
+
+    void logStatuses(String label, Iterable<Map<String, Object?>> statuses) {
+      final list = statuses.toList();
+      if (list.isEmpty) return;
+      _log(
+        '$label statuses: ${list.length}, '
+        'parsed=${list.where((s) => Status.tryFromJson(s) != null).length} '
+        'retweets=${list.where((s) => s['retweeted_status'] != null).length}',
+      );
+    }
+
+    void logItems(String label, String key, List<Map<String, Object?>> items) {
+      if (items.isEmpty) return;
+      final keys = {for (final i in items) ...i.keys}.toList()..sort();
+      _log('$label keys: ${keys.join(', ')}');
+      for (final field in [
+        'id',
+        'idstr',
+        'idStr',
+        'created_at',
+        'type',
+        'attitude_type',
+        'last_attitude',
+        'source_type',
+        'user',
+        'status',
+        'comment',
+        'reply_comment',
+        'object',
+        'object_type',
+        'attitude',
+        'like_counts',
+        'liked',
+        'rootid',
+        'menus',
+      ]) {
+        final shapes = {
+          for (final i in items)
+            if (i.containsKey(field))
+              switch (i[field]) {
+                final Map<String, Object?> m =>
+                  '{${m.length} keys}${m.containsKey('status') ? '+status' : ''}',
+                final String s
+                    when field == 'created_at' || field == 'attitude' =>
+                  _patterns([s]),
+                final v => describeShape(v, maxDepth: 0),
+              },
+        };
+        if (shapes.isNotEmpty) _log('  $field: ${shapes.take(4).join(' | ')}');
+      }
+      _log('  order: ${_order(items)}');
+      switch (key) {
+        case 'statuses':
+          logStatuses(label, items);
+        case 'comments':
+          _log(
+            '  Comment.tryFromJson: '
+            '${items.where((c) => Comment.tryFromJson(c) != null).length}'
+            '/${items.length}',
+          );
+          logStatuses(
+            '$label .status',
+            _maps([for (final c in items) c['status']]),
+          );
+          _log(
+            '  .reply_comment: ${items.where((c) => c['reply_comment'] != null).length}'
+            ' .status null: ${items.where((c) => c['status'] == null).length}',
+          );
+          _logHtml(items.map((c) => c['text']).whereType<String>());
+        default:
+          for (final field in ['status', 'comment', 'object']) {
+            final inner = _maps([for (final i in items) i[field]]).toList();
+            if (inner.isEmpty) continue;
+            final innerKeys = {for (final i in inner) ...i.keys}.toList()
+              ..sort();
+            _log('  .$field keys: ${innerKeys.join(', ')}');
+            if (field == 'status') logStatuses('$label .status', inner);
+            if (field == 'comment') {
+              _log(
+                '  .comment Comment.tryFromJson: '
+                '${inner.where((c) => Comment.tryFromJson(c) != null).length}'
+                '/${inner.length}',
+              );
+              logStatuses(
+                '$label .comment.status',
+                _maps([for (final c in inner) c['status']]),
+              );
+            }
+          }
+      }
+    }
+
+    // One of the lists on the 消息 page: up to two pages, then the unread
+    // counts again.
+    Future<void> list(
+      String label,
+      String path,
+      String key, [
+      Map<String, Object?> params = const {},
+    ]) async {
+      _log('== $label ($path ${params.keys.join(',')})');
+      final seen = <String>{};
+      final all = <Map<String, Object?>>[];
+      String? cursor;
+      for (final n in [1, 2]) {
+        final Map<String, Object?> json;
+        try {
+          json = await api.getJson(
+            'https://weibo.com/ajax/$path',
+            query: {...params, 'max_id': cursor ?? 0},
+          );
+        } on Exception catch (e) {
+          _log('$label p$n: $e');
+          break;
+        }
+        final data = readMap(json['data']);
+        final items = _maps(data?[key]).toList();
+        if (n == 1) {
+          _log(
+            '$label: ${describeShape({...json, 'data': null}, maxDepth: 1)}',
+          );
+          _log(
+            '$label data: ${describeShape({...?data, key: null}, maxDepth: 1)}',
+          );
+        }
+        _log(
+          '$label p$n flags: '
+          '${[
+            for (final k in ['tips_show', 'miss_count', 'miss_rank', 'hasvisible', 'interval', 'extend_card', 'low_quality_rank'])
+              if (data?.containsKey(k) ?? false) '$k=${data![k]}',
+          ].join(' ')} '
+          'miss_ids=${(data?['miss_ids'] as List?)?.length} '
+          'pop_tips=${_patterns([data?['pop_tips']])} '
+          'filter_hints=${_patterns([data?['filter_hints']])}',
+        );
+        final next = data?['next_cursor'];
+        _log(
+          '$label p$n: items=${items.length} '
+          'overlap=${items.where((i) => !seen.add('${i['idstr'] ?? i['id']}')).length} '
+          'next_cursor=${next.runtimeType} ==0:${'$next' == '0'} '
+          'vs last id: ${_compareIds('$next', readString(items.lastOrNull?['idstr']) ?? '${items.lastOrNull?['id']}')} '
+          'total_number=${data?['total_number']} messType=${data?['messType']}',
+        );
+        all.addAll(items);
+        if (items.isEmpty || next == null || '$next' == '0') break;
+        cursor = '$next';
+      }
+      logItems(label, key, all);
+      await unread('after $label');
+    }
+
+    _log('== unread before');
+    await unread('before');
+    await list('@statuses', 'statuses/mentions', 'statuses');
+    await list('@comments', 'comments/mentions', 'comments');
+    await list('cmt inbox', 'message/cmt', 'comments');
+    await list('cmt inbox (following)', 'message/cmt', 'comments', {
+      'filter_by_author': 1,
+    });
+    await list('cmt outbox', 'message/myCmt', 'comments');
+    await list('likes', 'message/attitudes', 'attitudes');
+
+    _log('== msgList all');
+    try {
+      final json = await api.getJson(
+        'https://weibo.com/ajax/message/msgList',
+        query: {'type': 'all', 'max_id': 0, 'sinceId': ''},
+      );
+      final data = readMap(json['data']);
+      final items = _maps(data?['list']).toList();
+      _log(
+        'msgList data: ${describeShape({...?data, 'list': null}, maxDepth: 1)}',
+      );
+      _log('msgList: items=${items.length}');
+      for (final i in items.take(3)) {
+        _log('  item: ${describeShape(i, maxDepth: 1)}');
+      }
+    } on Exception catch (e) {
+      _log('msgList: $e');
+    }
+    _log('== done');
+    dio.close();
+    if (mounted) setState(() => _running = false);
+  }
+
   /// Opens an app route typed in, e.g. `/n/name`, to reach pages the app
   /// has no way to yet.
   Future<void> _openRoute() async {
@@ -1659,6 +1931,11 @@ class _DiagnosticsPageState extends ConsumerState<DiagnosticsPage> {
             tooltip: '打开页面',
             icon: const Icon(Icons.open_in_new),
             onPressed: _openRoute,
+          ),
+          IconButton(
+            tooltip: '通知结构（只读，会清掉未读数）',
+            icon: const Icon(Icons.notifications_none),
+            onPressed: _running ? null : _probeNotifications,
           ),
           IconButton(
             tooltip: '互动结构（会真实点赞和评论）',

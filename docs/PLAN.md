@@ -209,6 +209,15 @@ test/  (fixtures/ 下只放合成数据)
 - **删除评论**：`statuses/destroyComment` 返回 `{ok:1, data:<被删的评论>}`；重复删除返回 HTTP 400 和 `message`。
 - **失败的样子**：`{ok:0, message, msg, error_code, error_type}`（`error_type` 为 `toast`/`alert`/`confirm`/`link`），HTTP 200。`unwrapResponse` 已经把它映射成带 `message` 的 `WeiboApiException`。还没见到写操作触发验证码（`ok:-100`），映射与读接口相同。
 
+**通知实测结论（2026-10-15，诊断页「通知结构」，只读）：**
+
+- **接口来源**：weibo.com 前端脚本（`h5.sinaimg.cn/m/weibo-pro-next/assets/index-*.js`，以游客身份用无头 Chrome 取得，只看接口形态）里「消息」页的各个列表：@我的微博 `GET /ajax/statuses/mentions`、@我的评论 `GET /ajax/comments/mentions`、收到的评论 `GET /ajax/message/cmt`、发出的评论 `GET /ajax/message/myCmt`、赞 `GET /ajax/message/attitudes`。前两个和「收到的评论」可加 `filter_by_author=1`（只看关注的人），@我的微博另有 `filter_by_type=1`（原创）。网页版的「24小时全部」`/ajax/message/msgList?type=all` 对测试账号返回「你访问的地址不存在」，不用。
+- **列表格式**：都是 `{ok:1, data:{<列表>, next_cursor(int), previous_cursor, total_number, miss_ids, miss_count, filter_hints, …}}`，列表字段分别是 `statuses`、`comments`、`attitudes`。翻页传 `max_id=<上一页的 next_cursor>`，首屏传 0，`next_cursor` 为 0 表示到底；`next_cursor` 小于本页末条的 id。按时间倒序。**`total_number` 包含被折叠的条目**：收到的评论 `total_number=4`、实际返回 2 条，另外 2 条在 `miss_ids` 里（微博判为低质量后折叠，`pop_tips` 有说明文字），网页版不显示它们，我们也不显示。
+- **评论类条目**（收到的评论、@我的评论）：与 `buildComments` 的评论同构，`Comment.tryFromJson` 能直接解析；另带完整的 `status`（被评论的微博，`Status.tryFromJson` 能解析）。回复别人的评论时网页版还读 `reply_comment`，这次的样本都是根评论，没有见到。
+- **赞的条目**：`{id(int), idStr, created_at, user(点赞的人), status, attitude:"heart", attitude_type, last_attitude, source_type, …}`，注意是 `idStr` 而不是 `idstr`。`status` 有时完整（74 个字段），有时是精简版（22 个字段，只有 `text`、`user`、`mblogid` 等，没有图片和计数），两种 `Status.tryFromJson` 都能解析。网页版的赞条目也可能是评论（`comment` 里再套 `status`），这次没见到。
+- **未读数**：网页版用 JSONP 每 30 秒请求一次 `https://rm.api.weibo.com/2/remind/push_count.json`（带网页版自己的 `source=339644097`）。不带 callback 时直接返回 JSON，`.weibo.com` 的 Cookie 有效。计数在顶层而不是 `data` 里：`cmt`/`all_cmt`/`attention_cmt`（收到的评论）、`mention_status`/`mention_cmt`（@我）、`attitude`（赞）、`messages`（合计）等；`trim_null=1` 时为 0 的键会被省略。在自己微博下的评论即使带 @，也只计入 `cmt`，`mention_cmt` 仍是 0。
+- **请求列表会清掉未读**：取一次 `message/cmt` 后 `cmt`、`all_cmt`、`attention_cmt` 都从 2 变为 0，取一次 `message/attitudes` 后 `attitude` 从 1 变为 0，没有另外的清除请求（网页版也只是把本地计数清零）。所以在 maxbo 里看过之后，官方 App 和网页版的红点也会消失，与在网页版里看一样。
+
 ## 9. 分发
 
 - **Android**：GitHub Releases 发布按 ABI 拆分的 APK（`flutter build apk --release --split-per-abi`）。签名密钥不进 git：本地密钥库是 `~/.config/maxbo/release.jks`（别名 `maxbo`），密码在 `android/key.properties`（已 gitignore）；CI 用的副本存在 GitHub 仓库 `release` 环境的 Secrets 里（见下方 CI）。Secrets 写入后读不回来，不能当备份。证书 SHA-256 是 `A1:7A:66:0B:CA:65:D7:BB:89:D6:F3:07:AB:A4:61:06:F3:F8:AF:CB:90:F5:D0:B3:EC:40:EB:28:6D:71:79:E2`。**密钥丢了，已安装的用户就无法覆盖升级**，这两个文件要另外备份。没有 `key.properties` 时 release 包退回调试密钥签名。调试版的包名带 `.debug` 后缀，名称是「maxbo debug」，和 release 版可以同时安装。国行手机通常没有 GMS，暂不受 Google 开发者验证影响；2027 年该政策全球生效后再评估。
@@ -264,7 +273,7 @@ test/  (fixtures/ 下只放合成数据)
 - **设置**（`lib/core/settings/app_settings.dart`）：`settingsProvider` 是 `AppSettings`（主题、`ImageQuality`、图片缓存上限），存在 `shared_preferences` 里，`main()` 在第一帧前读入（`initialSettingsProvider`），避免主题闪一下。改设置用 `settingsProvider.notifier.update((s) => s.copyWith(...))`，会立即生效并保存。列表里的图片尺寸用 `quality.listPixels(逻辑尺寸, dpr)` 再交给 `PicInfo.variantFor()`，查看器用 `quality.viewerVariant(pic)`。测试用 `test/support/fakes.dart` 的 `InMemorySettingsStorage`。
 - **图片磁盘缓存**（`lib/core/media/image_disk_cache.dart`）：`extended_image` 把图片存在临时目录的 `cacheimage/` 下，自己不清理。`ImageDiskCache` 负责统计大小、清空和按上限删除最早写入的文件；启动时和调低上限时各执行一次。测试用 `FakeImageDiskCache`。
 - **设置页和关于页**：`/settings`（入口是「我」页列表里的「设置」，未登录时也有）、`/about`。关于页的声明和隐私文案要与 README 保持一致。应用固定使用中文的系统控件文案（`MaterialApp.locale`）。
-- **调试**：调试版「我」页列表里的「开发者诊断」进入诊断页：▶ 是 M1 的接口检查，▤ 是「时间线结构」探针，📄 是「详情结构」探针（长文、视频地址和有效期、评论/楼中楼/转发的分页），👤 是「主页与热搜结构」探针，📢 是「广告字段」探针（只读，输入 `@昵称` 或 uid，列出被判为广告的微博的日期和相关字段，以及只有它们才有的字段），👍 是「互动结构」探针（**会真实点赞、评论再删除**，输入 `@昵称` 时只对当前账号关注的人生效，可以只测点赞），↗ 可以输入路由直接打开页面（如 `/n/昵称`、`/status/<id>`，用来进入应用里还没有入口的页面）。日志前缀 `[maxbo-diag]` / `[maxbo]`，用 `adb logcat` 读取。`devLog()` 只在调试版输出，不得记录 Cookie 值或微博正文。
+- **调试**：调试版「我」页列表里的「开发者诊断」进入诊断页：▶ 是 M1 的接口检查，▤ 是「时间线结构」探针，📄 是「详情结构」探针（长文、视频地址和有效期、评论/楼中楼/转发的分页），👤 是「主页与热搜结构」探针，📢 是「广告字段」探针（只读，输入 `@昵称` 或 uid，列出被判为广告的微博的日期和相关字段，以及只有它们才有的字段），🔔 是「通知结构」探针（只读，但会清掉测试账号的消息未读数），👍 是「互动结构」探针（**会真实点赞、评论再删除**，输入 `@昵称` 时只对当前账号关注的人生效，可以只测点赞），↗ 可以输入路由直接打开页面（如 `/n/昵称`、`/status/<id>`，用来进入应用里还没有入口的页面）。日志前缀 `[maxbo-diag]` / `[maxbo]`，用 `adb logcat` 读取。`devLog()` 只在调试版输出，不得记录 Cookie 值或微博正文。
 
 ### 后续要点（M6 之后）
 
@@ -275,6 +284,7 @@ test/  (fixtures/ 下只放合成数据)
 - **还没做的小项**：`mymblog` 的 `bottom_tips_text` 没有显示（还没见到实例）；验证码的「去验证」还没遇到真实验证码，不知道验证完成后要不要把 WebView 的 Cookie 同步回 API；图片缓存只在启动和调低上限时清理，一次使用中途不会清理。
 - **未在真机上验证的部分**：M3 的双击放大、长图、GIF 和实况照片；「原图」画质下特别大的长图的内存占用。
 - **流畅度**：只在模拟器的调试版上看过，滚动没有明显卡顿；还没在 profile 版或真机上测帧率。
+- **通知页**：接口和格式已实测（§8「通知实测结论」），现在的「通知」页签还是占位页。待用户决定：要不要显示未读数。未读数接口带网页版的 `source`，而且按 §2 只能在用户操作时取（例如打开应用或切到通知页签），不能轮询，也没有系统推送。没见过的格式：回复我的评论（`reply_comment`）、赞的是评论、@我的微博。
 - **测试写操作**：测试目标由用户指定。2026-10-13 指定的是测试账号关注的用户大号主页上的第一条微博（2025-08-29 发布），昵称问用户，诊断页里用 `@昵称` 定位。每次真实点赞或评论前仍要先问用户；测试完把它恢复成未赞、无测试评论。
 - **应用图标**：图标是代码画的（两段圆弧组成的小写 m，底色是主题色 `#3F51B5`）。Android 的前景是矢量图 `res/drawable/ic_launcher_foreground.xml`；`mipmap-*` 和 iOS 的 PNG 是同一图形的渲染结果，改图形时要一起重新生成。
 
