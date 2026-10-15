@@ -15,7 +15,8 @@ import '../notifications/notices_controller.dart';
 ///
 /// Unread notifications turn the notifications icon red. They are checked
 /// when the user signs in or opens the app, and when they come back to it
-/// (at most once a minute), never in between (PLAN §2).
+/// or refresh the home timeline (at most once a minute), never in between
+/// (PLAN §2).
 class HomeShell extends ConsumerStatefulWidget {
   const HomeShell({super.key, required this.shell, required this.branches});
 
@@ -57,7 +58,7 @@ class _HomeShellState extends ConsumerState<HomeShell> {
       fireImmediately: true,
     );
     _lifecycle = AppLifecycleListener(
-      onResume: () => _checkUnread(minInterval: const Duration(minutes: 1)),
+      onResume: () => _checkUnread(minInterval: unreadRecheckInterval),
     );
   }
 

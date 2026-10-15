@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -7,6 +9,7 @@ import '../../widgets/load_state.dart';
 import '../../widgets/status_card/status_card.dart';
 import '../../widgets/tab_reselect.dart';
 import '../auth/login_prompt.dart';
+import '../notifications/notices_controller.dart';
 import '../status/status_actions.dart';
 import 'timeline_controller.dart';
 
@@ -50,6 +53,12 @@ class _StatusList extends ConsumerWidget {
   final TimelineState timeline;
 
   Future<void> _refresh(BuildContext context, WidgetRef ref) async {
+    // The user asked for what's new; that includes notifications.
+    unawaited(
+      ref
+          .read(unreadNoticesProvider.notifier)
+          .check(minInterval: unreadRecheckInterval),
+    );
     try {
       await ref.read(timelineProvider.notifier).refresh();
     } on WeiboException catch (e) {

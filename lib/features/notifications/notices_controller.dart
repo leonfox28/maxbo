@@ -9,6 +9,10 @@ import '../../data/models/notice.dart';
 import '../../data/models/paged.dart';
 import '../../data/models/status.dart';
 
+/// How soon after one check returning to the app or refreshing the home
+/// timeline checks again.
+const unreadRecheckInterval = Duration(minutes: 1);
+
 final unreadNoticesProvider =
     NotifierProvider<UnreadNoticesController, UnreadNotices>(
       UnreadNoticesController.new,
@@ -17,8 +21,8 @@ final unreadNoticesProvider =
 /// Which kinds of notifications are unread, which the tab bar and the
 /// notification page's tabs mark.
 ///
-/// Checked only when the user opens the app or signs in ([check]), never
-/// polled (PLAN §2). A kind stays marked until the user opens its tab
+/// Checked only when the user signs in, opens the app or refreshes the home
+/// timeline ([check]), never polled (PLAN §2). A kind stays marked until the user opens its tab
 /// ([markRead]); a check only adds marks.
 class UnreadNoticesController extends Notifier<UnreadNotices> {
   DateTime? _checkedAt;
