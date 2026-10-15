@@ -144,6 +144,45 @@ void main() {
       expect(parseStatusText(long.text).last, isA<ExpandSegment>());
     });
 
+    test('links up text_raw as text would, titling links from the '
+        'retweeting post', () {
+      final s = Status.tryFromJson(
+        statusJson(
+          text: '转发',
+          retweeted: {
+            ...statusJson(
+              id: 9,
+              text: '',
+              extra: {'text_raw': '看http://t.cn/A1b2正文，问a@b.cn和@某人 #话题#'},
+            ),
+            'url_struct': null,
+          },
+          extra: {
+            'url_struct': [
+              {
+                'short_url': 'http://t.cn/A1b2',
+                'long_url': 'https://weibo.com/1/Abc9',
+                'url_title': '微博正文',
+              },
+            ],
+          },
+        ),
+      )!;
+      final source = s.retweeted!;
+
+      final segments = parseStatusText(source.text, urls: source.urls);
+      expect(segments.map((s) => s is LinkSegment ? s.link : null).nonNulls, [
+        isA<WebLink>().having(
+          (l) => '${l.url}',
+          'url',
+          'https://weibo.com/1/Abc9',
+        ),
+        isA<MentionLink>().having((l) => l.screenName, 'name', '某人'),
+        isA<TopicLink>().having((l) => l.topic, 'topic', '话题'),
+      ]);
+      expect(plainStatusText(source.text), '看微博正文正文，问a@b.cn和@某人 #话题#');
+    });
+
     test('reads a video cover, length and shape', () {
       final s = Status.tryFromJson(
         statusJson(

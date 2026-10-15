@@ -73,7 +73,12 @@ class Status {
   /// Pinned atop its author's profile; only set in profile lists.
   final bool pinned;
 
-  static Status? tryFromJson(Object? json) {
+  /// [parentUrls] is the `url_struct` of the post retweeting this one,
+  /// which also covers the links in this one's text.
+  static Status? tryFromJson(
+    Object? json, {
+    List<Map<String, Object?>> parentUrls = const [],
+  }) {
     final map = readMap(json);
     if (map == null) return null;
     final id =
@@ -84,6 +89,8 @@ class Status {
 
     final pics = picsOf(map);
     final pageInfo = readMap(map['page_info']);
+    final ownUrls = readMaps(map['url_struct']);
+    final urlStruct = ownUrls.isEmpty ? parentUrls : ownUrls;
 
     return Status(
       id: id,
@@ -92,15 +99,16 @@ class Status {
       createdAt: parseWeiboDate(readString(map['created_at'])),
       source: _plainText(readString(map['source'])),
       region: readString(map['region_name']),
-      text: _textOf(map),
-      urls: [
-        for (final u in readMaps(map['url_struct'])) ?UrlEntity.tryFromJson(u),
-      ],
+      text: _textOf(map, urlStruct),
+      urls: [for (final u in urlStruct) ?UrlEntity.tryFromJson(u)],
       pics: pics,
       picCount: readInt(map['pic_num']) ?? pics.length,
       video: VideoInfo.tryFromPageInfo(pageInfo),
       pageCard: PageCard.tryFromPageInfo(pageInfo),
-      retweeted: Status.tryFromJson(map['retweeted_status']),
+      retweeted: Status.tryFromJson(
+        map['retweeted_status'],
+        parentUrls: ownUrls,
+      ),
       repostsCount: readInt(map['reposts_count']) ?? 0,
       commentsCount: readInt(map['comments_count']) ?? 0,
       likesCount: readInt(map['attitudes_count']) ?? 0,
@@ -125,14 +133,58 @@ class Status {
   // Retweet sources in `statuses/mentions` come without `text` or `user`,
   // only the plain `text_raw`, cut short with no marker if the post is long
   // (PLAN §8).
-  static String _textOf(Map<String, Object?> map) {
+  static String _textOf(
+    Map<String, Object?> map,
+    List<Map<String, Object?>> urlStruct,
+  ) {
     if (readString(map['text']) case final text?) return text;
     final raw = readString(map['text_raw']);
     if (raw == null) return '';
-    final escaped = const HtmlEscape(HtmlEscapeMode.element).convert(raw);
+    final html = _rawTextAsHtml(raw, urlStruct);
     return map['isLongText'] == true
-        ? '$escaped ...<span class="expand">展开</span>'
-        : escaped;
+        ? '$html ...<span class="expand">展开</span>'
+        : html;
+  }
+
+  // Links, @mentions and #topics# in plain text. Links stop at the first
+  // non-ASCII character: `text_raw` runs them straight into the text.
+  static final _rawEntity = RegExp(
+    r"https?://[A-Za-z0-9\-._~:/?#\[\]@!$&'()*+,;=%]+"
+    r'|(?<![A-Za-z0-9])@[A-Za-z0-9_\-\u4e00-\u9fa5]{1,30}'
+    r'|#[^#\n]{1,64}#',
+  );
+
+  /// [raw] as the HTML that `text` would have held, with links titled as
+  /// `url_struct` describes them.
+  static String _rawTextAsHtml(
+    String raw,
+    List<Map<String, Object?>> urlStruct,
+  ) {
+    const escape = HtmlEscape();
+    final html = StringBuffer();
+    var last = 0;
+    for (final match in _rawEntity.allMatches(raw)) {
+      html.write(escape.convert(raw.substring(last, match.start)));
+      last = match.end;
+      final entity = match[0]!;
+      final label = escape.convert(entity);
+      if (entity.startsWith('@')) {
+        html.write('<a href="/n/${label.substring(1)}">$label</a>');
+      } else if (entity.startsWith('#')) {
+        final query = Uri.encodeQueryComponent(entity);
+        html.write('<a href="https://s.weibo.com/weibo?q=$query">$label</a>');
+      } else {
+        final info = urlStruct
+            .where((u) => readString(u['short_url']) == entity)
+            .firstOrNull;
+        // `url_type_pic` names icons that aren't there, so links go without.
+        final title = readString(info?['url_title']);
+        final text = title == null ? label : escape.convert(title);
+        html.write('<a href="$label">$text</a>');
+      }
+    }
+    html.write(escape.convert(raw.substring(last)));
+    return '$html';
   }
 
   // `source` is plain text or an HTML fragment like `<a href=…>荣耀Magic</a>`.

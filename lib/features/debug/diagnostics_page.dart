@@ -1140,9 +1140,90 @@ class _DiagnosticsPageState extends ConsumerState<DiagnosticsPage> {
       await unread('after $label');
     }
 
+    // Retweet sources in statuses/mentions lack their author (PLAN §8):
+    // looks each up in full and reports where its author and short links
+    // turn up in the mention item or in m.weibo.cn's list. Paths only.
+    Future<void> mentionSources() async {
+      _log('== mention retweet sources');
+      final needles = <String, String>{};
+      try {
+        final json = await api.getJson(
+          'https://weibo.com/ajax/statuses/mentions',
+          query: {'max_id': 0},
+        );
+        final items = _maps(readMap(json['data'])?['statuses']).toList();
+        for (final (n, item) in items.indexed) {
+          final id = readString(readMap(item['retweeted_status'])?['idstr']);
+          if (id == null) continue;
+          final full = await api.getJson(
+            'https://weibo.com/ajax/statuses/show',
+            query: {'id': id},
+          );
+          final user = readMap(full['user']);
+          needles
+            ..clear()
+            ..addAll({
+              'uid': ?readString(user?['idstr']),
+              'name': ?readString(user?['screen_name']),
+              for (final (i, u) in readMaps(full['url_struct']).indexed)
+                'url$i': ?readString(u['short_url']),
+            });
+          _log(
+            '  item $n: full url_struct=${readMaps(full['url_struct']).length} '
+            'keys=${readMaps(full['url_struct']).firstOrNull?.keys.join(',')}',
+          );
+          final source = readMap(item['retweeted_status']);
+          final buttons = readMaps(source?['buttons']).toList();
+          final author = readMap(
+            readMap(
+              readMap(source?['page_info'])?['media_info'],
+            )?['author_info'],
+          );
+          _log(
+            '  item $n buttons: ${buttons.map((b) => '${b['type']} ${describeShape(b, maxDepth: 2)}').join(' | ')}',
+          );
+          _log(
+            '  item $n button uid is author: '
+            '${readString(readMap(buttons.firstOrNull?['params'])?['uid']) == needles['uid']} '
+            'video author is author: ${readString(author?['idstr'] ?? author?['id']) == needles['uid']}',
+          );
+          for (final MapEntry(:key, :value) in needles.entries) {
+            final paths = _pathsOf(item, value).toList();
+            _log('  item $n $key at: ${paths.take(8).join(' ')}');
+          }
+        }
+      } on Exception catch (e) {
+        _log('mention sources: $e');
+      }
+      try {
+        final json = await api.getJson(
+          'https://m.weibo.cn/message/mentionsAt',
+          query: {'page': 1},
+        );
+        _log('m mentionsAt: ${describeShape(json, maxDepth: 1)}');
+        final items = [
+          ..._maps(json['data']),
+          ..._maps(readMap(json['data'])?['statuses']),
+        ];
+        final sources = _maps([for (final i in items) i['retweeted_status']])
+            .toList();
+        _log(
+          'm mentionsAt: items=${items.length} sources=${sources.length} '
+          'with user=${sources.where((r) => r['user'] != null).length} '
+          'text=${sources.where((r) => '${r['text'] ?? ''}'.isNotEmpty).length}',
+        );
+        for (final MapEntry(:key, :value) in needles.entries) {
+          _log('  m $key at: ${_pathsOf(items, value).take(8).join(' ')}');
+        }
+      } on Exception catch (e) {
+        _log('m mentionsAt: $e');
+      }
+    }
+
     _log('== unread before');
     await unread('before');
     await list('@statuses', 'statuses/mentions', 'statuses');
+    await mentionSources();
     await list('@comments', 'comments/mentions', 'comments');
     await list('cmt inbox', 'message/cmt', 'comments');
     await list('cmt inbox (following)', 'message/cmt', 'comments', {
@@ -1937,6 +2018,28 @@ class _DiagnosticsPageState extends ConsumerState<DiagnosticsPage> {
       .replaceAll(RegExp(r'\d{7,}'), '<num>')
       .replaceAll(RegExp(r'[^\x00-\x7F]+'), '<text>')
       .replaceAll(RegExp(r'\s+'), ' ');
+
+  /// Where [needle] turns up in [json], as `.key[index]` paths.
+  static Iterable<String> _pathsOf(
+    Object? json,
+    String needle, [
+    String path = '',
+  ]) sync* {
+    switch (json) {
+      case final Map<Object?, Object?> map:
+        for (final e in map.entries) {
+          yield* _pathsOf(e.value, needle, '$path.${e.key}');
+        }
+      case final List<Object?> list:
+        for (final (i, v) in list.indexed) {
+          yield* _pathsOf(v, needle, '$path[$i]');
+        }
+      case final String s when s.contains(needle):
+        yield path;
+      case final int i when '$i' == needle:
+        yield path;
+    }
+  }
 
   static Iterable<Map<String, Object?>> _maps(Object? list) =>
       list is List ? list.whereType<Map<String, Object?>>() : const [];
