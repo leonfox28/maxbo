@@ -138,7 +138,13 @@ Map<String, Object?> commentJson({
   'created_at': 'Mon Oct 12 13:20:00 +0800 2026',
   'source': '来自上海',
   'text': text,
-  'text_raw': text,
+  // Like Weibo's, text_raw links the comment's own pictures.
+  'text_raw': [
+    text,
+    for (final u in urlStruct)
+      if (u['pic_infos'] != null) u['short_url'],
+  ].join(' '),
+  'pic_num': urlStruct.where((u) => u['pic_infos'] != null).length,
   'user': user ?? userJson(id: 2001, name: '评论者'),
   'like_counts': likes,
   'liked': false,

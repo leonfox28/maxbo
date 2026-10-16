@@ -69,7 +69,6 @@ class Comment {
     if (map == null) return null;
     final id = readString(map['idstr']) ?? readString(map['id']);
     if (id == null) return null;
-    // Pictures come as url_struct entries, each with its own pic_infos.
     final urlStruct = readMaps(map['url_struct']);
     return Comment(
       id: id,
@@ -78,7 +77,7 @@ class Comment {
       source: readString(map['source'])?.trim(),
       text: readString(map['text']) ?? '',
       urls: [for (final u in urlStruct) ?UrlEntity.tryFromJson(u)],
-      pics: [for (final u in urlStruct) ...picsOf(u)],
+      pics: _ownPics(map, urlStruct),
       likesCount: readInt(map['like_counts']) ?? 0,
       liked: map['liked'] == true,
       replyCount: readInt(map['total_number']) ?? 0,
@@ -87,5 +86,25 @@ class Comment {
       ],
       canReply: readInt(map['disable_reply']) != 1,
     );
+  }
+
+  // Pictures come as url_struct entries, each with its own pic_infos. A
+  // reply also carries the entry of a picture on the comment it answers, but
+  // has pic_num 0 then; its own pictures are linked from its text_raw.
+  static List<PicInfo> _ownPics(
+    Map<String, Object?> map,
+    List<Map<String, Object?>> urlStruct,
+  ) {
+    final count = readInt(map['pic_num']);
+    if (count == 0) return const [];
+    final entries = urlStruct.where((u) => u['pic_infos'] != null).toList();
+    final raw = readString(map['text_raw']);
+    final linked = [
+      for (final u in entries)
+        if (readString(u['short_url']) case final short?
+            when raw?.contains(short) ?? false)
+          u,
+    ];
+    return [for (final u in linked.isEmpty ? entries : linked) ...picsOf(u)];
   }
 }

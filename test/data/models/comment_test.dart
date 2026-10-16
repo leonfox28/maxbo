@@ -47,6 +47,24 @@ void main() {
     expect(c.urls.single.shortUrl, 'http://t.cn/p1');
   });
 
+  test('skips the picture of the comment a reply answers', () {
+    // Weibo copies the answered comment's url_struct entry into the reply,
+    // without linking it from text_raw or counting it in pic_num.
+    final copied = {
+      ...commentJson(urlStruct: [commentPicJson('root')]),
+      'text_raw': '回复',
+      'pic_num': 0,
+    };
+    expect(Comment.tryFromJson(copied)!.pics, isEmpty);
+
+    final ownToo = {
+      ...commentJson(urlStruct: [commentPicJson('root'), commentPicJson('p2')]),
+      'text_raw': '回复 http://t.cn/p2',
+      'pic_num': 1,
+    };
+    expect(Comment.tryFromJson(ownToo)!.pics.map((p) => p.id), ['p2']);
+  });
+
   test('tolerates missing and mistyped fields', () {
     expect(Comment.tryFromJson(null), isNull);
     expect(Comment.tryFromJson({'text': 'no id'}), isNull);
