@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 
@@ -12,6 +13,7 @@ class StatusText extends StatefulWidget {
     this.text, {
     super.key,
     this.urls = const [],
+    this.hiddenPictures = const [],
     this.author,
     this.style,
     this.onLink,
@@ -21,6 +23,9 @@ class StatusText extends StatefulWidget {
   /// The status `text` HTML.
   final String text;
   final List<UrlEntity> urls;
+
+  /// Ids of pictures whose links to leave out, e.g. as they show below.
+  final List<String> hiddenPictures;
 
   /// Shown as `@author：` before the text, for retweeted posts.
   final String? author;
@@ -51,6 +56,7 @@ class _StatusTextState extends State<StatusText> {
     super.didUpdateWidget(oldWidget);
     if (widget.text != oldWidget.text ||
         widget.urls != oldWidget.urls ||
+        !listEquals(widget.hiddenPictures, oldWidget.hiddenPictures) ||
         widget.author != oldWidget.author) {
       _parse();
     }
@@ -70,7 +76,11 @@ class _StatusTextState extends State<StatusText> {
         LinkSegment('@$author', MentionLink(author)),
         const PlainSegment('：'),
       ],
-      ...parseStatusText(widget.text, urls: widget.urls),
+      ...parseStatusText(
+        widget.text,
+        urls: widget.urls,
+        hiddenPictures: widget.hiddenPictures,
+      ),
     ];
     for (final (i, segment) in _segments.indexed) {
       // Callbacks read `widget` at tap time, so they never go stale.

@@ -92,4 +92,31 @@ void main() {
 
     expect(tapped?.single.id, 'p1');
   });
+
+  testWidgets('leaves out the text link to a picture shown below', (
+    tester,
+  ) async {
+    // Like Weibo's, a picture reply also links its picture from text.
+    final reply = commentJson(
+      id: 2,
+      text:
+          '图片回复 <a target=_blank data-pid=p2 '
+          'href=https://wx3.sinaimg.cn/large/p2.jpg>查看图片</a>',
+      urlStruct: [commentPicJson('p2')],
+    );
+    await pumpTile(tester, reply);
+
+    expect(find.text('图片回复 '), findsOneWidget);
+    expect(find.textContaining('查看图片'), findsNothing);
+    expect(find.byType(ClipRRect), findsOneWidget);
+
+    // The thread preview shows no pictures, so it keeps the link.
+    await pumpTile(
+      tester,
+      commentJson(replyCount: 1, replies: [reply]),
+      onThread: () {},
+    );
+
+    expect(find.textContaining('查看图片'), findsOneWidget);
+  });
 }

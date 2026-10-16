@@ -72,10 +72,12 @@ final class WebLink extends StatusLink {
 /// Splits the HTML `text` of a status into segments.
 ///
 /// Weibo's markup is loose (e.g. unquoted `href` values), which the `html`
-/// parser tolerates. [urls] resolves `t.cn` short links.
+/// parser tolerates. [urls] resolves `t.cn` short links. Links to the
+/// pictures with ids in [hiddenPictures] are left out with their label.
 List<TextSegment> parseStatusText(
   String text, {
   List<UrlEntity> urls = const [],
+  List<String> hiddenPictures = const [],
 }) {
   final segments = <TextSegment>[];
   void addText(String s) {
@@ -103,6 +105,8 @@ List<TextSegment> parseStatusText(
         }
       case 'span' when node.classes.contains('expand'):
         segments.add(const ExpandSegment());
+      case 'a' when hiddenPictures.contains(node.attributes['data-pid']):
+        break;
       case 'a':
         final label = node.text.trim();
         final link = _linkOf(node, label, urls);

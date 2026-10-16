@@ -82,6 +82,19 @@ void main() {
     ]);
   });
 
+  test('leaves out links to hidden pictures with their labels', () {
+    expect(
+      describe(
+        parseStatusText(
+          '图片评论 <a data-pid=p1 href=https://wx1.sinaimg.cn/large/p1.jpg>查看图片</a>'
+          '<a data-pid=p2 href=https://wx1.sinaimg.cn/large/p2.jpg>查看图片</a>',
+          hiddenPictures: ['p1'],
+        ),
+      ),
+      ['text:图片评论 ', 'link:查看图片→image:https://wx1.sinaimg.cn/large/p2.jpg'],
+    );
+  });
+
   test('picture links and app-only links', () {
     expect(
       describe(

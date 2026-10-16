@@ -86,6 +86,8 @@ class CommentTile extends StatelessWidget {
                   StatusText(
                     comment.text,
                     urls: comment.urls,
+                    // A reply links its picture too; it shows below.
+                    hiddenPictures: [for (final p in comment.pics) p.id],
                     style: theme.textTheme.bodyMedium?.copyWith(
                       fontSize: 15,
                       height: 1.45,
