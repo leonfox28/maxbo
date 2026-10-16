@@ -10,6 +10,7 @@ import '../../core/util/format.dart';
 import '../../data/api/weibo_api.dart';
 import '../../data/models/comment.dart';
 import '../../data/models/status.dart';
+import '../../widgets/adaptive_layout.dart';
 import '../../widgets/bars_on_scroll.dart';
 import '../../widgets/load_state.dart';
 import '../../widgets/rich_text/status_text.dart';
@@ -341,41 +342,45 @@ class _StatusDetailPageState extends ConsumerState<StatusDetailPage> {
         child: CustomScrollView(
           physics: const AlwaysScrollableScrollPhysics(),
           slivers: [
-            SliverToBoxAdapter(
-              child: StatusCard(
-                status,
-                detail: true,
-                actions: _cardActions(status, actions),
-              ),
-            ),
-            // The full text failed to load; the card shows what the
-            // previous page had.
-            if (detail.hasError && !detail.hasValue)
-              SliverToBoxAdapter(
-                child: _LoadFailedBar(
-                  message: loadErrorMessage(detail.error),
-                  onRetry: () =>
-                      ref.invalidate(statusDetailProvider(widget.id)),
+            ReadingSlivers(
+              slivers: [
+                SliverToBoxAdapter(
+                  child: StatusCard(
+                    status,
+                    detail: true,
+                    actions: _cardActions(status, actions),
+                  ),
                 ),
-              ),
-            SliverPersistentHeader(
-              pinned: true,
-              delegate: _TabsDelegate(
-                status: status,
-                commentsCount: _commentsCount(status),
-                tab: _tab,
-                onTab: _showTab,
-                colors: Theme.of(context).colorScheme,
-              ),
-            ),
-            if (_tab == _Tab.comments && activeQuery != null)
-              SliverToBoxAdapter(
-                child: _OrderSwitch(order: _order, onChanged: _showOrder),
-              ),
-            list,
-            // Room to scroll the last item out from under the comment bar.
-            SliverToBoxAdapter(
-              child: SizedBox(height: MediaQuery.paddingOf(context).bottom),
+                // The full text failed to load; the card shows what the
+                // previous page had.
+                if (detail.hasError && !detail.hasValue)
+                  SliverToBoxAdapter(
+                    child: _LoadFailedBar(
+                      message: loadErrorMessage(detail.error),
+                      onRetry: () =>
+                          ref.invalidate(statusDetailProvider(widget.id)),
+                    ),
+                  ),
+                SliverPersistentHeader(
+                  pinned: true,
+                  delegate: _TabsDelegate(
+                    status: status,
+                    commentsCount: _commentsCount(status),
+                    tab: _tab,
+                    onTab: _showTab,
+                    colors: Theme.of(context).colorScheme,
+                  ),
+                ),
+                if (_tab == _Tab.comments && activeQuery != null)
+                  SliverToBoxAdapter(
+                    child: _OrderSwitch(order: _order, onChanged: _showOrder),
+                  ),
+                list,
+                // Room to scroll the last item out from under the comment bar.
+                SliverToBoxAdapter(
+                  child: SizedBox(height: MediaQuery.paddingOf(context).bottom),
+                ),
+              ],
             ),
           ],
         ),

@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/net/weibo_exception.dart';
 import '../../core/session/session_controller.dart';
+import '../../widgets/adaptive_layout.dart';
 import '../../widgets/load_state.dart';
 import '../../widgets/status_card/status_card.dart';
 import '../../widgets/tab_reselect.dart';
@@ -80,30 +81,34 @@ class _StatusList extends ConsumerWidget {
           : null,
       child: TabRefreshIndicator(
         onRefresh: () => _refresh(context, ref),
-        child: statuses.isEmpty
-            ? ListView(
-                primary: true,
-                physics: const AlwaysScrollableScrollPhysics(),
-                children: const [
-                  SizedBox(height: 160),
-                  Center(child: Text('还没有微博，下拉刷新试试')),
-                ],
-              )
-            : ListView.separated(
-                primary: true,
-                physics: const AlwaysScrollableScrollPhysics(),
-                itemCount: statuses.length + 1,
-                separatorBuilder: (_, _) => const Divider(height: 1),
-                itemBuilder: (context, i) => i < statuses.length
-                    ? StatusCard(statuses[i], actions: actions)
-                    : LoadMoreFooter(
-                        loading: timeline.loadingMore,
-                        hasMore: timeline.hasMore,
-                        error: timeline.loadMoreError,
-                        onLoadMore: () =>
-                            ref.read(timelineProvider.notifier).loadMore(),
-                      ),
-              ),
+        child: ReadingList(
+          builder: (context, padding) => statuses.isEmpty
+              ? ListView(
+                  primary: true,
+                  padding: padding,
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  children: const [
+                    SizedBox(height: 160),
+                    Center(child: Text('还没有微博，下拉刷新试试')),
+                  ],
+                )
+              : ListView.separated(
+                  primary: true,
+                  padding: padding,
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  itemCount: statuses.length + 1,
+                  separatorBuilder: (_, _) => const Divider(height: 1),
+                  itemBuilder: (context, i) => i < statuses.length
+                      ? StatusCard(statuses[i], actions: actions)
+                      : LoadMoreFooter(
+                          loading: timeline.loadingMore,
+                          hasMore: timeline.hasMore,
+                          error: timeline.loadMoreError,
+                          onLoadMore: () =>
+                              ref.read(timelineProvider.notifier).loadMore(),
+                        ),
+                ),
+        ),
       ),
     );
   }

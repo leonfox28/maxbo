@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/app_info.dart';
+import '../../widgets/adaptive_layout.dart';
 
 // Kept in line with the README.
 const _disclaimer = [
@@ -36,56 +37,59 @@ class AboutPage extends StatelessWidget {
     final theme = Theme.of(context);
     return Scaffold(
       appBar: AppBar(title: const Text('关于')),
-      body: ListView(
+      body: ReadingList(
         padding: const EdgeInsets.symmetric(vertical: 16),
-        children: [
-          Center(
-            child: Text(
-              'maxbo',
-              style: theme.textTheme.headlineMedium?.copyWith(
-                color: theme.colorScheme.primary,
-                fontWeight: FontWeight.w600,
+        builder: (context, padding) => ListView(
+          padding: padding,
+          children: [
+            Center(
+              child: Text(
+                'maxbo',
+                style: theme.textTheme.headlineMedium?.copyWith(
+                  color: theme.colorScheme.primary,
+                  fontWeight: FontWeight.w600,
+                ),
               ),
             ),
-          ),
-          const SizedBox(height: 4),
-          Center(
-            child: Text(
-              '版本 $appVersion',
-              style: theme.textTheme.bodyMedium?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
+            const SizedBox(height: 4),
+            Center(
+              child: Text(
+                '版本 $appVersion',
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
               ),
             ),
-          ),
-          const SizedBox(height: 8),
-          const Center(child: Text('开源、非商业的第三方微博阅读客户端')),
-          const _Section(title: '声明', items: _disclaimer),
-          const _Section(title: '隐私', items: _privacy),
-          const Divider(height: 32),
-          ListTile(
-            leading: const Icon(Icons.code),
-            title: const Text('项目主页'),
-            subtitle: Text(repoUrl.toString()),
-            onTap: () => _open(context, repoUrl),
-          ),
-          ListTile(
-            leading: const Icon(Icons.feedback_outlined),
-            title: const Text('问题反馈'),
-            subtitle: const Text('在 GitHub 上提 issue'),
-            onTap: () => _open(context, issuesUrl),
-          ),
-          ListTile(
-            leading: const Icon(Icons.description_outlined),
-            title: const Text('开源许可'),
-            subtitle: const Text('maxbo 以 GPL-3.0 发布；以及所用的第三方库'),
-            onTap: () => showLicensePage(
-              context: context,
-              applicationName: 'maxbo',
-              applicationVersion: appVersion,
-              applicationLegalese: '以 GNU GPL-3.0 许可发布',
+            const SizedBox(height: 8),
+            const Center(child: Text('开源、非商业的第三方微博阅读客户端')),
+            const _Section(title: '声明', items: _disclaimer),
+            const _Section(title: '隐私', items: _privacy),
+            const Divider(height: 32),
+            ListTile(
+              leading: const Icon(Icons.code),
+              title: const Text('项目主页'),
+              subtitle: Text(repoUrl.toString()),
+              onTap: () => _open(context, repoUrl),
             ),
-          ),
-        ],
+            ListTile(
+              leading: const Icon(Icons.feedback_outlined),
+              title: const Text('问题反馈'),
+              subtitle: const Text('在 GitHub 上提 issue'),
+              onTap: () => _open(context, issuesUrl),
+            ),
+            ListTile(
+              leading: const Icon(Icons.description_outlined),
+              title: const Text('开源许可'),
+              subtitle: const Text('maxbo 以 GPL-3.0 发布；以及所用的第三方库'),
+              onTap: () => showLicensePage(
+                context: context,
+                applicationName: 'maxbo',
+                applicationVersion: appVersion,
+                applicationLegalese: '以 GNU GPL-3.0 许可发布',
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

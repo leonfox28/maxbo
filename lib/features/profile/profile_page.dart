@@ -7,6 +7,7 @@ import '../../core/util/format.dart';
 import '../../data/models/status.dart';
 import '../../data/models/user_profile.dart';
 import '../../data/models/weibo_user.dart';
+import '../../widgets/adaptive_layout.dart';
 import '../../widgets/load_state.dart';
 import '../../widgets/status_card/status_card.dart';
 import '../../widgets/tag_label.dart';
@@ -94,22 +95,28 @@ class _ProfileView extends ConsumerWidget {
         child: CustomScrollView(
           physics: const AlwaysScrollableScrollPhysics(),
           slivers: [
-            SliverToBoxAdapter(
-              child: _Header(
-                profile: profile,
-                initial: initial,
-                onRetry: () => ref.invalidate(profileProvider(query)),
-              ),
-            ),
-            const SliverToBoxAdapter(child: Divider(height: 8, thickness: 8)),
-            PagedSliverList<Status>(
-              value: statuses,
-              itemBuilder: (context, status) =>
-                  StatusCard(status, actions: actions),
-              dividerIndent: 0,
-              emptyText: '还没有微博',
-              onRetry: () => ref.invalidate(provider),
-              onLoadMore: () => ref.read(provider.notifier).loadMore(),
+            ReadingSlivers(
+              slivers: [
+                SliverToBoxAdapter(
+                  child: _Header(
+                    profile: profile,
+                    initial: initial,
+                    onRetry: () => ref.invalidate(profileProvider(query)),
+                  ),
+                ),
+                const SliverToBoxAdapter(
+                  child: Divider(height: 8, thickness: 8),
+                ),
+                PagedSliverList<Status>(
+                  value: statuses,
+                  itemBuilder: (context, status) =>
+                      StatusCard(status, actions: actions),
+                  dividerIndent: 0,
+                  emptyText: '还没有微博',
+                  onRetry: () => ref.invalidate(provider),
+                  onLoadMore: () => ref.read(provider.notifier).loadMore(),
+                ),
+              ],
             ),
           ],
         ),

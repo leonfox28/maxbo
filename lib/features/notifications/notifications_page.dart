@@ -13,6 +13,7 @@ import '../../core/util/format.dart';
 import '../../data/models/comment.dart';
 import '../../data/models/notice.dart';
 import '../../data/models/status.dart';
+import '../../widgets/adaptive_layout.dart';
 import '../../widgets/load_state.dart';
 import '../../widgets/rich_text/status_text_parser.dart';
 import '../../widgets/status_card/status_card.dart';
@@ -133,12 +134,16 @@ class _NoticesState extends ConsumerState<_Notices>
     final unread = ref.watch(unreadNoticesProvider);
     return Column(
       children: [
-        TabBar(
-          controller: _tabController,
-          tabs: [
-            for (final tab in _tabs)
-              Tab(child: _TabLabel(tab.label, unread: unread.has(tab.kind))),
-          ],
+        // Over the lists' column, not spread across a wide window.
+        ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: readingWidth),
+          child: TabBar(
+            controller: _tabController,
+            tabs: [
+              for (final tab in _tabs)
+                Tab(child: _TabLabel(tab.label, unread: unread.has(tab.kind))),
+            ],
+          ),
         ),
         Expanded(
           child: TabBarView(
@@ -267,17 +272,21 @@ class _NoticeListState extends ConsumerState<_NoticeList>
           primary: true,
           physics: const AlwaysScrollableScrollPhysics(),
           slivers: [
-            // Clear of the floating tab bar at the end.
-            SliverSafeArea(
-              top: false,
-              sliver: PagedSliverList<T>(
-                value: value,
-                itemBuilder: itemBuilder,
-                emptyText: emptyText,
-                dividerIndent: dividerIndent,
-                onRetry: () => ref.invalidate(provider),
-                onLoadMore: () => ref.read(provider.notifier).loadMore(),
-              ),
+            ReadingSlivers(
+              slivers: [
+                // Clear of the floating tab bar at the end.
+                SliverSafeArea(
+                  top: false,
+                  sliver: PagedSliverList<T>(
+                    value: value,
+                    itemBuilder: itemBuilder,
+                    emptyText: emptyText,
+                    dividerIndent: dividerIndent,
+                    onRetry: () => ref.invalidate(provider),
+                    onLoadMore: () => ref.read(provider.notifier).loadMore(),
+                  ),
+                ),
+              ],
             ),
           ],
         ),

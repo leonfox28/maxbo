@@ -4,14 +4,20 @@ import 'package:go_router/go_router.dart';
 
 import '../../core/session/session_controller.dart';
 import '../../core/theme.dart';
+import '../../widgets/adaptive_layout.dart';
 import '../../widgets/bars_on_scroll.dart';
 import '../../widgets/floating_pill.dart';
 import '../../widgets/tab_reselect.dart';
 import '../notifications/notices_controller.dart';
 
 /// Scaffold hosting the top-level tabs, switched by a floating pill that
-/// hides while the user scrolls down and comes back when they scroll up.
-/// Tapping the open tab again tells its pages through [TabReselect].
+/// hides while the user scrolls down and comes back when they scroll up, or
+/// on an expanded window (a tablet, an unfolded foldable) by a navigation
+/// rail at its side. Tapping the open tab again tells its pages through
+/// [TabReselect].
+///
+/// A foldable can switch between the two as it folds and unfolds; the tabs'
+/// pages stay as they are.
 ///
 /// Unread notifications turn the notifications icon red. They are checked
 /// when the user signs in or opens the app, and when they come back to it
@@ -44,6 +50,7 @@ class _HomeShellState extends ConsumerState<HomeShell> {
   ];
 
   final _bars = BarsOnScroll();
+  bool? _rail;
   late final _reselected = [for (final _ in widget.branches) _Taps()];
   late final AppLifecycleListener _lifecycle;
 
@@ -71,6 +78,17 @@ class _HomeShellState extends ConsumerState<HomeShell> {
             .check(minInterval: minInterval);
       }
     });
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // The pill comes back as it was hidden, say, before unfolding.
+    final rail = WindowSize.of(context) == WindowSize.expanded;
+    if (rail != _rail) {
+      _rail = rail;
+      _bars.show();
+    }
   }
 
   @override
@@ -109,40 +127,67 @@ class _HomeShellState extends ConsumerState<HomeShell> {
   @override
   Widget build(BuildContext context) {
     final current = widget.shell.currentIndex;
+    final rail = _rail!;
+    final alerts = {
+      if (ref.watch(unreadNoticesProvider.select((u) => u.any)))
+        _notificationsTab,
+    };
+    final tabs = NotificationListener<ScrollUpdateNotification>(
+      onNotification: _onScroll,
+      child: IndexedStack(
+        index: current,
+        children: [
+          for (final (i, branch) in widget.branches.indexed)
+            // As StatefulShellRoute.indexedStack has it.
+            Offstage(
+              offstage: i != current,
+              child: TickerMode(
+                enabled: i == current,
+                child: TabReselect(taps: _reselected[i], child: branch),
+              ),
+            ),
+        ],
+      ),
+    );
     return Scaffold(
       // Lists scroll on behind the pill; the scaffold pads them for it.
       extendBody: true,
-      body: NotificationListener<ScrollUpdateNotification>(
-        onNotification: _onScroll,
-        child: IndexedStack(
-          index: current,
-          children: [
-            for (final (i, branch) in widget.branches.indexed)
-              // As StatefulShellRoute.indexedStack has it.
-              Offstage(
-                offstage: i != current,
-                child: TickerMode(
-                  enabled: i == current,
-                  child: TabReselect(taps: _reselected[i], child: branch),
-                ),
-              ),
+      // The tabs stay last in the row either way, so switching keeps them.
+      body: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (rail) ...[
+            _NavRail(
+              destinations: _destinations,
+              selectedIndex: current,
+              alerts: alerts,
+              onSelected: _select,
+            ),
+            const VerticalDivider(width: 1, thickness: 1),
           ],
-        ),
+          Expanded(
+            child: MediaQuery.removePadding(
+              context: context,
+              // The rail keeps clear of a cutout on its side.
+              removeLeft: rail,
+              child: tabs,
+            ),
+          ),
+        ],
       ),
-      bottomNavigationBar: AnimatedSlide(
-        offset: _bars.visible ? Offset.zero : const Offset(0, 1.5),
-        duration: BarsOnScroll.duration,
-        curve: BarsOnScroll.curve,
-        child: _FloatingNavBar(
-          destinations: _destinations,
-          selectedIndex: current,
-          alerts: {
-            if (ref.watch(unreadNoticesProvider.select((u) => u.any)))
-              _notificationsTab,
-          },
-          onSelected: _select,
-        ),
-      ),
+      bottomNavigationBar: rail
+          ? null
+          : AnimatedSlide(
+              offset: _bars.visible ? Offset.zero : const Offset(0, 1.5),
+              duration: BarsOnScroll.duration,
+              curve: BarsOnScroll.curve,
+              child: _FloatingNavBar(
+                destinations: _destinations,
+                selectedIndex: current,
+                alerts: alerts,
+                onSelected: _select,
+              ),
+            ),
     );
   }
 }
@@ -191,6 +236,49 @@ class _FloatingNavBar extends StatelessWidget {
             ),
         ],
       ),
+    );
+  }
+}
+
+class _NavRail extends StatelessWidget {
+  const _NavRail({
+    required this.destinations,
+    required this.selectedIndex,
+    required this.alerts,
+    required this.onSelected,
+  });
+
+  final List<_Destination> destinations;
+  final int selectedIndex;
+
+  /// As on [_FloatingNavBar].
+  final Set<int> alerts;
+  final ValueChanged<int> onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    return NavigationRail(
+      selectedIndex: selectedIndex,
+      onDestinationSelected: onSelected,
+      labelType: NavigationRailLabelType.all,
+      destinations: [
+        for (final (i, destination) in destinations.indexed)
+          NavigationRailDestination(
+            icon: Icon(
+              destination.icon,
+              color: alerts.contains(i) ? unreadColor : null,
+            ),
+            // Selected, the indicator shows it; red would clash, as on the
+            // pill.
+            selectedIcon: Icon(destination.selectedIcon),
+            label: Text(
+              destination.label,
+              semanticsLabel: alerts.contains(i)
+                  ? '${destination.label}，有未读'
+                  : destination.label,
+            ),
+          ),
+      ],
     );
   }
 }

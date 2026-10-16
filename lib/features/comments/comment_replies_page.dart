@@ -5,6 +5,7 @@ import '../../core/net/weibo_exception.dart';
 import '../../core/session/session_controller.dart';
 import '../../data/api/weibo_api.dart';
 import '../../data/models/comment.dart';
+import '../../widgets/adaptive_layout.dart';
 import '../../widgets/load_state.dart';
 import '../interactions/comment_composer.dart';
 import '../status/status_actions.dart';
@@ -125,40 +126,47 @@ class _CommentRepliesPageState extends ConsumerState<CommentRepliesPage> {
             : null,
         child: CustomScrollView(
           slivers: [
-            SliverToBoxAdapter(
-              child: CommentTile(
-                root,
-                authorId: _thread.authorId,
-                actions: actions,
-                onTap: root.canReply ? () => _reply(root) : null,
-              ),
-            ),
-            SliverToBoxAdapter(
-              child: Container(
-                height: 8,
-                color: theme.colorScheme.surfaceContainer,
-              ),
-            ),
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
-                child: Text('$total 条回复', style: theme.textTheme.titleSmall),
-              ),
-            ),
-            PagedSliverList<Comment>(
-              value: replies,
-              itemBuilder: (context, reply) => CommentTile(
-                reply,
-                authorId: _thread.authorId,
-                actions: actions,
-                onTap: reply.canReply ? () => _reply(reply) : null,
-                onLongPress: me != null && reply.user?.id == me
-                    ? () => _delete(reply)
-                    : null,
-              ),
-              emptyText: '还没有回复',
-              onRetry: () => ref.invalidate(provider),
-              onLoadMore: () => ref.read(provider.notifier).loadMore(),
+            ReadingSlivers(
+              slivers: [
+                SliverToBoxAdapter(
+                  child: CommentTile(
+                    root,
+                    authorId: _thread.authorId,
+                    actions: actions,
+                    onTap: root.canReply ? () => _reply(root) : null,
+                  ),
+                ),
+                SliverToBoxAdapter(
+                  child: Container(
+                    height: 8,
+                    color: theme.colorScheme.surfaceContainer,
+                  ),
+                ),
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+                    child: Text(
+                      '$total 条回复',
+                      style: theme.textTheme.titleSmall,
+                    ),
+                  ),
+                ),
+                PagedSliverList<Comment>(
+                  value: replies,
+                  itemBuilder: (context, reply) => CommentTile(
+                    reply,
+                    authorId: _thread.authorId,
+                    actions: actions,
+                    onTap: reply.canReply ? () => _reply(reply) : null,
+                    onLongPress: me != null && reply.user?.id == me
+                        ? () => _delete(reply)
+                        : null,
+                  ),
+                  emptyText: '还没有回复',
+                  onRetry: () => ref.invalidate(provider),
+                  onLoadMore: () => ref.read(provider.notifier).loadMore(),
+                ),
+              ],
             ),
           ],
         ),

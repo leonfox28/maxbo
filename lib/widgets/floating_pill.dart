@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'adaptive_layout.dart';
+
 /// A bar floating over the bottom of a page, such as the tab bar or the
 /// comment bar. Styled as the feed is: a neutral surface, set off by an
 /// outline and a shadow rather than by colour, leaving the primary colour to
@@ -10,7 +12,8 @@ import 'package:flutter/material.dart';
 class FloatingPill extends StatelessWidget {
   const FloatingPill({super.key, this.stretch = false, required this.child});
 
-  /// Spans the page, less a margin, rather than wrapping [child].
+  /// Spans the page, less a margin, rather than wrapping [child]. On a wide
+  /// window, it spans the reading column instead.
   final bool stretch;
   final Widget child;
 
@@ -30,7 +33,15 @@ class FloatingPill extends StatelessWidget {
       child: stretch
           ? Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: pill,
+              child: Center(
+                heightFactor: 1,
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(
+                    maxWidth: readingWidth - 32,
+                  ),
+                  child: pill,
+                ),
+              ),
             )
           : Center(heightFactor: 1, child: pill),
     );

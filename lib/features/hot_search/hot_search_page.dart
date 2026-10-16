@@ -6,6 +6,7 @@ import '../../core/session/session_controller.dart';
 import '../../core/util/format.dart';
 import '../../data/api/weibo_api.dart';
 import '../../data/models/hot_search.dart';
+import '../../widgets/adaptive_layout.dart';
 import '../../widgets/load_state.dart';
 import '../../widgets/tab_reselect.dart';
 import '../../widgets/tag_label.dart';
@@ -65,13 +66,16 @@ class _HotSearchList extends ConsumerWidget {
     final pinned = hot.pinned.length;
     return TabRefreshIndicator(
       onRefresh: () => _refresh(context, ref),
-      child: ListView.builder(
-        primary: true,
-        physics: const AlwaysScrollableScrollPhysics(),
-        itemCount: pinned + hot.items.length,
-        itemBuilder: (context, i) => i < pinned
-            ? _HotSearchTile(hot.pinned[i], pinned: true)
-            : _HotSearchTile(hot.items[i - pinned]),
+      child: ReadingList(
+        builder: (context, padding) => ListView.builder(
+          primary: true,
+          padding: padding,
+          physics: const AlwaysScrollableScrollPhysics(),
+          itemCount: pinned + hot.items.length,
+          itemBuilder: (context, i) => i < pinned
+              ? _HotSearchTile(hot.pinned[i], pinned: true)
+              : _HotSearchTile(hot.items[i - pinned]),
+        ),
       ),
     );
   }

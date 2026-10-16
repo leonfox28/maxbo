@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import '../../core/session/session_controller.dart';
 import '../../data/models/account.dart';
 import '../../data/models/weibo_user.dart';
+import '../../widgets/adaptive_layout.dart';
 import '../auth/login_prompt.dart';
 
 // No app bar: the tab bar names the tab, and what an app bar would offer
@@ -20,12 +21,15 @@ class MePage extends ConsumerWidget {
         bottom: false,
         child: switch (ref.watch(sessionProvider)) {
           // Settings stay within reach before logging in.
-          SignedOut(:final expired) => ListView(
-            children: [
-              LoginPrompt(expired: expired),
-              const Divider(),
-              const _AppLinks(),
-            ],
+          SignedOut(:final expired) => ReadingList(
+            builder: (context, padding) => ListView(
+              padding: padding,
+              children: [
+                LoginPrompt(expired: expired),
+                const Divider(),
+                const _AppLinks(),
+              ],
+            ),
           ),
           SignedIn(:final account) => _AccountView(account: account),
         },
@@ -88,29 +92,32 @@ class _AccountView extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    return ListView(
-      children: [
-        ListTile(
-          leading: const CircleAvatar(child: Icon(Icons.person)),
-          title: Text(account.screenName ?? '微博用户'),
-          subtitle: Text('UID ${account.uid}'),
-          trailing: const Icon(Icons.chevron_right),
-          onTap: () => context.push(
-            '/u/${account.uid}',
-            extra: switch (account.screenName) {
-              final name? => WeiboUser(id: account.uid, screenName: name),
-              null => null,
-            },
+    return ReadingList(
+      builder: (context, padding) => ListView(
+        padding: padding,
+        children: [
+          ListTile(
+            leading: const CircleAvatar(child: Icon(Icons.person)),
+            title: Text(account.screenName ?? '微博用户'),
+            subtitle: Text('UID ${account.uid}'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => context.push(
+              '/u/${account.uid}',
+              extra: switch (account.screenName) {
+                final name? => WeiboUser(id: account.uid, screenName: name),
+                null => null,
+              },
+            ),
           ),
-        ),
-        const Divider(),
-        const _AppLinks(),
-        ListTile(
-          leading: const Icon(Icons.logout),
-          title: const Text('退出登录'),
-          onTap: () => _confirmLogout(context, ref),
-        ),
-      ],
+          const Divider(),
+          const _AppLinks(),
+          ListTile(
+            leading: const Icon(Icons.logout),
+            title: const Text('退出登录'),
+            onTap: () => _confirmLogout(context, ref),
+          ),
+        ],
+      ),
     );
   }
 }
