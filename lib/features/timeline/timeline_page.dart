@@ -82,6 +82,7 @@ class _StatusList extends ConsumerWidget {
       child: TabRefreshIndicator(
         onRefresh: () => _refresh(context, ref),
         child: ReadingList(
+          feed: true,
           builder: (context, padding) => statuses.isEmpty
               ? ListView(
                   primary: true,

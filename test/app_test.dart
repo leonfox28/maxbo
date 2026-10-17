@@ -328,17 +328,15 @@ void main() {
     expect(position, greaterThan(0));
     expect(navOffset(), isNot(Offset.zero));
 
-    // Unfolded, it comes back in the corner, which on a window this wide is
-    // clear of the centred cards.
+    // Unfolded, it comes back in the corner, and the cards widen.
     resize(unfolded);
     await tester.pumpAndSettle();
     expect(navOffset(), Offset.zero);
     expect(pill().right, unfolded.width - 16);
     expect(scrolled(), position);
     final card = tester.getRect(find.byType(StatusCard).first);
-    expect(card.width, readingWidth);
+    expect(card.width, feedWidth);
     expect(card.center.dx, unfolded.width / 2);
-    expect(pill().left, greaterThan(card.right));
     expect(
       tester.widget<Icon>(find.byIcon(Icons.notifications_outlined)).color,
       unreadColor,

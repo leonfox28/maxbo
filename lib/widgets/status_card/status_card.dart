@@ -6,6 +6,7 @@ import '../../data/models/pic_info.dart';
 import '../../data/models/status.dart';
 import '../../data/models/weibo_user.dart';
 import '../../features/interactions/likes.dart';
+import '../adaptive_layout.dart';
 import '../pic_grid/pic_grid.dart';
 import '../rich_text/status_text.dart';
 import '../rich_text/status_text_parser.dart';
@@ -51,6 +52,12 @@ class StatusCardActions {
 }
 
 /// A status as shown in a timeline, or atop its detail page when [detail].
+///
+/// Given [wideCardFrom] or more across, as a [feedWidth] timeline gives it,
+/// a timeline card puts its pictures, video or retweeted post beside its
+/// text rather than under it: the text keeps to about the length of line it
+/// has on a phone, and the card takes less height. Text-only cards leave
+/// that side empty, so all the text of a timeline lines up.
 class StatusCard extends StatelessWidget {
   const StatusCard(
     this.status, {
@@ -66,28 +73,84 @@ class StatusCard extends StatelessWidget {
   /// to the page's tabs.
   final bool detail;
 
+  /// The width of the side with the media on a wide card.
+  static const _asideWidth = 420.0;
+  static const _asideGap = 24.0;
+
   @override
   Widget build(BuildContext context) {
-    final retweeted = status.retweeted;
     final onOpen = actions.onOpen;
     final card = Padding(
       padding: EdgeInsets.fromLTRB(16, 12, 16, detail ? 12 : 0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _Header(status: status, onUser: actions.onUser),
-          const SizedBox(height: 8),
-          _Body(status: status, actions: actions),
-          if (retweeted != null) ...[
-            const SizedBox(height: 8),
-            _Retweeted(status: retweeted, actions: actions),
-          ],
-          if (!detail) _Counts(status: status),
-        ],
-      ),
+      child: detail
+          ? _narrow()
+          : LayoutBuilder(
+              builder: (context, constraints) =>
+                  constraints.maxWidth + 32 >= wideCardFrom
+                  ? _wide()
+                  : _narrow(),
+            ),
     );
     if (detail || onOpen == null) return card;
     return InkWell(onTap: () => onOpen(status), child: card);
+  }
+
+  Widget _narrow() {
+    final retweeted = status.retweeted;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _Header(status: status, onUser: actions.onUser),
+        const SizedBox(height: 8),
+        _Body(status: status, actions: actions),
+        if (retweeted != null) ...[
+          const SizedBox(height: 8),
+          _Retweeted(status: retweeted, actions: actions),
+        ],
+        if (!detail) _Counts(status: status),
+      ],
+    );
+  }
+
+  Widget _wide() {
+    final retweeted = status.retweeted;
+    // A retweet's own pictures, if it has any, stay with its text.
+    final aside = retweeted != null
+        ? _Retweeted(status: retweeted, actions: actions)
+        : _mediaOf(status, actions);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _Header(status: status, onUser: actions.onUser),
+                  const SizedBox(height: 8),
+                  _Body(
+                    status: status,
+                    actions: actions,
+                    withMedia: retweeted != null,
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: _asideGap),
+            SizedBox(width: _asideWidth, child: aside),
+          ],
+        ),
+        // Under the text, where they'd be on a narrow card.
+        Row(
+          children: [
+            Expanded(child: _Counts(status: status)),
+            const SizedBox(width: _asideGap + _asideWidth),
+          ],
+        ),
+      ],
+    );
   }
 }
 
@@ -192,46 +255,78 @@ class _Header extends StatelessWidget {
   }
 }
 
+/// The pictures, video or linked page of a status, if it has any.
+Widget? _mediaOf(Status status, StatusCardActions actions) {
+  // A retweet carries a copy of its source's page_info; show it only once,
+  // inside the retweeted post.
+  final isRetweet = status.retweeted != null;
+  final video = isRetweet ? null : status.video;
+  final card = isRetweet ? null : status.pageCard;
+  return status.pics.isNotEmpty
+      ? PicGrid(
+          pics: status.pics,
+          total: status.picCount,
+          onTap: actions.onPicture == null
+              ? null
+              : (i) => actions.onPicture!(status.pics, i),
+        )
+      : status.mixedMedia.isNotEmpty
+      ? _mixedGrid(status, actions)
+      : video != null
+      ? _VideoCover(
+          video: video,
+          onTap: actions.onVideo == null
+              ? null
+              : () => actions.onVideo!(status, null),
+        )
+      : card != null
+      ? _PageCardView(card: card)
+      : null;
+}
+
+// Pictures open in the viewer among the post's other pictures; videos play
+// by their place among its videos.
+Widget _mixedGrid(Status status, StatusCardActions actions) {
+  final items = status.mixedMedia;
+  final pics = [
+    for (final item in items)
+      if (item case MixedPic(:final pic)) pic,
+  ];
+  final onPicture = actions.onPicture;
+  final onVideo = actions.onVideo;
+  return PicGrid.mixed(
+    items: items,
+    total: status.picCount,
+    onTap: (i) {
+      final before = items.take(i);
+      switch (items[i]) {
+        case MixedPic():
+          onPicture?.call(pics, before.whereType<MixedPic>().length);
+        case MixedVideo():
+          onVideo?.call(status, before.whereType<MixedVideo>().length);
+      }
+    },
+  );
+}
+
 /// Text and media of a status, or of the post it retweets when [nested].
+/// Without [withMedia], only the text, the media being shown elsewhere.
 class _Body extends StatelessWidget {
   const _Body({
     required this.status,
     required this.actions,
     this.nested = false,
+    this.withMedia = true,
   });
 
   final Status status;
   final StatusCardActions actions;
   final bool nested;
+  final bool withMedia;
 
   @override
   Widget build(BuildContext context) {
-    // A retweet carries a copy of its source's page_info; show it only once,
-    // inside the retweeted post.
-    final isRetweet = status.retweeted != null;
-    final video = isRetweet ? null : status.video;
-    final card = isRetweet ? null : status.pageCard;
-    final media = status.pics.isNotEmpty
-        ? PicGrid(
-            pics: status.pics,
-            total: status.picCount,
-            onTap: actions.onPicture == null
-                ? null
-                : (i) => actions.onPicture!(status.pics, i),
-          )
-        : status.mixedMedia.isNotEmpty
-        ? _mixedGrid(status.mixedMedia)
-        : video != null
-        ? _VideoCover(
-            video: video,
-            onTap: actions.onVideo == null
-                ? null
-                : () => actions.onVideo!(status, null),
-          )
-        : card != null
-        ? _PageCardView(card: card)
-        : null;
-
+    final media = withMedia ? _mediaOf(status, actions) : null;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -249,30 +344,6 @@ class _Body extends StatelessWidget {
           ),
         if (media != null) ...[const SizedBox(height: 8), media],
       ],
-    );
-  }
-
-  // Pictures open in the viewer among the post's other pictures; videos
-  // play by their place among its videos.
-  Widget _mixedGrid(List<MixedMedia> items) {
-    final pics = [
-      for (final item in items)
-        if (item case MixedPic(:final pic)) pic,
-    ];
-    final onPicture = actions.onPicture;
-    final onVideo = actions.onVideo;
-    return PicGrid.mixed(
-      items: items,
-      total: status.picCount,
-      onTap: (i) {
-        final before = items.take(i);
-        switch (items[i]) {
-          case MixedPic():
-            onPicture?.call(pics, before.whereType<MixedPic>().length);
-          case MixedVideo():
-            onVideo?.call(status, before.whereType<MixedVideo>().length);
-        }
-      },
     );
   }
 }

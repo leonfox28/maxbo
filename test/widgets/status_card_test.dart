@@ -309,6 +309,71 @@ void main() {
     expect(find.text('1.2万'), findsNothing);
   });
 
+  group('on a wide card', () {
+    void widen(WidgetTester tester) {
+      tester.view.physicalSize = const Size(1000, 800);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+    }
+
+    testWidgets('pictures sit beside the text, counts under it', (
+      tester,
+    ) async {
+      widen(tester);
+      await pumpCard(
+        tester,
+        statusJson(text: '配图的微博', pics: [picJson('a'), picJson('b')]),
+      );
+
+      final text = tester.getRect(find.text('配图的微博'));
+      final grid = tester.getRect(find.byType(PicGrid));
+      final likes = tester.getRect(find.text('赞'));
+      expect(grid.left, greaterThan(text.left + 500));
+      expect(grid.top, lessThan(text.bottom));
+      expect(likes.right, lessThan(grid.left));
+      expect(likes.top, greaterThan(grid.bottom));
+    });
+
+    testWidgets('the retweeted post sits beside the retweet', (tester) async {
+      widen(tester);
+      await pumpCard(
+        tester,
+        statusJson(
+          text: '转发理由',
+          retweeted: statusJson(id: 2, text: '原文内容'),
+        ),
+      );
+
+      final reason = tester.getRect(find.text('转发理由'));
+      final source = tester.getRect(find.textContaining('原文内容'));
+      expect(source.left, greaterThan(reason.left + 500));
+      expect(source.top, lessThan(reason.bottom));
+    });
+
+    testWidgets('text alone keeps to the text side', (tester) async {
+      widen(tester);
+      await pumpCard(tester, statusJson(text: '很长的文字' * 60));
+
+      final text = tester.getRect(find.textContaining('很长的文字'));
+      expect(text.right, lessThanOrEqualTo(1000 - 16 - 24 - 420));
+    });
+
+    testWidgets('not on the detail page', (tester) async {
+      widen(tester);
+      await pumpCard(
+        tester,
+        statusJson(text: '配图的微博', pics: [picJson('a'), picJson('b')]),
+        detail: true,
+      );
+
+      final text = tester.getRect(find.text('配图的微博'));
+      expect(
+        tester.getRect(find.byType(PicGrid)).top,
+        greaterThan(text.bottom),
+      );
+    });
+  });
+
   testWidgets('tapping a picture reports the pictures and index', (
     tester,
   ) async {

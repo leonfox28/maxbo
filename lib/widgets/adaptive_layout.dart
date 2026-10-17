@@ -26,9 +26,22 @@ enum WindowSize {
 /// pictures and videos across the window.
 const readingWidth = 640.0;
 
-/// The side margins that centre a [readingWidth] column in [width].
-EdgeInsets readingInsets(double width) =>
-    EdgeInsets.symmetric(horizontal: math.max(0, (width - readingWidth) / 2));
+/// The widest a timeline of status cards runs, on a window at least
+/// [wideCardFrom] wide; narrower windows keep it to [readingWidth]. Cards
+/// that wide put their media beside their text (`StatusCard`), so lines
+/// stay as short as in the reading column.
+const feedWidth = 1000.0;
+
+/// The width from which a status card puts its media beside its text.
+const wideCardFrom = 880.0;
+
+/// The column a timeline of status cards takes in a window [width] wide.
+double feedColumnWidth(double width) =>
+    width >= wideCardFrom ? feedWidth : readingWidth;
+
+/// The side margins that centre a [column] wide column in [width].
+EdgeInsets readingInsets(double width, {double column = readingWidth}) =>
+    EdgeInsets.symmetric(horizontal: math.max(0, (width - column) / 2));
 
 /// Builds a page's vertical [ListView] with the padding that keeps its items
 /// to the reading column. Margins rather than a narrower list, so the user
@@ -40,10 +53,14 @@ class ReadingList extends StatelessWidget {
   const ReadingList({
     super.key,
     this.padding = EdgeInsets.zero,
+    this.feed = false,
     required this.builder,
   });
 
   final EdgeInsets padding;
+
+  /// A timeline of status cards, in a [feedColumnWidth] column.
+  final bool feed;
   final Widget Function(BuildContext context, EdgeInsets padding) builder;
 
   @override
@@ -52,7 +69,12 @@ class ReadingList extends StatelessWidget {
     return LayoutBuilder(
       builder: (context, constraints) => builder(
         context,
-        readingInsets(constraints.maxWidth) +
+        readingInsets(
+              constraints.maxWidth,
+              column: feed
+                  ? feedColumnWidth(constraints.maxWidth)
+                  : readingWidth,
+            ) +
             EdgeInsets.only(top: media.top, bottom: media.bottom) +
             padding,
       ),
