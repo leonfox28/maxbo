@@ -115,7 +115,7 @@ class Status {
           ?MixedMedia.tryFromJson(item),
       ],
       video: VideoInfo.tryFromPageInfo(pageInfo),
-      pageCard: PageCard.tryFromPageInfo(pageInfo),
+      pageCard: PageCard.tryFromPageInfo(pageInfo, urlStruct: urlStruct),
       retweeted: Status.tryFromJson(
         map['retweeted_status'],
         parentUrls: ownUrls,
@@ -362,15 +362,24 @@ class PageCard {
   final String? description;
   final String? imageUrl;
 
-  static PageCard? tryFromPageInfo(Map<String, Object?>? pageInfo) {
+  /// Null when the card would only repeat the title of a link in the text,
+  /// [urlStruct] describing those links: a `webpage` card can come with no
+  /// picture or description (PLAN §8).
+  static PageCard? tryFromPageInfo(
+    Map<String, Object?>? pageInfo, {
+    List<Map<String, Object?>> urlStruct = const [],
+  }) {
     if (pageInfo == null || pageInfo['object_type'] == 'video') return null;
     final title = readString(pageInfo['page_title']);
     if (title == null) return null;
-    return PageCard(
-      title: title,
-      description:
-          readString(pageInfo['page_desc']) ?? readString(pageInfo['content2']),
-      imageUrl: readUrl(pageInfo['page_pic']),
-    );
+    final description =
+        readString(pageInfo['page_desc']) ?? readString(pageInfo['content2']);
+    final imageUrl = readUrl(pageInfo['page_pic']);
+    if (description == null &&
+        imageUrl == null &&
+        urlStruct.any((u) => readString(u['url_title']) == title)) {
+      return null;
+    }
+    return PageCard(title: title, description: description, imageUrl: imageUrl);
   }
 }

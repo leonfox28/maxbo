@@ -388,34 +388,7 @@ class _DiagnosticsPageState extends ConsumerState<DiagnosticsPage> {
     }
 
     _log('== page_info');
-    for (final s in everything) {
-      final info = s['page_info'];
-      if (info is! Map<String, Object?>) continue;
-      // Logcat cuts lines at ~4 KB, so log keys and the media fields only.
-      _log(
-        'object_type=${info['object_type']} type=${info['type']} '
-        'keys=${info.keys.join(',')}',
-      );
-      for (final key in ['page_pic', 'pic_info', 'page_url']) {
-        if (info[key] case final Object v) {
-          _log(
-            '  $key: ${v is String ? _urlPattern(v) : describeShape(v, maxDepth: 2)}',
-          );
-        }
-      }
-      if (info['media_info'] case final Map<String, Object?> media) {
-        _log('  media_info keys=${media.keys.join(',')}');
-        for (final e in media.entries) {
-          if (e.value is String && '${e.value}'.startsWith('http')) {
-            _log('  media.${e.key}: ${_urlPattern('${e.value}')}');
-          }
-        }
-        _log(
-          '  media.duration=${media['duration'].runtimeType} '
-          'big_pic_info=${describeShape(media['big_pic_info'], maxDepth: 2)}',
-        );
-      }
-    }
+    _logPageInfos(everything);
 
     _log('== text html');
     _logHtml(everything.map((s) => s['text']).whereType<String>());
@@ -1443,6 +1416,8 @@ class _DiagnosticsPageState extends ConsumerState<DiagnosticsPage> {
         }
         if (list.isEmpty || readMap(json['data'])?['since_id'] == '') break;
       }
+      _log('== page_info');
+      _logPageInfos([...flagged, ...normal]);
       // Fields that only flagged statuses have, or that they all share with
       // a value no normal status has.
       final flaggedKeys = {for (final s in flagged) ...s.keys};
@@ -1997,6 +1972,60 @@ class _DiagnosticsPageState extends ConsumerState<DiagnosticsPage> {
     if (x == null || y == null) return 'n/a';
     final c = x.compareTo(y);
     return c == 0 ? '=' : (c < 0 ? '<' : '>');
+  }
+
+  /// Logs the shape of each status's `page_info`, and whether the card
+  /// repeats the text it comes with.
+  void _logPageInfos(Iterable<Map<String, Object?>> statuses) {
+    for (final s in statuses) {
+      final info = s['page_info'];
+      if (info is! Map<String, Object?>) continue;
+      // Logcat cuts lines at ~4 KB, so log keys and the media fields only.
+      _log(
+        'object_type=${info['object_type']} type=${info['type']} '
+        'keys=${info.keys.join(',')}',
+      );
+      for (final key in ['page_pic', 'pic_info', 'page_url']) {
+        if (info[key] case final Object v) {
+          _log(
+            '  $key: ${v is String ? _urlPattern(v) : describeShape(v, maxDepth: 2)}',
+          );
+        }
+      }
+      // Whether the card repeats the text: comparisons only, no content.
+      final title = readString(info['page_title']);
+      final urls = readMaps(s['url_struct']);
+      final linked = urls.where((u) => u['page_id'] == info['page_id']);
+      _log(
+        '  title=${title != null} desc=${readString(info['page_desc']) != null} '
+        'content1=${readString(info['content1']) != null} '
+        'content2=${readString(info['content2']) != null} '
+        'pic=${readUrl(info['page_pic']) != null} '
+        'title in text_raw=${title != null && '${s['text_raw']}'.contains(title)} '
+        'url_struct=${urls.length} page_id linked=${linked.length} '
+        'title==url_title=${urls.any((u) => u['url_title'] == title)}',
+      );
+      for (final u in linked.take(1)) {
+        _log(
+          '  linked url keys=${u.keys.join(',')} '
+          'url_type=${u['url_type']} '
+          'ori_url=${_urlPattern('${u['ori_url']}')} '
+          'long_url=${_urlPattern('${u['long_url']}')}',
+        );
+      }
+      if (info['media_info'] case final Map<String, Object?> media) {
+        _log('  media_info keys=${media.keys.join(',')}');
+        for (final e in media.entries) {
+          if (e.value is String && '${e.value}'.startsWith('http')) {
+            _log('  media.${e.key}: ${_urlPattern('${e.value}')}');
+          }
+        }
+        _log(
+          '  media.duration=${media['duration'].runtimeType} '
+          'big_pic_info=${describeShape(media['big_pic_info'], maxDepth: 2)}',
+        );
+      }
+    }
   }
 
   /// A URL reduced to its host and path shape: query values, digits and

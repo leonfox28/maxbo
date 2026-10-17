@@ -301,6 +301,30 @@ void main() {
       expect(s.pageCard?.imageUrl, 'https://wx2.sinaimg.cn/large/topic.jpg');
     });
 
+    test('drops a bare link card that repeats a link in the text', () {
+      Status parse({String? desc}) => Status.tryFromJson(
+        statusJson(
+          extra: {
+            'url_struct': [
+              {
+                'short_url': 'http://t.cn/A6abcdEF',
+                'url_title': '示例活动',
+                'page_id': '100120abc',
+              },
+            ],
+          },
+          pageInfo: {
+            'object_type': 'webpage',
+            'page_id': '100120abc',
+            'page_title': '示例活动',
+            'page_desc': ?desc,
+          },
+        ),
+      )!;
+      expect(parse(desc: '').pageCard, isNull);
+      expect(parse(desc: '一段描述').pageCard?.title, '示例活动');
+    });
+
     test('reads whether it is pinned to its profile', () {
       final pinned = Status.tryFromJson(
         statusJson(extra: {'isTop': 1, 'mblogtype': 2}),
