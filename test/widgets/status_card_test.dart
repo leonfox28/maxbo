@@ -115,12 +115,54 @@ void main() {
           'media_info': {'duration': 95},
         },
       ),
-      actions: StatusCardActions(onVideo: (_) => tapped = true),
+      actions: StatusCardActions(onVideo: (_, _) => tapped = true),
     );
 
     expect(find.text('1:35'), findsOneWidget);
     await tester.tap(find.byIcon(Icons.play_circle_fill));
     expect(tapped, isTrue);
+  });
+
+  testWidgets('shows the pictures and videos of a retweeted mixed post', (
+    tester,
+  ) async {
+    (Status, int?)? video;
+    (List<PicInfo>, int)? picture;
+    await pumpCard(
+      tester,
+      statusJson(
+        text: '转发',
+        retweeted: statusJson(
+          id: 2,
+          text: '原微博',
+          extra: mixedMediaFields([
+            videoPageInfo(name: 'first'),
+            picJson('p1'),
+            videoPageInfo(name: 'second'),
+          ]),
+        ),
+      ),
+      actions: StatusCardActions(
+        onVideo: (status, index) => video = (status, index),
+        onPicture: (pics, index) => picture = (pics, index),
+      ),
+    );
+
+    expect(find.text('0:49'), findsNWidgets(2));
+    await tester.tap(find.byIcon(Icons.play_circle_fill).last);
+    expect(video?.$1.id, '2');
+    expect(video?.$2, 1);
+
+    await tester.tap(
+      find
+          .descendant(
+            of: find.byType(PicGrid),
+            matching: find.byType(ClipRRect),
+          )
+          .at(1),
+    );
+    expect(picture?.$1.map((p) => p.id), ['p1']);
+    expect(picture?.$2, 0);
   });
 
   testWidgets('a retweet shows its source video once', (tester) async {

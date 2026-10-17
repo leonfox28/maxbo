@@ -257,6 +257,33 @@ void main() {
       expect(s.video!.streamUrls, everyElement(startsWith('https://')));
     });
 
+    test('reads the pictures and videos of a post mixing them', () {
+      final s = Status.tryFromJson(
+        statusJson(
+          extra: mixedMediaFields([
+            videoPageInfo(name: 'first'),
+            picJson('p1'),
+            videoPageInfo(name: 'second'),
+          ]),
+        ),
+      )!;
+
+      expect(s.pics, isEmpty);
+      expect(s.video, isNull);
+      expect(s.picCount, 3);
+      expect(s.mixedMedia, [
+        isA<MixedVideo>(),
+        isA<MixedPic>().having((m) => m.pic.id, 'pic id', 'p1'),
+        isA<MixedVideo>(),
+      ]);
+      expect(s.mixedVideos.map((v) => v.coverUrl), [
+        'https://wx1.sinaimg.cn/orj480/first.jpg',
+        'https://wx1.sinaimg.cn/orj480/second.jpg',
+      ]);
+      expect(s.videoAt(1)?.streamUrls.first, contains('/second/'));
+      expect(s.videoAt(2), isNull);
+    });
+
     test('reads other page_info as a link card', () {
       final s = Status.tryFromJson(
         statusJson(

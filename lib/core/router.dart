@@ -72,6 +72,7 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: '/video/:id',
         builder: (_, state) => VideoPlayerPage(
           id: state.pathParameters['id']!,
+          index: int.tryParse(state.uri.queryParameters['i'] ?? ''),
           initial: state.extra is Status ? state.extra! as Status : null,
         ),
       ),

@@ -32,7 +32,10 @@ class StatusCardActions {
   /// "展开" on a truncated long post.
   final ValueChanged<Status>? onExpand;
   final void Function(List<PicInfo> pics, int index)? onPicture;
-  final ValueChanged<Status>? onVideo;
+
+  /// A video; [index] picks one in a post mixing pictures and videos, as
+  /// `Status.videoAt` does.
+  final void Function(Status status, int? index)? onVideo;
 
   StatusCardActions copyWith({
     ValueChanged<WeiboUser>? onUser,
@@ -216,12 +219,14 @@ class _Body extends StatelessWidget {
                 ? null
                 : (i) => actions.onPicture!(status.pics, i),
           )
+        : status.mixedMedia.isNotEmpty
+        ? _mixedGrid(status.mixedMedia)
         : video != null
         ? _VideoCover(
             video: video,
             onTap: actions.onVideo == null
                 ? null
-                : () => actions.onVideo!(status),
+                : () => actions.onVideo!(status, null),
           )
         : card != null
         ? _PageCardView(card: card)
@@ -244,6 +249,30 @@ class _Body extends StatelessWidget {
           ),
         if (media != null) ...[const SizedBox(height: 8), media],
       ],
+    );
+  }
+
+  // Pictures open in the viewer among the post's other pictures; videos
+  // play by their place among its videos.
+  Widget _mixedGrid(List<MixedMedia> items) {
+    final pics = [
+      for (final item in items)
+        if (item case MixedPic(:final pic)) pic,
+    ];
+    final onPicture = actions.onPicture;
+    final onVideo = actions.onVideo;
+    return PicGrid.mixed(
+      items: items,
+      total: status.picCount,
+      onTap: (i) {
+        final before = items.take(i);
+        switch (items[i]) {
+          case MixedPic():
+            onPicture?.call(pics, before.whereType<MixedPic>().length);
+          case MixedVideo():
+            onVideo?.call(status, before.whereType<MixedVideo>().length);
+        }
+      },
     );
   }
 }

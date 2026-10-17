@@ -185,6 +185,7 @@ test/  (fixtures/ 下只放合成数据)
 - **分页**：首屏传 `since_id=0`，翻页传上一页的 `max_id`，两页之间没有重叠。响应里有 `since_id`、`max_id`（int）以及对应的 `since_id_str`、`max_id_str`，我们用 `_str` 版本。`since_id` 等于首条的 id，`max_id` 小于末条的 id。`count=20` 实际返回 24–25 条，所以**不能用条数判断是否到底**，以 `max_id` 为 0 或列表为空为准。
 - **图片尺寸**：`pic_infos` 的尺寸名不代表实际大小（`original` 其实是 `orj*` 中等尺寸，`largest` 才是 `large/` 原图），因此按实际宽高选择：列表从 `thumbnail`/`bmiddle`/`large`/`mw2000` 中取能覆盖显示尺寸的最小一档，原图只留给查看器。
 - **`page_info`**：`object_type` 有 `video`、`topic`、`live` 等。视频封面是 `page_pic`，时长是 `media_info.duration`（秒），宽高在 `media_info.big_pic_info.pic_big`；视频地址（`mp4_720p_mp4`、`mp4_hd_url` 等）带 `Expires`/`ssig` 签名。`page_url` 是 `sinaweibo://` 应用内协议，无法打开。**转发微博的外层会复制一份原微博的 `page_info`**，只在转发框里显示，否则会重复。
+- **图片和视频混排**（2026-10-17 补测，诊断页「时间线结构」）：同时带多个视频、或视频加图片的微博**没有 `page_info` 和 `pic_infos`**，媒体全在 `mix_media_info.items[]` 里，每项是 `{type, id, data, scheme, actionlog}`：`type:"video"` 的 `data` 和视频 `page_info` 结构相同（`object_type:"video"`、`page_pic`、`media_info`），`type:"pic"` 的 `data` 和 `pic_infos` 的一项相同。`pic_num` 是总项数，`pic_ids` 只列其中的图片（也可能为空）。`Status.mixedMedia` 按原顺序读出，九宫格里视频格带播放图标和时长；点图片在查看器里只翻这条微博的图片，点视频进 `/video/:id?i=<第几个视频>`，地址过期重新请求 `statuses/show` 后按同一序号取。
 - **正文链接**：@ 的 href 是相对路径 `/n/<昵称>`，带 `usercard` 属性；话题指向 `s.weibo.com/weibo?q=`；带 `data-pid` 的链接是图片（「查看图片」）；`t.cn` 短链在 `url_struct` 里有 `long_url`；很多链接内含 `img.icon-link` 类型图标（网页、商品、视频等）。
 - **`source`**：可能是纯文本，也可能是 `<a>` 片段，需要去掉标签。
 

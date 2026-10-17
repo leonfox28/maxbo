@@ -355,6 +355,37 @@ class _DiagnosticsPageState extends ConsumerState<DiagnosticsPage> {
     }
     final mixed = everything.where((s) => s['mix_media_info'] != null);
     _log('mix_media_info: ${mixed.length}');
+    // Shape only: which other media fields come along, and what each item
+    // holds.
+    for (final s in mixed.take(3)) {
+      final mix = readMap(s['mix_media_info']);
+      _log(
+        'mixed: pic_num=${s['pic_num']} '
+        'pic_ids=${describeShape(s['pic_ids'], maxDepth: 0)} '
+        'pic_infos=${describeShape(s['pic_infos'], maxDepth: 0)} '
+        'page_info.object_type=${readMap(s['page_info'])?['object_type']} '
+        'mix keys=${mix?.keys.join(',')}',
+      );
+      for (final item in readMaps(mix?['items']).take(4)) {
+        final data = readMap(item['data']);
+        _log(
+          '  item: type=${item['type']} '
+          'keys=${item.keys.join(',')} '
+          'data.object_type=${data?['object_type']} '
+          'data keys=${data?.keys.join(',')}',
+        );
+        for (final key in ['page_pic', 'pic_info', 'thumbnail', 'large']) {
+          if (data?[key] case final Object v) {
+            _log(
+              '    $key: ${v is String ? _urlPattern(v) : describeShape(v, maxDepth: 2)}',
+            );
+          }
+        }
+        if (readMap(data?['media_info']) case final media?) {
+          _log('    media_info keys=${media.keys.join(',')}');
+        }
+      }
+    }
 
     _log('== page_info');
     for (final s in everything) {

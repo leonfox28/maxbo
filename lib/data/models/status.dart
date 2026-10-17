@@ -20,6 +20,7 @@ class Status {
     this.urls = const [],
     this.pics = const [],
     this.picCount = 0,
+    this.mixedMedia = const [],
     this.video,
     this.pageCard,
     this.retweeted,
@@ -56,6 +57,10 @@ class Status {
 
   /// How many pictures the post has, which can exceed [pics].
   final int picCount;
+
+  /// The pictures and videos of a post mixing them, in order; such posts
+  /// have neither [pics] nor [video].
+  final List<MixedMedia> mixedMedia;
   final VideoInfo? video;
 
   /// A link preview (topic, live stream, …) shown when there is no media.
@@ -105,6 +110,10 @@ class Status {
       urls: [for (final u in urlStruct) ?UrlEntity.tryFromJson(u)],
       pics: pics,
       picCount: readInt(map['pic_num']) ?? pics.length,
+      mixedMedia: [
+        for (final item in readMaps(readMap(map['mix_media_info'])?['items']))
+          ?MixedMedia.tryFromJson(item),
+      ],
       video: VideoInfo.tryFromPageInfo(pageInfo),
       pageCard: PageCard.tryFromPageInfo(pageInfo),
       retweeted: Status.tryFromJson(
@@ -120,6 +129,16 @@ class Status {
       pinned: readInt(map['isTop']) == 1,
     );
   }
+
+  /// The videos of a post mixing pictures and videos, in order.
+  List<VideoInfo> get mixedVideos => [
+    for (final item in mixedMedia)
+      if (item case MixedVideo(:final video)) video,
+  ];
+
+  /// Its video, or with an [index] the one at [index] in [mixedVideos].
+  VideoInfo? videoAt(int? index) =>
+      index == null ? video : mixedVideos.elementAtOrNull(index);
 
   // Not yet confirmed against a real feed ad; see PLAN §8 item 5. Weibo also
   // sets all of these on ordinary posts it classes as advertising content
@@ -300,6 +319,39 @@ class VideoInfo {
     ]..sort((a, b) => b.$2.compareTo(a.$2));
     return entries.map((e) => e.$1);
   }
+}
+
+/// An item of a post mixing pictures and videos (`mix_media_info`).
+sealed class MixedMedia {
+  const MixedMedia();
+
+  /// Items hold a `pic_infos` entry or a `page_info` as their `data`.
+  static MixedMedia? tryFromJson(Map<String, Object?> json) {
+    final data = readMap(json['data']);
+    return switch (json['type']) {
+      'pic' => switch (PicInfo.tryFromJson(data, id: readString(json['id']))) {
+        final pic? => MixedPic(pic),
+        null => null,
+      },
+      'video' => switch (VideoInfo.tryFromPageInfo(data)) {
+        final video? => MixedVideo(video),
+        null => null,
+      },
+      _ => null,
+    };
+  }
+}
+
+final class MixedPic extends MixedMedia {
+  const MixedPic(this.pic);
+
+  final PicInfo pic;
+}
+
+final class MixedVideo extends MixedMedia {
+  const MixedVideo(this.video);
+
+  final VideoInfo video;
 }
 
 /// A link preview such as a topic or live stream.

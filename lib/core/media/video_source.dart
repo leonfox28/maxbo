@@ -39,9 +39,12 @@ String? freshStreamUrl(
 /// Where to play the video of status [id] from: [known]'s URL while it is
 /// fresh, or else (or when [refresh] is set) one from re-fetching the
 /// status. [fetched] tells which, so a rejected URL is refreshed only once.
+/// In a post mixing pictures and videos, [index] picks the video as
+/// `Status.videoAt` does.
 Future<({String url, bool fetched})> resolveVideoUrl(
   WeiboApi api,
   String id, {
+  int? index,
   VideoInfo? known,
   bool refresh = false,
   DateTime? now,
@@ -52,7 +55,7 @@ Future<({String url, bool fetched})> resolveVideoUrl(
     }
   }
   final status = await api.fetchStatus(id);
-  final url = status.video?.streamUrls.firstOrNull;
+  final url = status.videoAt(index)?.streamUrls.firstOrNull;
   if (url == null) throw const WeiboApiException('这条微博的视频暂时无法播放');
   return (url: url, fetched: true);
 }

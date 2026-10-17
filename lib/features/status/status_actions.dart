@@ -49,6 +49,9 @@ StatusCardActions statusCardActions(BuildContext context) {
     // The detail page has the full text of long posts.
     onExpand: openStatus,
     onPicture: viewPictures,
-    onVideo: (status) => context.push('/video/${status.id}', extra: status),
+    onVideo: (status, index) => context.push(
+      index == null ? '/video/${status.id}' : '/video/${status.id}?i=$index',
+      extra: status,
+    ),
   );
 }

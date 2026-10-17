@@ -3,18 +3,27 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/media/weibo_image.dart';
 import '../../core/settings/app_settings.dart';
+import '../../core/util/format.dart';
 import '../../data/models/pic_info.dart';
+import '../../data/models/status.dart';
 
 /// The pictures of a status: one sized to its shape, otherwise a grid of
-/// square cells (2×2 for four, three columns else, at most nine).
+/// square cells (2×2 for four, three columns else, at most nine). Posts
+/// mixing pictures and videos show both in it.
 class PicGrid extends StatelessWidget {
-  const PicGrid({super.key, required this.pics, int? total, this.onTap})
-    : total = total ?? pics.length;
+  PicGrid({super.key, required List<PicInfo> pics, int? total, this.onTap})
+    : items = [for (final pic in pics) MixedPic(pic)],
+      total = total ?? pics.length;
 
-  final List<PicInfo> pics;
+  const PicGrid.mixed({super.key, required this.items, int? total, this.onTap})
+    : total = total ?? items.length;
 
-  /// How many pictures the status has; beyond nine shows as "+N".
+  final List<MixedMedia> items;
+
+  /// How many items the status has; beyond nine shows as "+N".
   final int total;
+
+  /// Called with the index in [items].
   final ValueChanged<int>? onTap;
 
   static const _gap = 4.0;
@@ -22,15 +31,15 @@ class PicGrid extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (pics.isEmpty) return const SizedBox.shrink();
+    if (items.isEmpty) return const SizedBox.shrink();
     return LayoutBuilder(
       builder: (context, constraints) {
         final width = constraints.maxWidth;
-        if (pics.length == 1) return _single(context, pics.first, width);
+        if (items.length == 1) return _single(context, items.first, width);
 
         final cell = (width - _gap * 2) / 3;
-        final columns = pics.length == 4 ? 2 : 3;
-        final shown = pics.take(_maxShown).toList();
+        final columns = items.length == 4 ? 2 : 3;
+        final shown = items.take(_maxShown).toList();
         final hidden = total - shown.length;
         return SizedBox(
           width: cell * columns + _gap * (columns - 1),
@@ -38,9 +47,9 @@ class PicGrid extends StatelessWidget {
             spacing: _gap,
             runSpacing: _gap,
             children: [
-              for (final (i, pic) in shown.indexed)
-                _PicTile(
-                  pic: pic,
+              for (final (i, item) in shown.indexed)
+                _tile(
+                  item,
                   width: cell,
                   height: cell,
                   overlay: i == shown.length - 1 && hidden > 0
@@ -55,17 +64,44 @@ class PicGrid extends StatelessWidget {
     );
   }
 
-  Widget _single(BuildContext context, PicInfo pic, double width) {
+  Widget _single(BuildContext context, MixedMedia item, double width) {
     // Extreme shapes are cropped; long pictures show their top.
-    final ratio = (pic.aspectRatio ?? 1).clamp(0.6, 1.8);
+    final aspectRatio = switch (item) {
+      MixedPic(:final pic) => pic.aspectRatio,
+      MixedVideo(:final video) => video.aspectRatio,
+    };
+    final ratio = (aspectRatio ?? 1).clamp(0.6, 1.8);
     final maxSide = width * 0.7;
-    return _PicTile(
-      pic: pic,
+    return _tile(
+      item,
       width: ratio >= 1 ? maxSide : maxSide * ratio,
       height: ratio >= 1 ? maxSide / ratio : maxSide,
       onTap: onTap == null ? null : () => onTap!(0),
     );
   }
+
+  static Widget _tile(
+    MixedMedia item, {
+    required double width,
+    required double height,
+    String? overlay,
+    VoidCallback? onTap,
+  }) => switch (item) {
+    MixedPic(:final pic) => _PicTile(
+      pic: pic,
+      width: width,
+      height: height,
+      overlay: overlay,
+      onTap: onTap,
+    ),
+    MixedVideo(:final video) => _VideoTile(
+      video: video,
+      width: width,
+      height: height,
+      overlay: overlay,
+      onTap: onTap,
+    ),
+  };
 }
 
 class _PicTile extends ConsumerWidget {
@@ -116,21 +152,91 @@ class _PicTile extends ConsumerWidget {
               ),
               if (badge != null)
                 Positioned(right: 4, bottom: 4, child: MediaBadge(badge)),
-              if (overlay != null)
-                ColoredBox(
-                  color: Colors.black45,
-                  child: Center(
-                    child: Text(
-                      overlay!,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 22,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                  ),
-                ),
+              if (overlay case final overlay?) _MoreOverlay(overlay),
             ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// A video's cover in the grid, marked as a video and with its length.
+class _VideoTile extends StatelessWidget {
+  const _VideoTile({
+    required this.video,
+    required this.width,
+    required this.height,
+    this.overlay,
+    this.onTap,
+  });
+
+  final VideoInfo video;
+  final double width;
+  final double height;
+  final String? overlay;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final cover = video.coverUrl;
+    final duration = video.duration;
+    return GestureDetector(
+      onTap: onTap,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(4),
+        child: SizedBox(
+          width: width,
+          height: height,
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              if (cover != null)
+                WeiboImage(cover, width: width, height: height)
+              else
+                ColoredBox(
+                  color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                ),
+              const Center(
+                child: Icon(
+                  Icons.play_circle_fill,
+                  size: 36,
+                  color: Colors.white70,
+                  shadows: [Shadow(blurRadius: 8)],
+                ),
+              ),
+              if (duration != null && duration > 0)
+                Positioned(
+                  right: 4,
+                  bottom: 4,
+                  child: MediaBadge(formatDuration(duration)),
+                ),
+              if (overlay case final overlay?) _MoreOverlay(overlay),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// The "+N" over the last cell when there are more items than shown.
+class _MoreOverlay extends StatelessWidget {
+  const _MoreOverlay(this.label);
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return ColoredBox(
+      color: Colors.black45,
+      child: Center(
+        child: Text(
+          label,
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 22,
+            fontWeight: FontWeight.w500,
           ),
         ),
       ),

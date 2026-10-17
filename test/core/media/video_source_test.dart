@@ -85,6 +85,24 @@ void main() {
       expect(adapter.requests, hasLength(2));
     });
 
+    test('picks the same video of a post mixing videos', () async {
+      adapter = FakeAdapter(
+        (_) => jsonBody(
+          statusJson(
+            extra: mixedMediaFields([
+              videoPageInfo(name: 'first', expires: 2100000000),
+              picJson('p1'),
+              videoPageInfo(name: 'second', expires: 2100000000),
+            ]),
+          ),
+        ),
+      );
+
+      final source = await resolveVideoUrl(fakeApi(adapter), '1', index: 1);
+
+      expect(source.url, contains('/second/'));
+    });
+
     test('reports a status that has no playable video', () async {
       adapter = FakeAdapter((_) => jsonBody(statusJson()));
 

@@ -81,13 +81,19 @@ Map<String, Object?> feedJson(
   'max_id_str': '$maxId',
 };
 
-/// A video page_info whose streams are signed until [expires] (Unix seconds).
-Map<String, Object?> videoPageInfo({int expires = 2000000000}) {
+/// A video page_info whose streams are signed until [expires] (Unix seconds);
+/// its streams and cover are named after [name].
+Map<String, Object?> videoPageInfo({
+  int expires = 2000000000,
+  String name = 'o0',
+}) {
   String stream(String label) =>
-      'http://f.video.weibocdn.com/o0/$label.mp4?label=$label&Expires=$expires&ssig=s&KID=unistore,video';
+      'http://f.video.weibocdn.com/$name/$label.mp4?label=$label&Expires=$expires&ssig=s&KID=unistore,video';
   return {
     'object_type': 'video',
-    'page_pic': 'https://wx1.sinaimg.cn/orj480/cover.jpg',
+    'page_pic': name == 'o0'
+        ? 'https://wx1.sinaimg.cn/orj480/cover.jpg'
+        : 'https://wx1.sinaimg.cn/orj480/$name.jpg',
     'media_info': {
       'duration': 49,
       'mp4_sd_url': stream('mp4_ld'),
@@ -122,6 +128,23 @@ Map<String, Object?> videoPageInfo({int expires = 2000000000}) {
     },
   };
 }
+
+/// The fields of a post mixing pictures (`picJson`) and videos
+/// (`videoPageInfo`), in the order of [items]; such posts have no
+/// `pic_infos` or `page_info`.
+Map<String, Object?> mixedMediaFields(List<Map<String, Object?>> items) => {
+  'pic_num': items.length,
+  'pic_ids': [for (final item in items) ?item['pic_id']],
+  'pic_infos': null,
+  'mix_media_info': {
+    'items': [
+      for (final (i, item) in items.indexed)
+        item['object_type'] == 'video'
+            ? {'type': 'video', 'id': 'v$i', 'data': item}
+            : {'type': 'pic', 'id': item['pic_id'], 'data': item},
+    ],
+  },
+};
 
 Map<String, Object?> commentJson({
   int id = 6000000000000001,

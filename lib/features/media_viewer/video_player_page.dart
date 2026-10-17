@@ -14,15 +14,22 @@ import '../../core/util/format.dart';
 import '../../data/api/weibo_api.dart';
 import '../../data/models/status.dart';
 
-/// Plays the video of status [id] full screen.
+/// Plays the video of status [id] full screen; in a post mixing pictures
+/// and videos, the one at [index] (see `Status.videoAt`).
 ///
 /// The stream URLs of [initial] (the status as the previous page had it)
 /// expire about an hour after it loaded; past that, or if the video CDN
 /// rejects one, the status is fetched again for fresh URLs.
 class VideoPlayerPage extends ConsumerStatefulWidget {
-  const VideoPlayerPage({super.key, required this.id, this.initial});
+  const VideoPlayerPage({
+    super.key,
+    required this.id,
+    this.index,
+    this.initial,
+  });
 
   final String id;
+  final int? index;
   final Status? initial;
 
   @override
@@ -72,7 +79,8 @@ class _VideoPlayerPageState extends ConsumerState<VideoPlayerPage> {
       final source = await resolveVideoUrl(
         ref.read(weiboApiProvider),
         widget.id,
-        known: widget.initial?.video,
+        index: widget.index,
+        known: widget.initial?.videoAt(widget.index),
         refresh: refresh,
       );
       if (!mounted || generation != _generation) return;
@@ -148,7 +156,7 @@ class _VideoPlayerPageState extends ConsumerState<VideoPlayerPage> {
   Widget build(BuildContext context) {
     final controller = _controller;
     final error = _error;
-    final cover = widget.initial?.video?.coverUrl;
+    final cover = widget.initial?.videoAt(widget.index)?.coverUrl;
     final controlsShown = _controlsVisible || controller == null;
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: SystemUiOverlayStyle.light,
