@@ -271,7 +271,7 @@ void main() {
     expect(bellColor(), isNot(unreadColor));
   });
 
-  testWidgets('a wide window has a rail; folding and unfolding keep the tabs', (
+  testWidgets('a wide window has the pill in its corner; folding keeps tabs', (
     tester,
   ) async {
     void resize(Size size) {
@@ -281,7 +281,7 @@ void main() {
 
     addTearDown(tester.view.reset);
     const phone = Size(400, 800);
-    const unfolded = Size(1200, 900);
+    const unfolded = Size(1280, 800);
     resize(phone);
     await tester.pumpWidget(
       app(
@@ -313,7 +313,14 @@ void main() {
         tester.state<ScrollableState>(timeline.first).position.pixels;
     Offset navOffset() =>
         tester.widget<AnimatedSlide>(find.byType(AnimatedSlide)).offset;
+    Rect pill() => tester.getRect(
+      find.descendant(
+        of: find.byType(FloatingPill),
+        matching: find.byType(Material),
+      ),
+    );
 
+    expect(pill().center.dx, phone.width / 2);
     // Scrolling down hides the pill.
     await tester.drag(timeline.first, const Offset(0, -300));
     await tester.pumpAndSettle();
@@ -321,40 +328,39 @@ void main() {
     expect(position, greaterThan(0));
     expect(navOffset(), isNot(Offset.zero));
 
+    // Unfolded, it comes back in the corner, which on a window this wide is
+    // clear of the centred cards.
     resize(unfolded);
     await tester.pumpAndSettle();
-    expect(find.byType(NavigationRail), findsOneWidget);
-    expect(find.byType(FloatingPill), findsNothing);
+    expect(navOffset(), Offset.zero);
+    expect(pill().right, unfolded.width - 16);
     expect(scrolled(), position);
-    // The cards keep to a column centred right of the rail.
     final card = tester.getRect(find.byType(StatusCard).first);
-    final tabsLeft = tester.getTopRight(find.byType(NavigationRail)).dx + 1;
     expect(card.width, readingWidth);
-    expect(card.center.dx, closeTo((tabsLeft + unfolded.width) / 2, 0.01));
-    // Unread notifications show on the rail as on the pill.
+    expect(card.center.dx, unfolded.width / 2);
+    expect(pill().left, greaterThan(card.right));
     expect(
       tester.widget<Icon>(find.byIcon(Icons.notifications_outlined)).color,
       unreadColor,
     );
 
-    // Folded again, the pill is back where the list was left.
+    // Folded again, the pill is back in the middle, the list where it was.
     resize(phone);
     await tester.pumpAndSettle();
-    expect(find.byType(NavigationRail), findsNothing);
-    expect(navOffset(), Offset.zero);
+    expect(pill().center.dx, phone.width / 2);
     expect(scrolled(), position);
 
-    // The rail switches tabs, and its open tab scrolls back to the top.
+    // In the corner it still switches tabs, and its open tab scrolls back to
+    // the top.
     resize(unfolded);
     await tester.pumpAndSettle();
-    final rail = find.byType(NavigationRail);
-    await tester.tap(find.descendant(of: rail, matching: find.text('热搜')));
+    await tester.tap(find.byTooltip('热搜'));
     await tester.pumpAndSettle();
     expect(find.byType(StatusCard), findsNothing);
-    await tester.tap(find.descendant(of: rail, matching: find.text('首页')));
+    await tester.tap(find.byTooltip('首页'));
     await tester.pumpAndSettle();
     expect(scrolled(), position);
-    await tester.tap(find.descendant(of: rail, matching: find.text('首页')));
+    await tester.tap(find.byTooltip('首页'));
     await tester.pumpAndSettle();
     expect(scrolled(), 0);
   });

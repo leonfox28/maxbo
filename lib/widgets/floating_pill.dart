@@ -10,11 +10,20 @@ import 'adaptive_layout.dart';
 /// Its [child] sits 8 in from every edge, so a round item at either end is
 /// as far from the pill's ends as from its top and bottom.
 class FloatingPill extends StatelessWidget {
-  const FloatingPill({super.key, this.stretch = false, required this.child});
+  const FloatingPill({
+    super.key,
+    this.stretch = false,
+    this.alignment = AlignmentDirectional.center,
+    required this.child,
+  });
 
   /// Spans the page, less a margin, rather than wrapping [child]. On a wide
   /// window, it spans the reading column instead.
   final bool stretch;
+
+  /// Where a pill that wraps [child] sits across the page, kept as far in
+  /// from the side as a stretched one.
+  final AlignmentGeometry alignment;
   final Widget child;
 
   @override
@@ -43,7 +52,14 @@ class FloatingPill extends StatelessWidget {
                 ),
               ),
             )
-          : Center(heightFactor: 1, child: pill),
+          : Align(
+              alignment: alignment,
+              heightFactor: 1,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: pill,
+              ),
+            ),
     );
   }
 }
