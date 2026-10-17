@@ -59,10 +59,11 @@ class StatusCardActions {
 /// Given [wideCardFrom] or more across, as a [feedWidth] timeline gives it,
 /// a timeline card puts its pictures, video or retweeted post beside its
 /// text rather than under it: the text keeps to about the length of line it
-/// has on a phone, and the card takes less height. The counts stay under
-/// the text, at the foot of the card when the media runs further down.
-/// Text-only cards leave the media's side empty, so all the text of a
-/// timeline lines up.
+/// has on a phone, the media takes the rest, and the card takes less
+/// height. The counts stay under the text, at the foot of the card when the
+/// media runs further down. Text-only cards keep their text to the left, so
+/// all the text of a timeline lines up, in lines no longer than a reading
+/// column's.
 class StatusCard extends StatelessWidget {
   const StatusCard(
     this.status, {
@@ -136,8 +137,8 @@ class StatusCard extends StatelessWidget {
 
 enum _WideSlot { main, footer, aside }
 
-/// A wide card's text ([main]) with [footer] under it, and [aside] to their
-/// right. The footer comes right after the text, or at the foot of the card
+/// A wide card's text ([main]) with [footer] under it, and [aside], if any,
+/// to their right. The footer comes right after the text, or at the foot of the card
 /// if the aside runs further down, so it never leaves a gap under the aside.
 class _WideLayout
     extends SlottedMultiChildRenderObjectWidget<_WideSlot, RenderBox> {
@@ -168,11 +169,14 @@ class _WideLayout
 
 class _RenderWideLayout extends RenderBox
     with SlottedContainerRenderObjectMixin<_WideSlot, RenderBox> {
-  /// The aside takes this share of the width, up to [_asideMaxWidth]; the
-  /// text keeps at least a phone's width of line.
-  static const _asideShare = 0.45;
-  static const _asideMaxWidth = 420.0;
+  /// Beside an aside the text keeps to about a phone's width of line, and
+  /// the aside takes the rest: it is what catches the eye, and most posts
+  /// are a line or two.
+  static const _mainWidth = 400.0;
   static const _asideGap = 24.0;
+
+  /// With no aside, the longest line the text runs to.
+  static const _mainAloneWidth = 640.0;
 
   /// Under the aside, as above it at the top of the card.
   static const _asideBottom = 12.0;
@@ -180,14 +184,14 @@ class _RenderWideLayout extends RenderBox
   @override
   void performLayout() {
     final width = constraints.maxWidth;
-    final asideWidth = math.min(
-      _asideMaxWidth,
-      (width - _asideGap) * _asideShare,
-    );
-    final mainWidth = width - _asideGap - asideWidth;
     final main = childForSlot(_WideSlot.main)!;
     final footer = childForSlot(_WideSlot.footer)!;
     final aside = childForSlot(_WideSlot.aside);
+    final mainWidth = math.min(
+      width,
+      aside == null ? _mainAloneWidth : _mainWidth,
+    );
+    final asideWidth = width - _asideGap - mainWidth;
 
     main.layout(
       BoxConstraints.tightFor(width: mainWidth),

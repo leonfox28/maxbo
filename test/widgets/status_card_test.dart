@@ -332,7 +332,8 @@ void main() {
       final grid = tester.getRect(find.byType(PicGrid));
       final likes = tester.getRect(find.text('赞'));
       final card = tester.getRect(find.byType(StatusCard));
-      expect(grid.left, greaterThan(text.left + 500));
+      expect(grid.left, text.left + 400 + 24);
+      expect(grid.width, 1000 - 16 - 400 - 24 - 16);
       expect(grid.top, lessThan(text.bottom));
       // The pictures run on down beside the counts, which keep to the text
       // side at the foot of the card.
@@ -389,8 +390,8 @@ void main() {
       final text = tester.getRect(find.textContaining('很长的文字'));
       final grid = tester.getRect(find.byType(PicGrid));
       expect(grid.top, lessThan(text.bottom));
-      expect(text.width, greaterThan(400));
-      expect(grid.width, lessThan(400));
+      expect(text.width, lessThanOrEqualTo(400));
+      expect(grid.width, 850 - 16 - 400 - 24 - 16);
     });
 
     testWidgets('the retweeted post sits beside the retweet', (tester) async {
@@ -405,16 +406,22 @@ void main() {
 
       final reason = tester.getRect(find.text('转发理由'));
       final source = tester.getRect(find.textContaining('原文内容'));
-      expect(source.left, greaterThan(reason.left + 500));
+      expect(source.left, greaterThan(reason.left + 400));
       expect(source.top, lessThan(reason.bottom));
     });
 
-    testWidgets('text alone keeps to the text side', (tester) async {
+    testWidgets('text alone keeps to the left, in reading-length lines', (
+      tester,
+    ) async {
       widen(tester);
       await pumpCard(tester, statusJson(text: '很长的文字' * 60));
 
       final text = tester.getRect(find.textContaining('很长的文字'));
-      expect(text.right, lessThanOrEqualTo(1000 - 16 - 24 - 420));
+      final likes = tester.getRect(find.text('赞'));
+      expect(text.left, 16);
+      expect(text.right, greaterThan(16 + 600));
+      expect(text.right, lessThanOrEqualTo(16 + 640));
+      expect(likes.right, lessThanOrEqualTo(16 + 640));
     });
 
     testWidgets('not on the detail page', (tester) async {
