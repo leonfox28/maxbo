@@ -73,8 +73,10 @@ class StatusCard extends StatelessWidget {
   /// to the page's tabs.
   final bool detail;
 
-  /// The width of the side with the media on a wide card.
-  static const _asideWidth = 420.0;
+  /// The side with the media on a wide card takes this share of it, up to
+  /// [_asideMaxWidth]; the text keeps at least a phone's width of line.
+  static const _asideShare = 0.45;
+  static const _asideMaxWidth = 420.0;
   static const _asideGap = 24.0;
 
   @override
@@ -87,7 +89,7 @@ class StatusCard extends StatelessWidget {
           : LayoutBuilder(
               builder: (context, constraints) =>
                   constraints.maxWidth + 32 >= wideCardFrom
-                  ? _wide()
+                  ? _wide(constraints.maxWidth)
                   : _narrow(),
             ),
     );
@@ -112,7 +114,11 @@ class StatusCard extends StatelessWidget {
     );
   }
 
-  Widget _wide() {
+  Widget _wide(double width) {
+    final asideWidth = ((width - _asideGap) * _asideShare).clamp(
+      0.0,
+      _asideMaxWidth,
+    );
     final retweeted = status.retweeted;
     // A retweet's own pictures, if it has any, stay with its text.
     final aside = retweeted != null
@@ -139,14 +145,14 @@ class StatusCard extends StatelessWidget {
               ),
             ),
             const SizedBox(width: _asideGap),
-            SizedBox(width: _asideWidth, child: aside),
+            SizedBox(width: asideWidth, child: aside),
           ],
         ),
         // Under the text, where they'd be on a narrow card.
         Row(
           children: [
             Expanded(child: _Counts(status: status)),
-            const SizedBox(width: _asideGap + _asideWidth),
+            SizedBox(width: _asideGap + asideWidth),
           ],
         ),
       ],

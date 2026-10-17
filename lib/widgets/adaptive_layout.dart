@@ -32,8 +32,9 @@ const readingWidth = 640.0;
 /// stay as short as in the reading column.
 const feedWidth = 1000.0;
 
-/// The width from which a status card puts its media beside its text.
-const wideCardFrom = 880.0;
+/// The width from which a status card puts its media beside its text: that
+/// of an expanded window, so an unfolded foldable has it as a tablet does.
+const wideCardFrom = 840.0;
 
 /// The column a timeline of status cards takes in a window [width] wide.
 double feedColumnWidth(double width) =>

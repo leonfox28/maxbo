@@ -310,8 +310,8 @@ void main() {
   });
 
   group('on a wide card', () {
-    void widen(WidgetTester tester) {
-      tester.view.physicalSize = const Size(1000, 800);
+    void widen(WidgetTester tester, {double width = 1000}) {
+      tester.view.physicalSize = Size(width, 800);
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.reset);
     }
@@ -332,6 +332,22 @@ void main() {
       expect(grid.top, lessThan(text.bottom));
       expect(likes.right, lessThan(grid.left));
       expect(likes.top, greaterThan(grid.bottom));
+    });
+
+    testWidgets('so on an unfolded foldable, with less to the pictures', (
+      tester,
+    ) async {
+      widen(tester, width: 850);
+      await pumpCard(
+        tester,
+        statusJson(text: '很长的文字' * 60, pics: [picJson('a'), picJson('b')]),
+      );
+
+      final text = tester.getRect(find.textContaining('很长的文字'));
+      final grid = tester.getRect(find.byType(PicGrid));
+      expect(grid.top, lessThan(text.bottom));
+      expect(text.width, greaterThan(400));
+      expect(grid.width, lessThan(400));
     });
 
     testWidgets('the retweeted post sits beside the retweet', (tester) async {
