@@ -1,4 +1,7 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 
 import '../../core/media/weibo_image.dart';
 import '../../core/util/format.dart';
@@ -56,8 +59,10 @@ class StatusCardActions {
 /// Given [wideCardFrom] or more across, as a [feedWidth] timeline gives it,
 /// a timeline card puts its pictures, video or retweeted post beside its
 /// text rather than under it: the text keeps to about the length of line it
-/// has on a phone, and the card takes less height. Text-only cards leave
-/// that side empty, so all the text of a timeline lines up.
+/// has on a phone, and the card takes less height. The counts stay under
+/// the text, at the foot of the card when the media runs further down.
+/// Text-only cards leave the media's side empty, so all the text of a
+/// timeline lines up.
 class StatusCard extends StatelessWidget {
   const StatusCard(
     this.status, {
@@ -73,12 +78,6 @@ class StatusCard extends StatelessWidget {
   /// to the page's tabs.
   final bool detail;
 
-  /// The side with the media on a wide card takes this share of it, up to
-  /// [_asideMaxWidth]; the text keeps at least a phone's width of line.
-  static const _asideShare = 0.45;
-  static const _asideMaxWidth = 420.0;
-  static const _asideGap = 24.0;
-
   @override
   Widget build(BuildContext context) {
     final onOpen = actions.onOpen;
@@ -89,7 +88,7 @@ class StatusCard extends StatelessWidget {
           : LayoutBuilder(
               builder: (context, constraints) =>
                   constraints.maxWidth + 32 >= wideCardFrom
-                  ? _wide(constraints.maxWidth)
+                  ? _wide()
                   : _narrow(),
             ),
     );
@@ -114,49 +113,127 @@ class StatusCard extends StatelessWidget {
     );
   }
 
-  Widget _wide(double width) {
-    final asideWidth = ((width - _asideGap) * _asideShare).clamp(
-      0.0,
-      _asideMaxWidth,
-    );
+  Widget _wide() {
     final retweeted = status.retweeted;
     // A retweet's own pictures, if it has any, stay with its text.
     final aside = retweeted != null
         ? _Retweeted(status: retweeted, actions: actions)
         : _mediaOf(status, actions);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _Header(status: status, onUser: actions.onUser),
-                  const SizedBox(height: 8),
-                  _Body(
-                    status: status,
-                    actions: actions,
-                    withMedia: retweeted != null,
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(width: _asideGap),
-            SizedBox(width: asideWidth, child: aside),
-          ],
-        ),
-        // Under the text, where they'd be on a narrow card.
-        Row(
-          children: [
-            Expanded(child: _Counts(status: status)),
-            SizedBox(width: _asideGap + asideWidth),
-          ],
-        ),
-      ],
+    return _WideLayout(
+      main: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _Header(status: status, onUser: actions.onUser),
+          const SizedBox(height: 8),
+          _Body(status: status, actions: actions, withMedia: retweeted != null),
+        ],
+      ),
+      footer: _Counts(status: status),
+      aside: aside,
     );
+  }
+}
+
+enum _WideSlot { main, footer, aside }
+
+/// A wide card's text ([main]) with [footer] under it, and [aside] to their
+/// right. The footer comes right after the text, or at the foot of the card
+/// if the aside runs further down, so it never leaves a gap under the aside.
+class _WideLayout
+    extends SlottedMultiChildRenderObjectWidget<_WideSlot, RenderBox> {
+  const _WideLayout({
+    required this.main,
+    required this.footer,
+    required this.aside,
+  });
+
+  final Widget main;
+  final Widget footer;
+  final Widget? aside;
+
+  @override
+  Iterable<_WideSlot> get slots => _WideSlot.values;
+
+  @override
+  Widget? childForSlot(_WideSlot slot) => switch (slot) {
+    _WideSlot.main => main,
+    _WideSlot.footer => footer,
+    _WideSlot.aside => aside,
+  };
+
+  @override
+  _RenderWideLayout createRenderObject(BuildContext context) =>
+      _RenderWideLayout();
+}
+
+class _RenderWideLayout extends RenderBox
+    with SlottedContainerRenderObjectMixin<_WideSlot, RenderBox> {
+  /// The aside takes this share of the width, up to [_asideMaxWidth]; the
+  /// text keeps at least a phone's width of line.
+  static const _asideShare = 0.45;
+  static const _asideMaxWidth = 420.0;
+  static const _asideGap = 24.0;
+
+  /// Under the aside, as above it at the top of the card.
+  static const _asideBottom = 12.0;
+
+  @override
+  void performLayout() {
+    final width = constraints.maxWidth;
+    final asideWidth = math.min(
+      _asideMaxWidth,
+      (width - _asideGap) * _asideShare,
+    );
+    final mainWidth = width - _asideGap - asideWidth;
+    final main = childForSlot(_WideSlot.main)!;
+    final footer = childForSlot(_WideSlot.footer)!;
+    final aside = childForSlot(_WideSlot.aside);
+
+    main.layout(
+      BoxConstraints.tightFor(width: mainWidth),
+      parentUsesSize: true,
+    );
+    footer.layout(
+      BoxConstraints.tightFor(width: mainWidth),
+      parentUsesSize: true,
+    );
+    aside?.layout(BoxConstraints(maxWidth: asideWidth), parentUsesSize: true);
+
+    final height = math.max(
+      main.size.height + footer.size.height,
+      aside == null ? 0.0 : aside.size.height + _asideBottom,
+    );
+    size = constraints.constrain(Size(width, height));
+    _place(main, Offset.zero);
+    _place(footer, Offset(0, size.height - footer.size.height));
+    if (aside != null) _place(aside, Offset(mainWidth + _asideGap, 0));
+  }
+
+  static void _place(RenderBox child, Offset offset) =>
+      (child.parentData! as BoxParentData).offset = offset;
+
+  @override
+  void paint(PaintingContext context, Offset offset) {
+    for (final child in children) {
+      context.paintChild(
+        child,
+        offset + (child.parentData! as BoxParentData).offset,
+      );
+    }
+  }
+
+  @override
+  bool hitTestChildren(BoxHitTestResult result, {required Offset position}) {
+    for (final child in children) {
+      final hit = result.addWithPaintOffset(
+        offset: (child.parentData! as BoxParentData).offset,
+        position: position,
+        hitTest: (result, transformed) =>
+            child.hitTest(result, position: transformed),
+      );
+      if (hit) return true;
+    }
+    return false;
   }
 }
 

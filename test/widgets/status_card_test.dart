@@ -316,22 +316,65 @@ void main() {
       addTearDown(tester.view.reset);
     }
 
-    testWidgets('pictures sit beside the text, counts under it', (
+    testWidgets('pictures sit beside the text, counts at the foot', (
       tester,
     ) async {
       widen(tester);
       await pumpCard(
         tester,
-        statusJson(text: '配图的微博', pics: [picJson('a'), picJson('b')]),
+        statusJson(
+          text: '配图的微博',
+          pics: [for (var i = 0; i < 9; i++) picJson('p$i')],
+        ),
       );
 
       final text = tester.getRect(find.text('配图的微博'));
       final grid = tester.getRect(find.byType(PicGrid));
       final likes = tester.getRect(find.text('赞'));
+      final card = tester.getRect(find.byType(StatusCard));
       expect(grid.left, greaterThan(text.left + 500));
       expect(grid.top, lessThan(text.bottom));
+      // The pictures run on down beside the counts, which keep to the text
+      // side at the foot of the card.
       expect(likes.right, lessThan(grid.left));
-      expect(likes.top, greaterThan(grid.bottom));
+      expect(likes.top, greaterThan(text.bottom + 100));
+      expect(likes.top, lessThan(grid.bottom));
+      expect(card.bottom - grid.bottom, 12);
+    });
+
+    testWidgets('taps reach the pictures and the card', (tester) async {
+      widen(tester);
+      final pictures = <int>[];
+      final opened = <String>[];
+      await pumpCard(
+        tester,
+        statusJson(id: 1, text: '配图的微博', pics: [picJson('a'), picJson('b')]),
+        actions: StatusCardActions(
+          onPicture: (_, i) => pictures.add(i),
+          onOpen: (s) => opened.add(s.id),
+        ),
+      );
+
+      final grid = tester.getRect(find.byType(PicGrid));
+      await tester.tapAt(grid.topLeft + const Offset(10, 10));
+      await tester.tap(find.text('配图的微博'));
+      expect(pictures, [0]);
+      expect(opened, ['1']);
+    });
+
+    testWidgets('counts follow text that runs longer than the pictures', (
+      tester,
+    ) async {
+      widen(tester);
+      await pumpCard(
+        tester,
+        statusJson(text: '很长的文字' * 200, pics: [picJson('a'), picJson('b')]),
+      );
+
+      final text = tester.getRect(find.textContaining('很长的文字'));
+      final likes = tester.getRect(find.text('赞'));
+      expect(likes.top, greaterThan(text.bottom));
+      expect(likes.top, lessThan(text.bottom + 20));
     });
 
     testWidgets('so on an unfolded foldable, with less to the pictures', (
