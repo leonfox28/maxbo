@@ -1,5 +1,5 @@
 /// The app version, kept equal to `version` in pubspec.yaml (a test checks).
-const appVersion = '0.6.2';
+const appVersion = '0.6.3';
 
 final repoUrl = Uri.https('github.com', '/leonfox28/maxbo');
 final issuesUrl = Uri.https('github.com', '/leonfox28/maxbo/issues');
