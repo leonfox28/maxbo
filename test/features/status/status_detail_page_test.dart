@@ -131,6 +131,32 @@ void main() {
     expect(commentBar(), Offset.zero);
   });
 
+  testWidgets('a wide window shows the lists beside the status', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1280, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    await pumpPage(tester);
+    await tester.pumpAndSettle();
+
+    final post = tester.getRect(find.text('完整的正文'));
+    final tabs = tester.getRect(find.text('评论 1.2万'));
+    final comment = tester.getRect(find.text('最热的评论'));
+    final bar = tester.getRect(find.text('写评论…'));
+    expect(post.right, lessThan(640));
+    expect(tabs.left, greaterThan(640));
+    expect(tabs.top, lessThan(post.bottom));
+    expect(comment.left, greaterThan(640));
+    // The comment bar writes to the lists, so sits under them.
+    expect(bar.left, greaterThan(640));
+
+    // The lists scroll on their own, leaving the status where it is.
+    await tester.drag(find.text('最热的评论'), const Offset(0, -100));
+    await tester.pumpAndSettle();
+    expect(tester.getRect(find.text('完整的正文')), post);
+  });
+
   testWidgets('loads each list once, however often it is shown', (
     tester,
   ) async {

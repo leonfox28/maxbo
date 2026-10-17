@@ -77,3 +77,43 @@ class ReadingSlivers extends StatelessWidget {
     );
   }
 }
+
+/// Two columns side by side, as wide as reading columns can be and centred
+/// together in a wider window, split by a line unless not [divider].
+///
+/// [crossAxisAlignment] as in a [Row]: stretched by default, filling the
+/// height given, as panes of a page do.
+class ReadingPanes extends StatelessWidget {
+  const ReadingPanes({
+    super.key,
+    this.start,
+    this.end,
+    this.divider = true,
+    this.crossAxisAlignment = CrossAxisAlignment.stretch,
+  });
+
+  final Widget? start;
+  final Widget? end;
+  final bool divider;
+  final CrossAxisAlignment crossAxisAlignment;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      heightFactor: 1,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 2 * readingWidth + 1),
+        child: Row(
+          crossAxisAlignment: crossAxisAlignment,
+          children: [
+            Expanded(child: start ?? const SizedBox.shrink()),
+            divider
+                ? const VerticalDivider(width: 1, thickness: 1)
+                : const SizedBox(width: 1),
+            Expanded(child: end ?? const SizedBox.shrink()),
+          ],
+        ),
+      ),
+    );
+  }
+}

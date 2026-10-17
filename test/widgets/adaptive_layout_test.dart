@@ -101,6 +101,30 @@ void main() {
     expect(tester.getRect(find.text('条目')), const Rect.fromLTWH(0, 0, 400, 50));
   });
 
+  testWidgets('ReadingPanes are reading columns, centred together', (
+    tester,
+  ) async {
+    Future<(Rect, Rect)> panes(double window) async {
+      setWidth(tester, window);
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: ReadingPanes(start: Text('左'), end: Text('右')),
+        ),
+      );
+      return (tester.getRect(find.text('左')), tester.getRect(find.text('右')));
+    }
+
+    var (start, end) = await panes(1001);
+    expect(start, const Rect.fromLTWH(0, 0, 500, 800));
+    expect(end, const Rect.fromLTWH(501, 0, 500, 800));
+
+    (start, end) = await panes(1481);
+    expect(start.left, 100);
+    expect(start.width, readingWidth);
+    expect(end.left, 100 + readingWidth + 1);
+    expect(end.width, readingWidth);
+  });
+
   testWidgets('a stretched pill spans the column, not a wide window', (
     tester,
   ) async {

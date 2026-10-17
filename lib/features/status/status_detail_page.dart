@@ -24,7 +24,10 @@ import '../interactions/likes.dart';
 import 'status_actions.dart';
 import 'status_detail_providers.dart';
 
-/// A status with its full text, and its comments and reposts in tabs.
+/// A status with its full text, and its comments and reposts in tabs. On an
+/// expanded window the lists sit beside the status rather than under it,
+/// each scrolling on its own, so a long status or one with many pictures
+/// doesn't push the comments out of sight.
 ///
 /// Opening the page loads the status and its first page of comments; the
 /// reposts load only when their tab is opened (PLAN §2).
@@ -187,6 +190,7 @@ class _StatusDetailPageState extends ConsumerState<StatusDetailPage> {
   Widget build(BuildContext context) {
     final detail = ref.watch(statusDetailProvider(widget.id));
     final status = detail.value ?? widget.initial;
+    final split = WindowSize.of(context) == WindowSize.expanded;
     return Scaffold(
       // Once there is a status, its bars give way while the user reads down
       // it, as the home tab bar does.
@@ -198,7 +202,14 @@ class _StatusDetailPageState extends ConsumerState<StatusDetailPage> {
               offset: _bars.visible ? Offset.zero : const Offset(0, 1.5),
               duration: BarsOnScroll.duration,
               curve: BarsOnScroll.curve,
-              child: _bottomBar(status),
+              // Under the lists it writes to.
+              child: split
+                  ? ReadingPanes(
+                      end: _bottomBar(status),
+                      divider: false,
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                    )
+                  : _bottomBar(status),
             ),
       body: status != null
           ? SafeArea(
@@ -227,7 +238,8 @@ class _StatusDetailPageState extends ConsumerState<StatusDetailPage> {
                       },
                       // Under the scaffold, which pads for the comment bar.
                       child: Builder(
-                        builder: (context) => _content(context, status, detail),
+                        builder: (context) =>
+                            _content(context, status, detail, split: split),
                       ),
                     ),
                   ),
@@ -266,8 +278,9 @@ class _StatusDetailPageState extends ConsumerState<StatusDetailPage> {
   Widget _content(
     BuildContext context,
     Status status,
-    AsyncValue<Status> detail,
-  ) {
+    AsyncValue<Status> detail, {
+    required bool split,
+  }) {
     final actions = statusCardActions(context);
     final authorId = status.user?.id;
     final session = ref.watch(sessionProvider);
@@ -335,57 +348,73 @@ class _StatusDetailPageState extends ConsumerState<StatusDetailPage> {
       loadMore = null;
     }
 
-    return RefreshIndicator(
-      onRefresh: () => _refresh(status),
-      child: LoadMoreTrigger(
-        onNearEnd: loadMore,
-        child: CustomScrollView(
-          physics: const AlwaysScrollableScrollPhysics(),
-          slivers: [
-            ReadingSlivers(
+    final post = [
+      SliverToBoxAdapter(
+        child: StatusCard(
+          status,
+          detail: true,
+          actions: _cardActions(status, actions),
+        ),
+      ),
+      // The full text failed to load; the card shows what the previous page
+      // had.
+      if (detail.hasError && !detail.hasValue)
+        SliverToBoxAdapter(
+          child: _LoadFailedBar(
+            message: loadErrorMessage(detail.error),
+            onRetry: () => ref.invalidate(statusDetailProvider(widget.id)),
+          ),
+        ),
+    ];
+    final responses = [
+      SliverPersistentHeader(
+        pinned: true,
+        delegate: _TabsDelegate(
+          status: status,
+          commentsCount: _commentsCount(status),
+          tab: _tab,
+          onTab: _showTab,
+          colors: Theme.of(context).colorScheme,
+        ),
+      ),
+      if (_tab == _Tab.comments && activeQuery != null)
+        SliverToBoxAdapter(
+          child: _OrderSwitch(order: _order, onChanged: _showOrder),
+        ),
+      list,
+    ];
+
+    Widget scrollView(List<Widget> slivers, {VoidCallback? onNearEnd}) =>
+        RefreshIndicator(
+          onRefresh: () => _refresh(status),
+          child: LoadMoreTrigger(
+            onNearEnd: onNearEnd,
+            child: CustomScrollView(
+              physics: const AlwaysScrollableScrollPhysics(),
               slivers: [
-                SliverToBoxAdapter(
-                  child: StatusCard(
-                    status,
-                    detail: true,
-                    actions: _cardActions(status, actions),
-                  ),
-                ),
-                // The full text failed to load; the card shows what the
-                // previous page had.
-                if (detail.hasError && !detail.hasValue)
-                  SliverToBoxAdapter(
-                    child: _LoadFailedBar(
-                      message: loadErrorMessage(detail.error),
-                      onRetry: () =>
-                          ref.invalidate(statusDetailProvider(widget.id)),
+                ReadingSlivers(
+                  slivers: [
+                    ...slivers,
+                    // Room to scroll the last item out from under the
+                    // comment bar.
+                    SliverToBoxAdapter(
+                      child: SizedBox(
+                        height: MediaQuery.paddingOf(context).bottom,
+                      ),
                     ),
-                  ),
-                SliverPersistentHeader(
-                  pinned: true,
-                  delegate: _TabsDelegate(
-                    status: status,
-                    commentsCount: _commentsCount(status),
-                    tab: _tab,
-                    onTab: _showTab,
-                    colors: Theme.of(context).colorScheme,
-                  ),
-                ),
-                if (_tab == _Tab.comments && activeQuery != null)
-                  SliverToBoxAdapter(
-                    child: _OrderSwitch(order: _order, onChanged: _showOrder),
-                  ),
-                list,
-                // Room to scroll the last item out from under the comment bar.
-                SliverToBoxAdapter(
-                  child: SizedBox(height: MediaQuery.paddingOf(context).bottom),
+                  ],
                 ),
               ],
             ),
-          ],
-        ),
-      ),
-    );
+          ),
+        );
+
+    return split
+        ? ReadingPanes(
+            start: scrollView(post),
+            end: scrollView(responses, onNearEnd: loadMore),
+          )
+        : scrollView([...post, ...responses], onNearEnd: loadMore);
   }
 
   /// [base] for the status atop the page: its own "展开" stays inert, as the
