@@ -81,7 +81,7 @@ class _CommentRepliesPageState extends ConsumerState<CommentRepliesPage> {
   }
 
   Future<void> _delete(Comment reply) async {
-    if (!await confirmDeleteComment(context) || !mounted) return;
+    if (!await confirmDelete(context) || !mounted) return;
     if (!_deleting.add(reply.id)) return;
     try {
       await ref.read(weiboApiProvider).deleteComment(reply.id);

@@ -10,6 +10,7 @@ import 'package:maxbo/core/session/session_storage.dart';
 import 'package:maxbo/core/settings/app_settings.dart';
 import 'package:maxbo/core/theme.dart';
 import 'package:maxbo/data/models/account.dart';
+import 'package:maxbo/features/shell/home_shell.dart';
 import 'package:maxbo/widgets/adaptive_layout.dart';
 import 'package:maxbo/widgets/floating_pill.dart';
 import 'package:maxbo/widgets/status_card/status_card.dart';
@@ -18,6 +19,15 @@ import 'support/fakes.dart';
 import 'support/statuses.dart';
 
 void main() {
+  final pillSlide = find.ancestor(
+    of: find.byType(FloatingPill),
+    matching: find.byType(AnimatedSlide),
+  );
+  final composeSlide = find.ancestor(
+    of: find.byType(FloatingActionButton),
+    matching: find.byType(AnimatedSlide),
+  );
+
   Widget app({
     StoredSession? restored,
     FakeCookieBridge? bridge,
@@ -114,8 +124,7 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    Offset navOffset() =>
-        tester.widget<AnimatedSlide>(find.byType(AnimatedSlide)).offset;
+    Offset navOffset() => tester.widget<AnimatedSlide>(pillSlide).offset;
     expect(navOffset(), Offset.zero);
 
     final gesture = await tester.startGesture(
@@ -126,6 +135,10 @@ void main() {
       await tester.pump();
     }
     expect(navOffset(), isNot(Offset.zero));
+    expect(
+      tester.widget<AnimatedSlide>(composeSlide).offset,
+      isNot(Offset.zero),
+    );
     // A few pixels back, as when lifting a finger, leave it hidden.
     await gesture.moveBy(const Offset(0, 10));
     await gesture.up();
@@ -135,6 +148,79 @@ void main() {
     await tester.drag(find.byType(ListView), const Offset(0, 100));
     await tester.pumpAndSettle();
     expect(navOffset(), Offset.zero);
+  });
+
+  testWidgets('the home tab has a button to write a post, when signed in', (
+    tester,
+  ) async {
+    await tester.pumpWidget(app());
+    expect(find.byTooltip('发微博'), findsNothing);
+
+    await tester.pumpWidget(
+      app(
+        restored: const StoredSession(
+          account: Account(uid: '42'),
+          cookies: {
+            'weibo.com': {'SUB': 'x'},
+          },
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('热搜'));
+    await tester.pumpAndSettle();
+    expect(find.byTooltip('发微博'), findsNothing);
+
+    await tester.tap(find.byTooltip('首页'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('发微博'));
+    await tester.pumpAndSettle();
+    expect(find.text('分享新鲜事…'), findsOneWidget);
+  });
+
+  testWidgets('the user deletes their own post from the home tab', (
+    tester,
+  ) async {
+    final adapter = FakeAdapter(
+      (o) => switch (o.uri.path) {
+        '/ajax/statuses/destroy' => jsonBody({'ok': 1, ...statusJson(id: 2)}),
+        _ => jsonBody(
+          feedJson([
+            statusJson(id: 1, text: '别人的微博'),
+            statusJson(id: 2, text: '我的微博', user: userJson(id: 42)),
+          ]),
+        ),
+      },
+    );
+    await tester.pumpWidget(
+      app(
+        adapter: adapter,
+        restored: const StoredSession(
+          account: Account(uid: '42'),
+          cookies: {
+            'weibo.com': {'SUB': 'x'},
+          },
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.byTooltip('更多'), findsOneWidget);
+
+    await tester.tap(find.byTooltip('更多'));
+    await tester.pumpAndSettle();
+    // Over the tab bar, not under it.
+    expect(
+      find.descendant(of: find.byType(HomeShell), matching: find.text('删除')),
+      findsNothing,
+    );
+    await tester.tap(find.text('删除'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('删除'));
+    await tester.pumpAndSettle();
+
+    expect(adapter.requests.last.uri.path, '/ajax/statuses/destroy');
+    expect(find.text('我的微博'), findsNothing);
+    expect(find.text('别人的微博'), findsOneWidget);
   });
 
   testWidgets('tapping the open tab scrolls to the top, then refreshes', (
@@ -311,8 +397,7 @@ void main() {
     );
     double scrolled() =>
         tester.state<ScrollableState>(timeline.first).position.pixels;
-    Offset navOffset() =>
-        tester.widget<AnimatedSlide>(find.byType(AnimatedSlide)).offset;
+    Offset navOffset() => tester.widget<AnimatedSlide>(pillSlide).offset;
     Rect pill() => tester.getRect(
       find.descendant(
         of: find.byType(FloatingPill),

@@ -7,6 +7,7 @@ import 'package:maxbo/core/net/weibo_exception.dart';
 import 'package:maxbo/data/api/weibo_api.dart';
 import 'package:maxbo/data/models/comment.dart';
 import 'package:maxbo/data/models/notice.dart';
+import 'package:maxbo/data/models/status.dart';
 
 import '../../support/fakes.dart';
 import '../../support/statuses.dart';
@@ -407,6 +408,91 @@ void main() {
       expect(form(), {'cid': '9'});
     });
 
+    test('postStatus posts text and pictures for an audience', () async {
+      respond = (_) => jsonBody({
+        'ok': 1,
+        'msg': '发布成功',
+        'data': statusJson(
+          id: 77,
+          text: '你好',
+          extra: {
+            'visible': {'type': 1, 'list_id': 0},
+          },
+        ),
+      });
+
+      final status = await fakeApi(adapter).postStatus(
+        text: '你好 & #话题#',
+        pids: ['p1', 'p2'],
+        visibility: StatusVisibility.onlyMe,
+      );
+
+      expect(adapter.requests.single.uri.path, '/ajax/statuses/update');
+      expect(form(), {
+        'content': '你好 & #话题#',
+        'pic_id': '[{"type":"pic","pid":"p1"},{"type":"pic","pid":"p2"}]',
+        'visible': '1',
+      });
+      expect(status?.id, '77');
+      expect(status?.visibility, StatusVisibility.onlyMe);
+    });
+
+    test('postStatus without pictures sends no pic_id', () async {
+      respond = (_) => jsonBody({'ok': 1, 'data': statusJson()});
+
+      await fakeApi(adapter).postStatus(text: '只有字');
+
+      expect(form(), {'content': '只有字', 'visible': '0'});
+    });
+
+    test('deleteStatus', () async {
+      respond = (_) => jsonBody({'ok': 1, 'data': statusJson(id: 77)});
+
+      await fakeApi(adapter).deleteStatus('77');
+
+      expect(adapter.requests.single.uri.path, '/ajax/statuses/destroy');
+      expect(form(), {'id': '77'});
+    });
+
+    test('uploadPicture sends the bytes to picupload, without XHR headers, '
+        'and returns the pid', () async {
+      respond = (_) => htmlBody(
+        '{"code":"A00006","data":{"count":1,'
+        '"pics":{"pic_1":{"width":10,"pid":"0067abc","ret":1}}}}',
+      );
+      final api = WeiboApi(
+        createWeiboDio(
+          jar: WeiboCookieJar({
+            'weibo.com': {'SUB': 'x', 'XSRF-TOKEN': 'tok'},
+          }),
+          throttle: RequestThrottle(minInterval: Duration.zero),
+        )..httpClientAdapter = adapter,
+      );
+
+      final pid = await api.uploadPicture('GIF89a'.codeUnits);
+
+      final request = adapter.requests.single;
+      expect(request.method, 'POST');
+      expect(request.uri.host, 'picupload.weibo.com');
+      expect(request.uri.path, '/interface/pic_upload.php');
+      expect(query(), {'app': 'miniblog', 's': 'json', 'p': '1', 'data': '1'});
+      expect(adapter.bodies.single, 'GIF89a');
+      expect(request.headers['Cookie'], contains('SUB=x'));
+      expect(request.headers['Origin'], 'https://weibo.com');
+      expect(request.headers.containsKey('X-Requested-With'), isFalse);
+      expect(request.headers.containsKey('X-XSRF-TOKEN'), isFalse);
+      expect(pid, '0067abc');
+    });
+
+    test('uploadPicture fails on an answer without a pid', () {
+      respond = (_) => htmlBody('{"code":"A20001","data":{"count":-10}}');
+
+      expect(
+        fakeApi(adapter).uploadPicture([1, 2, 3]),
+        throwsA(isA<WeiboApiException>()),
+      );
+    });
+
     test('an answer that says ok but has an error failed', () {
       respond = (_) => jsonBody({'ok': 1, 'error': '评论太频繁'});
 
@@ -416,6 +502,26 @@ void main() {
           isA<WeiboApiException>().having((e) => e.message, 'message', '评论太频繁'),
         ),
       );
+    });
+  });
+
+  group('parseUploadedPid', () {
+    test('reads either upload answer, after a script prelude', () {
+      expect(
+        parseUploadedPid(
+          '<script>document.domain="sina.com.cn";</script>'
+          '{"code":"A00006","data":{"pics":{"pic_1":{"pid":"a1"}}}}',
+        ),
+        'a1',
+      );
+      expect(parseUploadedPid('{"ret":true,"pic":{"pid":"b2"}}'), 'b2');
+    });
+
+    test('is null for failures and junk', () {
+      expect(parseUploadedPid('{"ret":false,"errno":-10}'), isNull);
+      expect(parseUploadedPid('{"code":"A20001"}'), isNull);
+      expect(parseUploadedPid('<html>'), isNull);
+      expect(parseUploadedPid('{oops'), isNull);
     });
   });
 }

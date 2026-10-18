@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -25,6 +27,28 @@ final weiboApiProvider = Provider<WeiboApi>((ref) {
     onSessionExpired: () => ref.read(sessionProvider.notifier).expire(),
   );
 });
+
+/// The pid in picupload's answer [body], or null if the upload failed.
+///
+/// It answers `{"code":"A00006","data":{"pics":{"pic_1":{"pid":…}}}}`, the
+/// newer upload `{"ret":true,"pic":{"pid":…}}`; either may follow a script
+/// prelude.
+String? parseUploadedPid(String body) {
+  final start = body.indexOf('{');
+  if (start < 0) return null;
+  final Object? json;
+  try {
+    json = jsonDecode(body.substring(start));
+  } on FormatException {
+    return null;
+  }
+  final map = readMap(json);
+  if (map == null) return null;
+  if (map['ret'] == true) return readString(readMap(map['pic'])?['pid']);
+  if (map['code'] != 'A00006') return null;
+  final pics = readMap(readMap(map['data'])?['pics']);
+  return readString(readMap(pics?['pic_1'])?['pid']);
+}
 
 /// Weibo's web endpoints, as used by weibo.com in a browser.
 class WeiboApi {
@@ -367,6 +391,62 @@ class WeiboApi {
   Future<void> deleteComment(String id) =>
       postForm('$_web/ajax/statuses/destroyComment', {'cid': id});
 
+  /// Uploads a picture for a new post and returns its pid, as weibo.com's
+  /// composer does: the file's bytes as they are, to picupload.
+  Future<String> uploadPicture(List<int> bytes) => _guard(() async {
+    final response = await _dio.post<String>(
+      'https://picupload.weibo.com/interface/pic_upload.php',
+      queryParameters: {'app': 'miniblog', 's': 'json', 'p': 1, 'data': 1},
+      // As a stream: a list would go as its JSON text.
+      data: Stream.value(bytes),
+      options: Options(
+        responseType: ResponseType.plain,
+        // What the web sends, without a boundary: the body is the file.
+        contentType: 'multipart/form-data',
+        headers: {Headers.contentLengthHeader: bytes.length},
+        extra: const {kPlainCrossOrigin: true},
+        sendTimeout: const Duration(minutes: 2),
+        receiveTimeout: const Duration(minutes: 2),
+      ),
+    );
+    final status = response.statusCode ?? 0;
+    final body = response.data ?? '';
+    _logResponse(response, '${body.length} chars');
+    if (isLoginHost(response.realUri.host)) {
+      throw const SessionExpiredException();
+    }
+    if (isRateLimitStatus(status)) throw RateLimitedException(status);
+    final pid = parseUploadedPid(body);
+    if (pid == null) {
+      devLog('pic_upload: $status ${describeShape(_tryDecode(body))}');
+      throw WeiboApiException('图片上传失败（$status）', statusCode: status);
+    }
+    return pid;
+  });
+
+  /// Posts [text] with the uploaded pictures [pids], for [visibility].
+  /// Returns the new status as Weibo shows it, or null when its answer has
+  /// none.
+  Future<Status?> postStatus({
+    required String text,
+    List<String> pids = const [],
+    StatusVisibility visibility = StatusVisibility.public,
+  }) async {
+    final json = await postForm('$_web/ajax/statuses/update', {
+      'content': text,
+      if (pids.isNotEmpty)
+        'pic_id': jsonEncode([
+          for (final pid in pids) {'type': 'pic', 'pid': pid},
+        ]),
+      'visible': visibility.code,
+    });
+    return Status.tryFromJson(json['data']);
+  }
+
+  /// Deletes status [id], which the user posted.
+  Future<void> deleteStatus(String id) =>
+      postForm('$_web/ajax/statuses/destroy', {'id': id});
+
   Future<Map<String, Object?>> getJson(
     String url, {
     Map<String, Object?>? query,
@@ -432,6 +512,14 @@ class WeiboApi {
     } on SessionExpiredException {
       onSessionExpired?.call();
       rethrow;
+    }
+  }
+
+  static Object? _tryDecode(String body) {
+    try {
+      return jsonDecode(body);
+    } on FormatException {
+      return body.length;
     }
   }
 

@@ -11,6 +11,11 @@ const kBrowserUserAgent =
     'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 '
     '(KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36';
 
+/// Set in a request's `extra` to send it as weibo.com's pages send a plain
+/// cross-origin request, such as a picture upload: with cookies, but without
+/// the XHR and XSRF headers of its own endpoints.
+const kPlainCrossOrigin = 'maxbo.plainCrossOrigin';
+
 /// Creates API clients bound to a cookie jar; overridden in tests to swap the
 /// HTTP adapter.
 final weiboDioFactoryProvider = Provider<Dio Function(WeiboCookieJar jar)>((
@@ -99,12 +104,13 @@ class _WeiboSessionInterceptor extends Interceptor {
           ? 'https://m.weibo.cn'
           : 'https://weibo.com';
       final headers = options.headers;
+      final xhr = options.extra[kPlainCrossOrigin] != true;
       headers.putIfAbsent('Referer', () => '$origin/');
-      headers['X-Requested-With'] = 'XMLHttpRequest';
+      if (xhr) headers['X-Requested-With'] = 'XMLHttpRequest';
       final cookie = _jar.headerFor(uri);
       if (cookie != null) headers['Cookie'] = cookie;
       final xsrf = _jar.value(site, 'XSRF-TOKEN');
-      if (xsrf != null) headers['X-XSRF-TOKEN'] = xsrf;
+      if (xhr && xsrf != null) headers['X-XSRF-TOKEN'] = xsrf;
       if (options.method != 'GET') headers['Origin'] = origin;
     }
     handler.next(options);

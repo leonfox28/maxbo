@@ -20,6 +20,7 @@ void main() {
   // Answers to writes, by path; a test sets what it needs.
   var writes = <String, ResponseBody Function()>{};
   var commentsCount = 12345;
+  var author = userJson();
 
   ResponseBody respond(RequestOptions o) => switch (o.uri.path) {
     '/ajax/statuses/show' => jsonBody({
@@ -27,6 +28,7 @@ void main() {
       ...statusJson(
         id: 1,
         text: '完整的正文',
+        user: author,
         extra: {'attitudes_count': 5, 'comments_count': commentsCount},
       ),
     }),
@@ -52,10 +54,26 @@ void main() {
   int requestsTo(String path) =>
       adapter.requests.where((r) => r.uri.path == path).length;
 
-  Future<void> pumpPage(WidgetTester tester, {int comments = 12345}) async {
+  Future<void> pumpPage(
+    WidgetTester tester, {
+    int comments = 12345,
+    Map<String, Object?>? user,
+    bool pushed = false,
+  }) async {
     writes = {};
     commentsCount = comments;
+    author = user ?? userJson();
     adapter = FakeAdapter(respond);
+    final page = StatusDetailPage(
+      id: '1',
+      initial: Status.tryFromJson(
+        statusJson(
+          id: 1,
+          text: '截断的正文<span class="expand">展开</span>',
+          user: author,
+        ),
+      ),
+    );
     await tester.pumpWidget(
       ProviderScope(
         retry: noRetry,
@@ -78,15 +96,27 @@ void main() {
           ),
         ],
         child: MaterialApp(
-          home: StatusDetailPage(
-            id: '1',
-            initial: Status.tryFromJson(
-              statusJson(id: 1, text: '截断的正文<span class="expand">展开</span>'),
-            ),
-          ),
+          home: pushed
+              ? Builder(
+                  // A page under it, with a scaffold for snack bars.
+                  builder: (context) => Scaffold(
+                    body: TextButton(
+                      onPressed: () => Navigator.push(
+                        context,
+                        MaterialPageRoute<void>(builder: (_) => page),
+                      ),
+                      child: const Text('打开'),
+                    ),
+                  ),
+                )
+              : page,
         ),
       ),
     );
+    if (pushed) {
+      await tester.tap(find.text('打开'));
+      await tester.pump();
+    }
   }
 
   testWidgets('shows the status it was given, then its full text', (
@@ -300,6 +330,30 @@ void main() {
     expect(adapter.requests.last.uri.path, '/ajax/statuses/destroyComment');
     expect(sentForm(), {'cid': '6000000000000002'});
     expect(find.text('我写的评论'), findsNothing);
+    expect(find.text('已删除'), findsOneWidget);
+  });
+
+  testWidgets('deleting their own status leaves its page', (tester) async {
+    await pumpPage(tester);
+    await tester.pumpAndSettle();
+    expect(find.byTooltip('更多'), findsNothing);
+
+    await pumpPage(tester, user: userJson(id: 7, name: '我'), pushed: true);
+    await tester.pumpAndSettle();
+    writes['/ajax/statuses/destroy'] = () =>
+        jsonBody({'ok': 1, 'data': statusJson(id: 1)});
+
+    await tester.tap(find.byTooltip('更多'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('删除'));
+    await tester.pumpAndSettle();
+    expect(find.text('确定删除这条微博吗？'), findsOneWidget);
+    await tester.tap(find.text('删除'));
+    await tester.pumpAndSettle();
+
+    expect(adapter.requests.last.uri.path, '/ajax/statuses/destroy');
+    expect(sentForm(), {'id': '1'});
+    expect(find.byType(StatusDetailPage), findsNothing);
     expect(find.text('已删除'), findsOneWidget);
   });
 

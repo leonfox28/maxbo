@@ -37,6 +37,7 @@ class HomeShell extends ConsumerStatefulWidget {
 }
 
 class _HomeShellState extends ConsumerState<HomeShell> {
+  static const _homeTab = 0;
   static const _notificationsTab = 2;
 
   static const _destinations = [
@@ -149,10 +150,24 @@ class _HomeShellState extends ConsumerState<HomeShell> {
         ],
       ),
     );
+    final signedIn = ref.watch(sessionProvider.select((s) => s is SignedIn));
     return Scaffold(
       // Lists scroll on behind the pill; the scaffold pads them for it.
       extendBody: true,
       body: tabs,
+      // Over the pill's end, where the corner pill also sits.
+      floatingActionButton: current == _homeTab && signedIn
+          ? AnimatedSlide(
+              offset: _bars.visible ? Offset.zero : const Offset(0, 3),
+              duration: BarsOnScroll.duration,
+              curve: BarsOnScroll.curve,
+              child: FloatingActionButton(
+                onPressed: () => context.push('/compose'),
+                tooltip: '发微博',
+                child: const Icon(Icons.edit_outlined),
+              ),
+            )
+          : null,
       bottomNavigationBar: AnimatedSlide(
         offset: _bars.visible ? Offset.zero : const Offset(0, 1.5),
         duration: BarsOnScroll.duration,

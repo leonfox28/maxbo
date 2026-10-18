@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/net/weibo_exception.dart';
 import '../../core/session/session_controller.dart';
 import '../../data/api/weibo_api.dart';
+import '../../data/models/feed_page.dart';
 import '../../data/models/status.dart';
 
 final timelineProvider =
@@ -64,8 +65,14 @@ class TimelineController extends AsyncNotifier<TimelineState> {
     // `ref` follows rebuilds; the captured one tells if this build is gone.
     final buildRef = ref;
     final next = await _firstPage(uid);
-    if (buildRef.mounted && _uid == uid) state = AsyncData(next);
+    if (buildRef.mounted && _uid == uid) {
+      _refreshes++;
+      state = AsyncData(next);
+    }
   }
+
+  /// Counts completed refreshes, so a page loaded meanwhile is dropped.
+  int _refreshes = 0;
 
   /// Appends the next page. Failures are kept in
   /// [TimelineState.loadMoreError] rather than thrown.
@@ -87,31 +94,71 @@ class TimelineController extends AsyncNotifier<TimelineState> {
     state = AsyncData(loading);
 
     final buildRef = ref;
-    TimelineState next;
+    final refreshes = _refreshes;
+    FeedPage? page;
+    WeiboException? error;
     try {
-      final page = await ref
+      page = await ref
           .read(weiboApiProvider)
           .fetchHomeTimeline(uid: uid, maxId: current.nextCursor);
-      // Pages can overlap when new posts arrive in between.
-      final seen = {for (final s in current.statuses) s.id};
-      next = TimelineState(
-        statuses: [
-          ...current.statuses,
-          ...page.statuses.where((s) => seen.add(s.id)),
-        ],
-        nextCursor: page.nextCursor,
-      );
     } on WeiboException catch (e) {
-      next = TimelineState(
-        statuses: current.statuses,
-        nextCursor: current.nextCursor,
-        loadMoreError: e,
-      );
+      error = e;
     }
     // Drop the result if a refresh or a new session replaced the timeline.
     // A session change rebuilds this provider only later, so check it too.
-    if (buildRef.mounted && _uid == uid && identical(state.value, loading)) {
-      state = AsyncData(next);
+    // Otherwise add to the timeline as it is now, which the user may have
+    // changed by posting or deleting.
+    final latest = state.value;
+    if (!buildRef.mounted ||
+        _uid != uid ||
+        refreshes != _refreshes ||
+        latest == null) {
+      return;
     }
+    if (page == null) {
+      state = AsyncData(
+        TimelineState(
+          statuses: latest.statuses,
+          nextCursor: latest.nextCursor,
+          loadMoreError: error,
+        ),
+      );
+      return;
+    }
+    // Pages can overlap when new posts arrive in between.
+    final seen = {for (final s in latest.statuses) s.id};
+    state = AsyncData(
+      TimelineState(
+        statuses: [
+          ...latest.statuses,
+          ...page.statuses.where((s) => seen.add(s.id)),
+        ],
+        nextCursor: page.nextCursor,
+      ),
+    );
+  }
+
+  /// Puts [status], which the user just posted, atop the timeline, if it
+  /// is loaded.
+  void prepend(Status status) => _edit(
+    (statuses) => [status, ...statuses.where((s) => s.id != status.id)],
+  );
+
+  /// Takes status [id], which the user just deleted, out of the timeline.
+  void remove(String id) =>
+      _edit((statuses) => statuses.where((s) => s.id != id).toList());
+
+  // A timeline still loading will show the change anyway.
+  void _edit(List<Status> Function(List<Status> statuses) change) {
+    final current = state.value;
+    if (current == null || state.isLoading) return;
+    state = AsyncData(
+      TimelineState(
+        statuses: change(current.statuses),
+        nextCursor: current.nextCursor,
+        loadingMore: current.loadingMore,
+        loadMoreError: current.loadMoreError,
+      ),
+    );
   }
 }

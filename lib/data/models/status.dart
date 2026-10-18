@@ -7,6 +7,26 @@ import '../../core/util/json_read.dart';
 import 'pic_info.dart';
 import 'weibo_user.dart';
 
+/// Who can see a post, as `visible.type` and `statuses/update` have it.
+enum StatusVisibility {
+  public(0, '公开'),
+  friends(6, '好友圈'),
+  onlyMe(1, '仅自己可见'),
+  fans(10, '粉丝');
+
+  const StatusVisibility(this.code, this.label);
+
+  final int code;
+  final String label;
+
+  /// The ones a new post can choose from.
+  static const choices = [public, friends, onlyMe];
+
+  /// Unknown kinds (paid members, groups) count as public.
+  static StatusVisibility of(int? code) =>
+      values.firstWhere((v) => v.code == code, orElse: () => public);
+}
+
 /// A Weibo post ("微博").
 class Status {
   const Status({
@@ -30,6 +50,7 @@ class Status {
     this.liked = false,
     this.isAd = false,
     this.pinned = false,
+    this.visibility = StatusVisibility.public,
   });
 
   final String id;
@@ -77,6 +98,9 @@ class Status {
 
   /// Pinned atop its author's profile; only set in profile lists.
   final bool pinned;
+
+  /// Who can see it. Others' posts are public as far as the viewer knows.
+  final StatusVisibility visibility;
 
   /// [parentUrls] is the `url_struct` of the post retweeting this one,
   /// which also covers the links in this one's text, and [parentPage] its
@@ -127,6 +151,9 @@ class Status {
       liked: readInt(map['attitudes_status']) == 1,
       isAd: _isAd(map),
       pinned: readInt(map['isTop']) == 1,
+      visibility: StatusVisibility.of(
+        readInt(readMap(map['visible'])?['type']),
+      ),
     );
   }
 

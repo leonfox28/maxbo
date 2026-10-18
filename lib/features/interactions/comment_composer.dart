@@ -204,11 +204,16 @@ class CommentBar extends StatelessWidget {
   }
 }
 
-/// Offers to delete a comment the user wrote, and asks again before it
-/// goes. Completes with true when they confirmed.
-Future<bool> confirmDeleteComment(BuildContext context) async {
+/// Offers to delete something the user wrote, and asks [question] before
+/// it goes. Completes with true when they confirmed.
+Future<bool> confirmDelete(
+  BuildContext context, {
+  String question = '确定删除这条评论吗？',
+}) async {
   final chosen = await showModalBottomSheet<bool>(
     context: context,
+    // Over the tab bar, when asked from a tab.
+    useRootNavigator: true,
     builder: (context) => SafeArea(
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -231,7 +236,7 @@ Future<bool> confirmDeleteComment(BuildContext context) async {
   final confirmed = await showDialog<bool>(
     context: context,
     builder: (context) => AlertDialog(
-      content: const Text('确定删除这条评论吗？'),
+      content: Text(question),
       actions: [
         TextButton(
           onPressed: () => Navigator.pop(context, false),

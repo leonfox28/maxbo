@@ -2,8 +2,10 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/media/weibo_image.dart';
+import '../../core/session/session_controller.dart';
 import '../../core/util/format.dart';
 import '../../data/models/pic_info.dart';
 import '../../data/models/status.dart';
@@ -26,6 +28,7 @@ class StatusCardActions {
     this.onExpand,
     this.onPicture,
     this.onVideo,
+    this.onDelete,
   });
 
   /// The card itself, or the retweeted post inside it.
@@ -41,9 +44,13 @@ class StatusCardActions {
   /// `Status.videoAt` does.
   final void Function(Status status, int? index)? onVideo;
 
+  /// Deleting a post of the signed-in user's, offered on their posts only.
+  final ValueChanged<Status>? onDelete;
+
   StatusCardActions copyWith({
     ValueChanged<WeiboUser>? onUser,
     ValueChanged<Status>? onExpand,
+    ValueChanged<Status>? onDelete,
   }) => StatusCardActions(
     onOpen: onOpen,
     onLink: onLink,
@@ -51,6 +58,7 @@ class StatusCardActions {
     onExpand: onExpand ?? this.onExpand,
     onPicture: onPicture,
     onVideo: onVideo,
+    onDelete: onDelete ?? this.onDelete,
   );
 }
 
@@ -102,7 +110,7 @@ class StatusCard extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _Header(status: status, onUser: actions.onUser),
+        _Header(status: status, actions: actions),
         const SizedBox(height: 8),
         _Body(status: status, actions: actions),
         if (retweeted != null) ...[
@@ -124,7 +132,7 @@ class StatusCard extends StatelessWidget {
       main: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _Header(status: status, onUser: actions.onUser),
+          _Header(status: status, actions: actions),
           const SizedBox(height: 8),
           _Body(status: status, actions: actions, withMedia: retweeted != null),
         ],
@@ -273,10 +281,10 @@ class _Retweeted extends StatelessWidget {
 }
 
 class _Header extends StatelessWidget {
-  const _Header({required this.status, this.onUser});
+  const _Header({required this.status, required this.actions});
 
   final Status status;
-  final ValueChanged<WeiboUser>? onUser;
+  final StatusCardActions actions;
 
   @override
   Widget build(BuildContext context) {
@@ -289,7 +297,9 @@ class _Header extends StatelessWidget {
       ?status.region,
     ].join('  ');
     final verified = user?.verifiedType;
-    final onUser = this.onUser;
+    final onUser = actions.onUser;
+    final onDelete = actions.onDelete;
+    final visibility = status.visibility;
 
     return Row(
       children: [
@@ -332,12 +342,36 @@ class _Header extends StatelessWidget {
             ],
           ),
         ),
-        if (status.pinned) const TagLabel('置顶'),
-        if (status.isAd) ...[
-          if (status.pinned) const SizedBox(width: 4),
-          const TagLabel('广告'),
-        ],
+        for (final (i, tag) in [
+          if (status.pinned) '置顶',
+          if (visibility != StatusVisibility.public) visibility.label,
+          if (status.isAd) '广告',
+        ].indexed) ...[if (i > 0) const SizedBox(width: 4), TagLabel(tag)],
+        if (onDelete != null && user != null)
+          _OwnStatusMenu(authorId: user.id, onDelete: () => onDelete(status)),
       ],
+    );
+  }
+}
+
+/// A menu for the signed-in user's own posts; nothing on others'.
+class _OwnStatusMenu extends ConsumerWidget {
+  const _OwnStatusMenu({required this.authorId, required this.onDelete});
+
+  final String authorId;
+  final VoidCallback onDelete;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final mine = ref.watch(
+      sessionProvider.select((s) => s is SignedIn && s.account.uid == authorId),
+    );
+    if (!mine) return const SizedBox.shrink();
+    return IconButton(
+      onPressed: onDelete,
+      tooltip: '更多',
+      visualDensity: VisualDensity.compact,
+      icon: const Icon(Icons.more_horiz),
     );
   }
 }

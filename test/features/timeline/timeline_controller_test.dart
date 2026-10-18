@@ -10,6 +10,7 @@ import 'package:maxbo/core/net/weibo_exception.dart';
 import 'package:maxbo/core/session/session_controller.dart';
 import 'package:maxbo/core/session/session_storage.dart';
 import 'package:maxbo/data/models/account.dart';
+import 'package:maxbo/data/models/status.dart';
 import 'package:maxbo/features/timeline/timeline_controller.dart';
 
 import '../../support/fakes.dart';
@@ -180,5 +181,36 @@ void main() {
       isA<SignedOut>().having((s) => s.expired, 'expired', isTrue),
     );
     expect((await c.read(timelineProvider.future)).statuses, isEmpty);
+  });
+
+  test('posts the user writes or deletes go in and out', () async {
+    respond = (_) => jsonBody(feedJson([statusJson(id: 1), statusJson(id: 2)]));
+    final c = container();
+    await c.read(timelineProvider.future);
+    final timeline = c.read(timelineProvider.notifier);
+
+    timeline.prepend(Status.tryFromJson(statusJson(id: 3))!);
+    expect(ids(c), ['3', '1', '2']);
+    timeline.remove('1');
+    expect(ids(c), ['3', '2']);
+  });
+
+  test('a page loaded while the user posts follows the post', () async {
+    final olderPage = Completer<ResponseBody>();
+    respond = (o) => o.uri.queryParameters['max_id'] == null
+        ? jsonBody(feedJson([statusJson(id: 5)], maxId: 100))
+        : olderPage.future;
+    final c = container();
+    await c.read(timelineProvider.future);
+
+    final loading = c.read(timelineProvider.notifier).loadMore();
+    c
+        .read(timelineProvider.notifier)
+        .prepend(Status.tryFromJson(statusJson(id: 9))!);
+    olderPage.complete(jsonBody(feedJson([statusJson(id: 1)])));
+    await loading;
+
+    expect(ids(c), ['9', '5', '1']);
+    expect(c.read(timelineProvider).requireValue.loadingMore, isFalse);
   });
 }

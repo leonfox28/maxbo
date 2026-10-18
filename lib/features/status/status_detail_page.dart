@@ -20,6 +20,7 @@ import '../comments/comment_replies_page.dart';
 import '../comments/comment_tile.dart';
 import '../comments/comments_controller.dart';
 import '../interactions/comment_composer.dart';
+import '../interactions/delete_status.dart';
 import '../interactions/likes.dart';
 import 'status_actions.dart';
 import 'status_detail_providers.dart';
@@ -152,7 +153,7 @@ class _StatusDetailPageState extends ConsumerState<StatusDetailPage> {
   }
 
   Future<void> _delete(Status status, Comment comment) async {
-    if (!await confirmDeleteComment(context) || !mounted) return;
+    if (!await confirmDelete(context) || !mounted) return;
     if (!_deleting.add(comment.id)) return;
     try {
       await ref.read(weiboApiProvider).deleteComment(comment.id);
@@ -424,6 +425,14 @@ class _StatusDetailPageState extends ConsumerState<StatusDetailPage> {
         onExpand: (s) {
           if (s.id != status.id) base.onExpand?.call(s);
         },
+        // The page has nothing left to show.
+        onDelete: (s) => deleteOwnStatus(
+          context,
+          s,
+          onDeleted: () {
+            if (mounted) Navigator.maybePop(context);
+          },
+        ),
       );
 }
 

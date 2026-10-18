@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/misc.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:maxbo/core/net/request_throttle.dart';
 import 'package:maxbo/data/models/pic_info.dart';
@@ -8,6 +9,7 @@ import 'package:maxbo/widgets/pic_grid/pic_grid.dart';
 import 'package:maxbo/widgets/rich_text/status_text_parser.dart';
 import 'package:maxbo/widgets/status_card/status_card.dart';
 
+import '../support/fakes.dart';
 import '../support/statuses.dart';
 
 void main() {
@@ -16,9 +18,11 @@ void main() {
     Map<String, Object?> json, {
     StatusCardActions actions = const StatusCardActions(),
     bool detail = false,
+    List<Override> overrides = const [],
   }) => tester.pumpWidget(
     ProviderScope(
       retry: noRetry,
+      overrides: overrides,
       child: MaterialApp(
         home: Scaffold(
           body: SingleChildScrollView(
@@ -54,6 +58,55 @@ void main() {
     await pumpCard(tester, statusJson(extra: {'isTop': 1, 'isAd': true}));
     expect(find.text('置顶'), findsOneWidget);
     expect(find.text('广告'), findsOneWidget);
+  });
+
+  testWidgets('labels posts not shown to everyone', (tester) async {
+    await pumpCard(
+      tester,
+      statusJson(
+        extra: {
+          'visible': {'type': 1, 'list_id': 0},
+        },
+      ),
+    );
+    expect(find.text('仅自己可见'), findsOneWidget);
+
+    await pumpCard(
+      tester,
+      statusJson(
+        extra: {
+          'visible': {'type': 0, 'list_id': 0},
+        },
+      ),
+    );
+    expect(find.text('公开'), findsNothing);
+  });
+
+  testWidgets('offers to delete the signed-in user\'s posts only', (
+    tester,
+  ) async {
+    final deleted = <String>[];
+    final actions = StatusCardActions(onDelete: (s) => deleted.add(s.id));
+    final overrides = signedInOverrides(
+      FakeAdapter((o) => throw StateError('unexpected request to ${o.path}')),
+    );
+
+    await pumpCard(
+      tester,
+      statusJson(id: 2, user: userJson(id: 8)),
+      actions: actions,
+      overrides: overrides,
+    );
+    expect(find.byTooltip('更多'), findsNothing);
+
+    await pumpCard(
+      tester,
+      statusJson(id: 3, user: userJson(id: 7)),
+      actions: actions,
+      overrides: overrides,
+    );
+    await tester.tap(find.byTooltip('更多'));
+    expect(deleted, ['3']);
   });
 
   testWidgets('the avatar and the name report the author', (tester) async {

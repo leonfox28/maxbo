@@ -7,6 +7,7 @@ import '../data/models/status.dart';
 import '../data/models/weibo_user.dart';
 import '../features/auth/login_page.dart';
 import '../features/comments/comment_replies_page.dart';
+import '../features/compose/compose_page.dart';
 import '../features/debug/diagnostics_page.dart';
 import '../features/hot_search/hot_search_page.dart';
 import '../features/media_viewer/image_viewer_page.dart';
@@ -115,6 +116,11 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: '/login',
         pageBuilder: (_, _) =>
             const MaterialPage(fullscreenDialog: true, child: LoginPage()),
+      ),
+      GoRoute(
+        path: '/compose',
+        pageBuilder: (_, _) =>
+            const MaterialPage(fullscreenDialog: true, child: ComposePage()),
       ),
       GoRoute(path: '/settings', builder: (_, _) => const SettingsPage()),
       GoRoute(path: '/about', builder: (_, _) => const AboutPage()),
