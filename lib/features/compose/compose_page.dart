@@ -4,6 +4,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:image_picker_android/image_picker_android.dart';
+import 'package:image_picker_platform_interface/image_picker_platform_interface.dart'
+    show ImagePickerPlatform;
 
 import '../../core/net/weibo_exception.dart';
 import '../../core/util/dev_log.dart';
@@ -14,8 +17,14 @@ import 'compose_draft.dart';
 
 /// Picks pictures from the gallery, at most [limit]; overridden in tests.
 final picturePickerProvider =
-    Provider<Future<List<String>> Function(int limit)>(
-      (ref) => (limit) async {
+    Provider<Future<List<String>> Function(int limit)>((ref) {
+      // Android 13+ (and 11–12 with Google Play services) then has the
+      // system photo picker, which keeps to the limit, rather than
+      // whatever answers "get content"; 16+ has it anyway.
+      if (ImagePickerPlatform.instance case final ImagePickerAndroid android) {
+        android.useAndroidPhotoPicker = true;
+      }
+      return (limit) async {
         final picker = ImagePicker();
         // Without full metadata iOS asks for no photo library access.
         final files = limit > 1
@@ -30,8 +39,8 @@ final picturePickerProvider =
                 ),
               ];
         return [for (final f in files) f.path];
-      },
-    );
+      };
+    });
 
 /// Writes a new post: text, up to nine pictures, and who can see it.
 ///
@@ -88,7 +97,16 @@ class _ComposePageState extends ConsumerState<ComposePage> {
       }
       return;
     }
-    if (mounted) ref.read(composeDraftProvider.notifier).addPictures(paths);
+    if (!mounted) return;
+    final left = ref.read(composeDraftProvider.notifier).addPictures(paths);
+    // Pickers without a limit, on older Android, let the user pick more.
+    if (left > 0) {
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          SnackBar(content: Text('最多 $maxDraftPictures 张图片，多选的 $left 张没有加上')),
+        );
+    }
   }
 
   Future<void> _send() async {

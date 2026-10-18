@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:math';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -66,12 +67,14 @@ class ComposeDraftController extends Notifier<ComposeDraft> {
   set visibility(StatusVisibility visibility) =>
       state = state.copyWith(visibility: visibility);
 
-  /// Adds the pictures at [paths], as many as fit.
-  void addPictures(Iterable<String> paths) {
+  /// Adds the pictures at [paths], as many as fit, and returns how many
+  /// were left out.
+  int addPictures(List<String> paths) {
     final room = maxDraftPictures - state.pictures.length;
     state = state.copyWith(
       pictures: [...state.pictures, ...paths.take(room).map(DraftPicture.new)],
     );
+    return max(0, paths.length - room);
   }
 
   void removePicture(int index) =>

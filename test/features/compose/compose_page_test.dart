@@ -128,6 +128,20 @@ void main() {
 
     expect(pickLimit, maxDraftPictures - 1);
     expect(find.byTooltip('移除'), findsNWidgets(9));
+    expect(find.textContaining('最多'), findsNothing);
     expect(find.byIcon(Icons.add_photo_alternate_outlined), findsNothing);
+  });
+
+  testWidgets('says so when a picker without a limit gave too many', (
+    tester,
+  ) async {
+    final c = await pumpPage(tester);
+    picked = [for (var i = 0; i < 11; i++) '/nowhere/$i.jpg'];
+
+    await tester.tap(find.byIcon(Icons.add_photo_alternate_outlined));
+    await tester.pumpAndSettle();
+
+    expect(c.read(composeDraftProvider).pictures, hasLength(9));
+    expect(find.text('最多 9 张图片，多选的 2 张没有加上'), findsOneWidget);
   });
 }

@@ -60,8 +60,8 @@ void main() {
     final c = container();
     final draft = c.read(composeDraftProvider.notifier);
 
-    draft.addPictures([for (var i = 0; i < 7; i++) 'p$i']);
-    draft.addPictures(['a', 'b', 'c']);
+    expect(draft.addPictures([for (var i = 0; i < 7; i++) 'p$i']), 0);
+    expect(draft.addPictures(['a', 'b', 'c']), 1);
     expect(c.read(composeDraftProvider).pictures.map((p) => p.path), [
       for (var i = 0; i < 7; i++) 'p$i',
       'a',
