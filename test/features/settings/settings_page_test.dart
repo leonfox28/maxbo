@@ -51,25 +51,6 @@ void main() {
     expect(find.byType(SimpleDialog), findsNothing);
   });
 
-  testWidgets('picks a text size, applied at once', (tester) async {
-    await pumpPage(tester);
-
-    await tester.tap(find.text('字体大小'));
-    await tester.pumpAndSettle();
-    expect(
-      find.descendant(
-        of: find.byType(SimpleDialog),
-        matching: find.byType(RadioListTile<TextSize>),
-      ),
-      findsNWidgets(TextSize.values.length),
-    );
-    await tester.tap(find.text('特大'));
-    await tester.pumpAndSettle();
-
-    expect(storage.stored.textSize, TextSize.extraLarge);
-    expect(find.text('特大'), findsOneWidget);
-  });
-
   testWidgets('picks an image quality', (tester) async {
     await pumpPage(tester);
 

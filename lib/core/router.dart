@@ -18,6 +18,7 @@ import '../features/search/search_page.dart';
 import '../features/search/search_results_page.dart';
 import '../features/settings/about_page.dart';
 import '../features/settings/settings_page.dart';
+import '../features/settings/text_size_page.dart';
 import '../features/shell/home_shell.dart';
 import '../features/status/status_detail_page.dart';
 import '../features/timeline/timeline_page.dart';
@@ -133,6 +134,7 @@ final routerProvider = Provider<GoRouter>((ref) {
             const MaterialPage(fullscreenDialog: true, child: ComposePage()),
       ),
       GoRoute(path: '/settings', builder: (_, _) => const SettingsPage()),
+      GoRoute(path: '/text-size', builder: (_, _) => const TextSizePage()),
       GoRoute(path: '/about', builder: (_, _) => const AboutPage()),
       if (kDebugMode)
         GoRoute(

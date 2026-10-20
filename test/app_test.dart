@@ -361,11 +361,29 @@ void main() {
     await tester.tap(find.text('设置'));
     await tester.pumpAndSettle();
     // Dialogs too.
+    await tester.tap(find.text('主题'));
+    await tester.pumpAndSettle();
+    final option = find.descendant(
+      of: find.byType(SimpleDialog),
+      matching: find.text('跟随系统'),
+    );
+    expect(
+      MediaQuery.textScalerOf(tester.element(option)).scale(10),
+      closeTo(13, 1e-9),
+    );
+    await tester.tap(find.text('浅色'));
+    await tester.pumpAndSettle();
+
+    // A step down on the slider page applies at once.
     await tester.tap(find.text('字体大小'));
     await tester.pumpAndSettle();
+    final sample = find.textContaining('拖动下面的滑块');
+    expect(sample, findsOneWidget);
+    await tester.tap(find.byTooltip('调小'));
+    await tester.pumpAndSettle();
     expect(
-      MediaQuery.textScalerOf(tester.element(find.text('特大').last)).scale(10),
-      closeTo(13, 1e-9),
+      MediaQuery.textScalerOf(tester.element(sample)).scale(10),
+      closeTo(11.5, 1e-9),
     );
   });
 

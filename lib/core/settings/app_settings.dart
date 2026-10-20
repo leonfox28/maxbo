@@ -25,8 +25,10 @@ enum ImageQuality {
       this == original ? pic.largest ?? pic.viewerVariant : pic.viewerVariant;
 }
 
-/// How large text is, relative to the font size set on the device.
+/// How large text is, relative to the font size set on the device: the
+/// standard size, or up to two steps either way.
 enum TextSize {
+  extraSmall('特小', 0.8),
   small('小', 0.9),
   standard('标准', 1),
   large('大', 1.15),
