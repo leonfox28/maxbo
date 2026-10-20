@@ -881,6 +881,224 @@ class _DiagnosticsPageState extends ConsumerState<DiagnosticsPage> {
     if (mounted) setState(() => _running = false);
   }
 
+  /// Read-only: what `statuses/search` finds across Weibo for a hot search
+  /// word, a topic and an ASCII word: whether the posts parse as timeline
+  /// posts, and the topic header that comes with them.
+  ///
+  /// Logs shapes, counts and comparisons only, never names or text; text in
+  /// the topic header is masked.
+  ///
+  /// How its pages continue was checked on 2026-10-20 (PLAN §8); [pages]
+  /// (a long press) looks again.
+  Future<void> _probeSearch({bool pages = false}) async {
+    setState(() {
+      _lines.clear();
+      _running = true;
+    });
+    final session = ref.read(sessionProvider);
+    if (session is! SignedIn) {
+      _log('search probe needs a signed-in session');
+      setState(() => _running = false);
+      return;
+    }
+    final api = WeiboApi(
+      createWeiboDio(
+        jar: ref.read(cookieJarProvider),
+        throttle: ref.read(requestThrottleProvider),
+      ),
+    );
+
+    Future<Map<String, Object?>?> fetch(
+      String label,
+      String path,
+      Map<String, Object?> query,
+    ) async {
+      try {
+        return await api.getJson('https://weibo.com/ajax/$path', query: query);
+      } on Exception catch (e) {
+        _log('$label: $e');
+        return null;
+      }
+    }
+
+    // Words to search for: the first ranked hot search, and the first one
+    // that is a topic (or the first word made one).
+    final hot = await fetch('hotSearch', 'side/hotSearch', {});
+    final realtime = _maps(readMap(hot?['data'])?['realtime']).toList();
+    final ranked = realtime.where((i) => i['realpos'] != null).toList();
+    final word = readString(ranked.firstOrNull?['word']);
+    final topicScheme = ranked
+        .map((i) => readString(i['word_scheme']))
+        .firstWhere((s) => s != null && s.startsWith('#'), orElse: () => null);
+    final topic = topicScheme ?? (word == null ? null : '#$word#');
+    _log('hot: ${realtime.length} word=${word != null} topic=${topic != null}');
+    if (word == null || topic == null) {
+      _log('== done');
+      if (mounted) setState(() => _running = false);
+      return;
+    }
+
+    // weibo.com's own results endpoint, /ajax/search/all, answers 404 now,
+    // and m.weibo.cn serves visitors only the first page. What is left is
+    // the home feed's search, which the web limits to followed users with
+    // atten=1; without it, it searches all of Weibo.
+    final self = session.account.uid;
+
+    /// Logs one page and returns the ids of its posts.
+    Future<List<String>> probe(
+      String label,
+      String q, {
+      int page = 1,
+      int count = 10,
+      bool atten = false,
+    }) async {
+      _log('== $label p$page count=$count${atten ? ' atten' : ''}');
+      final json = await fetch(label, 'statuses/search', {
+        'q': q,
+        if (atten) 'atten': 1,
+        'count': count,
+        'page': page,
+      });
+      if (json == null) return const [];
+      final statuses = _maps(json['statuses']).toList();
+      _log(
+        'top: ${describeShape({...json, 'statuses': null, 'topicHeads': null}, maxDepth: 1)}',
+      );
+      _log(
+        'statuses=${statuses.length} total=${json['total_number']} '
+        'absstr=${_redact('${json['absstr']}')} '
+        'intention=${json['intention']} '
+        'timeliness=${json['final_timeliness']}/${json['res_timeliness']}',
+      );
+      final heads = json['topicHeads'];
+      if (heads is Map<String, Object?> && page == 1) {
+        // Counts are numbers, safe to log; text is masked.
+        _log('  count values: ${heads['count']}');
+        final object = readMap(heads['object']);
+        for (final e in object?.entries ?? <MapEntry<String, Object?>>[]) {
+          final v = e.value;
+          _log(
+            '  object.${e.key}: ${switch (v) {
+              final String s when s.startsWith('http') => _urlPattern(s),
+              final String s => 'str(${s.length}) ${_patterns([s])}',
+              final Map<String, Object?> m => describeShape(m, maxDepth: 2),
+              _ => '$v',
+            }}',
+          );
+        }
+        final bare = q.startsWith('#') && q.endsWith('#') && q.length > 2
+            ? q.substring(1, q.length - 1)
+            : q;
+        _log(
+          '  display_name==q: ${object?['display_name'] == q} '
+          '==bare: ${object?['display_name'] == bare} '
+          'topic_ori==bare: ${heads['topic_ori'] == bare} '
+          'claim name: ${readMap(heads['claim_info'])?['screen_name'] != null}',
+        );
+        final band = readMap(heads['band_info']);
+        for (final e in band?.entries ?? <MapEntry<String, Object?>>[]) {
+          final b = readMap(e.value);
+          _log(
+            '  band ${e.key}: text=${_redact('${b?['text']}')} '
+            'scheme=${_urlPattern('${b?['scheme']}')}',
+          );
+        }
+        _log('topicHeads: ${describeShape(heads, maxDepth: 1)}');
+        for (final e in heads.entries) {
+          final v = e.value;
+          _log(
+            '  ${e.key}: ${switch (v) {
+              final String s when s.startsWith('http') => _urlPattern(s),
+              final String s => 'str(${s.length}) ${_patterns([s])}',
+              final Map<String, Object?> m => describeShape(m, maxDepth: 2),
+              final List<Object?> l => describeShape(l, maxDepth: 2),
+              _ => '$v',
+            }}',
+          );
+        }
+      } else if (heads != null && page == 1) {
+        _log('topicHeads: ${describeShape(heads, maxDepth: 2)}');
+      }
+
+      final ids = <String>[];
+      var withUser = 0, pics = 0, videos = 0, retweets = 0, ads = 0;
+      var following = 0, own = 0, long = 0, pinned = 0;
+      for (final m in statuses) {
+        final s = Status.tryFromJson(m);
+        if (s == null) continue;
+        ids.add(s.id);
+        if (s.user != null) withUser++;
+        if (s.pics.isNotEmpty || s.mixedMedia.isNotEmpty) pics++;
+        if (s.video != null) videos++;
+        if (s.retweeted != null) retweets++;
+        if (s.isAd) ads++;
+        if (s.text.contains('class="expand"')) long++;
+        if (readMap(m['user'])?['following'] == true) following++;
+        if ('${readMap(m['user'])?['idstr']}' == self) own++;
+        if (_truthy(m['isTop'])) pinned++;
+      }
+      _log(
+        'parsed=${ids.length} user=$withUser pics=$pics video=$videos '
+        'retweets=$retweets ads=$ads long=$long following=$following '
+        'own=$own pinned=$pinned unique=${ids.toSet().length}',
+      );
+      if (statuses.isNotEmpty && page == 1) {
+        final keys = {for (final m in statuses) ...m.keys}.toList()..sort();
+        _log('keys: ${keys.join(', ')}');
+        final hrefs = <String>{
+          for (final m in statuses)
+            for (final h in RegExp(
+              r'''href=["']([^"']*)["']''',
+            ).allMatches('${m['text']}').map((h) => h[1]!))
+              _urlPattern(h.startsWith('/') ? 'https://weibo.com$h' : h),
+        };
+        _log('hrefs: ${hrefs.take(12).join(' | ')}');
+        final marks = <String>{
+          for (final m in statuses)
+            for (final k in ['mblogtype', 'readtimetype', 'mark', 'isAd'])
+              if (m[k] != null) '$k=${_patterns([m[k]])}',
+        };
+        _log('marks: ${marks.join(' ')}');
+      }
+      _log(
+        'times: '
+        '${[for (final m in statuses) _compareDates(m['created_at'], statuses.first['created_at'])].join(',')}',
+      );
+      return ids;
+    }
+
+    final words = [('word', word), ('topic', topic), ('ascii', 'flutter')];
+    for (final (label, q) in words) {
+      final p1 = await probe(label, q);
+      if (p1.isEmpty) continue;
+      if (!pages) continue;
+      final p2 = await probe(label, q, page: 2);
+      final p3 = await probe(label, q, page: 3);
+      _log(
+        '$label pages: ${p1.length}+${p2.length}+${p3.length} '
+        'overlap12=${p2.where(p1.contains).length} '
+        'overlap23=${p3.where(p2.contains).length}',
+      );
+    }
+    if (pages) {
+      // Whether a bigger page is honoured, and what atten=1 changes.
+      final big = await probe('word', word, count: 20);
+      _log('count=20 gives ${big.length}');
+      await probe('word', word, atten: true);
+    }
+    _log('== done');
+    if (mounted) setState(() => _running = false);
+  }
+
+  /// How the time of [a] compares to [b]'s: `-` older, `+` newer, `=` same.
+  static String _compareDates(Object? a, Object? b) {
+    final x = parseWeiboDate(readString(a));
+    final y = parseWeiboDate(readString(b));
+    if (x == null || y == null) return '?';
+    final c = x.compareTo(y);
+    return c == 0 ? '=' : (c < 0 ? '-' : '+');
+  }
+
   /// Read-only: the unread counts and the lists behind weibo.com's 消息
   /// page (mentions, comments, likes), and which list clears which count.
   ///
@@ -2123,48 +2341,66 @@ class _DiagnosticsPageState extends ConsumerState<DiagnosticsPage> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('开发者诊断'),
-        actions: [
-          IconButton(
-            tooltip: '打开页面',
-            icon: const Icon(Icons.open_in_new),
-            onPressed: _openRoute,
+        // More probes than fit beside the title.
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(48),
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            reverse: true,
+            child: Row(
+              children: [
+                IconButton(
+                  tooltip: '打开页面',
+                  icon: const Icon(Icons.open_in_new),
+                  onPressed: _openRoute,
+                ),
+                IconButton(
+                  tooltip: '通知结构（只读，会清掉未读数）',
+                  icon: const Icon(Icons.notifications_none),
+                  onPressed: _running ? null : _probeNotifications,
+                ),
+                IconButton(
+                  tooltip: '互动结构（会真实点赞和评论）',
+                  icon: const Icon(Icons.thumb_up_outlined),
+                  onPressed: _running ? null : _probeInteractions,
+                ),
+                IconButton(
+                  tooltip: '广告字段（只读）',
+                  icon: const Icon(Icons.campaign_outlined),
+                  onPressed: _running ? null : _probeAds,
+                ),
+                IconButton(
+                  tooltip: '搜索结构（只读）',
+                  icon: const Icon(Icons.manage_search),
+                  onPressed: _running ? null : _probeSearch,
+                  onLongPress: _running
+                      ? null
+                      : () => _probeSearch(pages: true),
+                ),
+                IconButton(
+                  tooltip: '主页与热搜结构',
+                  icon: const Icon(Icons.person_search_outlined),
+                  onPressed: _running ? null : _probeProfile,
+                ),
+                IconButton(
+                  tooltip: '详情结构',
+                  icon: const Icon(Icons.article_outlined),
+                  onPressed: _running ? null : _probeDetail,
+                ),
+                IconButton(
+                  tooltip: '时间线结构',
+                  icon: const Icon(Icons.view_agenda_outlined),
+                  onPressed: _running ? null : _probeTimeline,
+                ),
+                IconButton(
+                  tooltip: '运行',
+                  icon: const Icon(Icons.play_arrow),
+                  onPressed: _running ? null : _run,
+                ),
+              ],
+            ),
           ),
-          IconButton(
-            tooltip: '通知结构（只读，会清掉未读数）',
-            icon: const Icon(Icons.notifications_none),
-            onPressed: _running ? null : _probeNotifications,
-          ),
-          IconButton(
-            tooltip: '互动结构（会真实点赞和评论）',
-            icon: const Icon(Icons.thumb_up_outlined),
-            onPressed: _running ? null : _probeInteractions,
-          ),
-          IconButton(
-            tooltip: '广告字段（只读）',
-            icon: const Icon(Icons.campaign_outlined),
-            onPressed: _running ? null : _probeAds,
-          ),
-          IconButton(
-            tooltip: '主页与热搜结构',
-            icon: const Icon(Icons.person_search_outlined),
-            onPressed: _running ? null : _probeProfile,
-          ),
-          IconButton(
-            tooltip: '详情结构',
-            icon: const Icon(Icons.article_outlined),
-            onPressed: _running ? null : _probeDetail,
-          ),
-          IconButton(
-            tooltip: '时间线结构',
-            icon: const Icon(Icons.view_agenda_outlined),
-            onPressed: _running ? null : _probeTimeline,
-          ),
-          IconButton(
-            tooltip: '运行',
-            icon: const Icon(Icons.play_arrow),
-            onPressed: _running ? null : _run,
-          ),
-        ],
+        ),
       ),
       body: _lines.isEmpty
           ? Center(child: Text(_running ? '运行中…' : '点击右上角运行检查'))
