@@ -18,7 +18,7 @@
 | 互动 | 点赞/取消点赞、发评论（只在用户主动点击时触发） |
 | 设置 | 主题（浅色/深色/跟随系统）、图片质量、关于与免责声明 |
 
-**v1 明确不做：** 去广告、批量下载/导出、会员付费内容、游客模式、多账号、发原创微博（含传图）、私信、原生搜索。（通知原本也在这里，v0.3.1 之后已加上；发原创微博（含传图）v0.6.4 之后已加上，见第 11 节。）其中**去广告、批量下载、会员内容这三项永久不做**，其余可在后续版本考虑。
+**v1 明确不做：** 去广告、批量下载/导出、会员付费内容、游客模式、多账号、发原创微博（含传图）、私信、原生搜索。（通知原本也在这里，v0.3.1 之后已加上；发原创微博（含传图）v0.6.4 之后已加上；原生搜索 v0.8.0 之后已加上，见第 11 节。）其中**去广告、批量下载、会员内容这三项永久不做**，其余可在后续版本考虑。
 
 ## 2. 合规边界（设计约束，优先级高于功能）
 
@@ -117,7 +117,7 @@ test/  (fixtures/ 下只放合成数据)
 
 **正文渲染**
 - 用 `html` 包解析 `text` 字段，转换成 `InlineSpan`：
-  - `<a>`：@用户跳到主页，#话题# 跳到搜索 WebView，短链通过 `url_struct` 还原后外部打开
+  - `<a>`：@用户跳到主页，#话题# 打开搜索结果页（v0.8.0 之前是搜索 WebView），短链通过 `url_struct` 还原后外部打开
   - `<img>` 表情：用 `WidgetSpan` 内联显示
   - `<br>`：换行
   - `span.expand`（"展开"）：点击进入详情页，详情页用 `statuses/show` 取全文
@@ -137,7 +137,8 @@ test/  (fixtures/ 下只放合成数据)
 | 用户资料 | GET `/ajax/profile/info?uid=` 或 `?screen_name=` | — |
 | 用户微博 | GET `/ajax/statuses/mymblog?uid&page&feature=0` | `page`（`since_id` 为空时到底） |
 | 热搜 | GET `/ajax/side/hotSearch` | — |
-| 搜索（应用内 WebView） | `https://m.weibo.cn/search?containerid=231522`（话题）或 `100103`（普通词）`&q=` | — |
+| 搜索（含话题） | GET `/ajax/statuses/search?q=&count=20&page=`，不带 `atten`，见第 8 节 | `page`（到空页为止） |
+| 网页版搜索结果（应用内 WebView） | `https://m.weibo.cn/search?containerid=231522`（话题）或 `100103`（普通词）`&q=` | — |
 | 表情 | GET `/ajax/statuses/config` | — |
 | 点赞 / 取消（微博） | POST `/ajax/statuses/setLike`、`/ajax/statuses/cancelLike`（表单 `id=<mid>`） | — |
 | 点赞 / 取消（评论） | POST `/ajax/statuses/updateLike`、`/ajax/statuses/destroyLike`（`object_id=<评论id>&object_type=comment`） | — |
@@ -233,6 +234,14 @@ test/  (fixtures/ 下只放合成数据)
 - **上传图片**：网页版发布框用较新的 `picupload.weibo.com/interface/upload.php`（octet-stream，参数里带网页版的 `appid=339644097`、crc32、md5 等）；脚本里还有经典的 `interface/pic_upload.php?app=miniblog&s=json&p=1&data=1`（`Content-Type: multipart/form-data` 但不带 boundary，请求体就是文件本身），实测可用，所以只用它，不带任何 appid。请求跨域：带 `.weibo.com` 的 Cookie 和 `Origin`，**不带** `X-Requested-With` 和 `X-XSRF-TOKEN`（网页版特意去掉；拦截器用 `kPlainCrossOrigin` 区分）。返回 `{"code":"A00006","data":{"count":1,"pics":{"pic_1":{"pid":…}}}}`；失败时 `code` 不同，`data.count` 是负的错误码（如 -10 文件过大，-9 类型不支持）。网页版不压缩图片（GIF 原样），我们也直接传原文件；水印参数（`$CONFIG.user.watermark`）没有带，所以 maxbo 发的图没有水印。dio 的请求体要用字节流（`Stream`），直接给 `List<int>` 会被当成 JSON 文本发出去。
 - **删除**：`POST /ajax/statuses/destroy`（`id=`），返回 `{ok:1, <被删的微博的全部字段>}`（微博字段直接在顶层）。删除后刷新时间线和主页都不再出现。
 
+**搜索实测结论（2026-10-20，诊断页「搜索结构」，只读）：**
+
+- **weibo.com 没有现成的搜索结果接口**：前端脚本里「搜索结果」页用的 `GET /ajax/search/all?containerid=…` 已经下线，带登录态请求也返回 404「你访问的地址不存在」；网页版顶部搜索栏直接打开 `s.weibo.com`。
+- **m.weibo.cn 只能以游客身份用，而游客只能看第一页**：`/api/container/getIndex?containerid=100103type=1&q=…&page_type=searchall`（话题是 `231522type=1&t=10&q=#话题#`）不带 Cookie 时返回 `ok:-100`；带 WebView 浏览 m.weibo.cn 时拿到的游客 Cookie（`SUB`/`SUBP`，`/api/config` 是 `login:false`）能取到第 1 页（10–17 条，`card_type` 9 是微博，11 是一组卡片，话题的 `cardlistInfo.cardlist_head_cards[].head_data` 是话题头），**第 2 页起返回 `ok:-100`**。应用内 WebView 的搜索页往下滚过第一页也会跳到登录页。微博的格式是 m.weibo.cn 的（`pics[]`、`page_info.urls`、`bid`），与 weibo.com 不同。用 weibo.com 的登录态单点登录 m.weibo.cn（`passport.weibo.com/sso/signin?entry=wapsso&source=wapssowb&url=https://m.weibo.cn/`）也不行：直接请求只得到一个由风控脚本（`wbBotDetector`、易盾）驱动的登录页，不能也不该去模拟；在 WebView 里打开显示的是登录表单，没有自动登录（没有做任何输入就退出了）。
+- **`s.weibo.com/weibo?q=`**（桌面 UA，带 weibo.com 的登录态）是已登录的 PC 版 HTML，每页约 20 条，有分页链接，能翻页，但要解析 PC 版 HTML，太脆弱，没有采用。
+- **采用 `GET /ajax/statuses/search`**：网页版首页的「搜索我关注的人的微博」用它，带 `atten=1`、`count=10`、`page`（另有 `hasori`/`haspic`/`hasvideo`/`starttime`/`endtime` 等筛选）。**不带 `atten`（或 `atten=0`）时搜的是全站**：10 条结果里没有一条的作者是测试账号关注的人，`total_number` 为 735；带 `atten=1` 时同一个词 0 条。这是网页版前端不会发出的参数组合，但仍是 weibo.com 网页端接口、用登录态、只在用户操作时请求，没有绕过任何验证，判断在第 2 节的边界之内。返回 `{ok, statuses[], total_number, absstr, intention, topicHeads, …}`（不在 `data` 里），`statuses` 与时间线同构，`Status.tryFromJson` 直接解析，图片、视频、转发、混排、长文「展开」都有；样本中没有广告（`isAd=false`、`readtimetype=mblog`）。**按发布时间倒序**（不是 m.weibo.cn 默认的「综合」排序）。`page` 从 1 开始，连续 3 页互不重叠（新微博不断进来时偶有 1 条错位，分页控制器会去重）；`count=20` 有效，我们用 20。`total_number` 只是约数（同一个词连续几次在 727–749 之间），话题的讨论数也可能远多于能翻到的条数（245 讨论的话题翻 2 页共 38 条后就是空页），所以只以空页为末页。
+- **`topicHeads`**：搜任何词都带。`count` 里 `read`、`mention`、`ori_uv` 是总阅读、讨论、原创人数（另有 `24h_read`、`24h_mention`、`1h_mention` 等短期数）。只有话题的 `object` 里有 `display_name`（话题名，不带 `#`，大小写可能和查询不同）、`summary`（导语，可能为空）、`id`（`1022:231522…`）、`image.url`；普通词的 `object` 只有 `media_counts`、空的 `summary` 和 `image`，所以以有没有 `display_name` 判断是不是话题。另有 `claim_info`（主持人）、`band_info`（在热搜榜上的位置），没有用。
+
 ## 9. 分发
 
 - **Android**：GitHub Releases 发布按 ABI 拆分的 APK（`flutter build apk --release --split-per-abi`）。签名密钥不进 git：本地密钥库是 `~/.config/maxbo/release.jks`（别名 `maxbo`），密码在 `android/key.properties`（已 gitignore）；CI 用的副本存在 GitHub 仓库 `release` 环境的 Secrets 里（见下方 CI）。Secrets 写入后读不回来，不能当备份。证书 SHA-256 是 `A1:7A:66:0B:CA:65:D7:BB:89:D6:F3:07:AB:A4:61:06:F3:F8:AF:CB:90:F5:D0:B3:EC:40:EB:28:6D:71:79:E2`。**密钥丢了，已安装的用户就无法覆盖升级**，这两个文件要另外备份。没有 `key.properties` 时 release 包退回调试密钥签名。调试版的包名带 `.debug` 后缀，名称是「maxbo debug」，和 release 版可以同时安装。国行手机通常没有 GMS，暂不受 Google 开发者验证影响；2027 年该政策全球生效后再评估。
@@ -251,7 +260,7 @@ test/  (fixtures/ 下只放合成数据)
 - **包名**：`io.github.leonfox28.maxbo`（v0.1.0 起不再改；iOS Bundle ID 和平台通道名 `io.github.leonfox28.maxbo/cookies` 同步改过）。
 - **平板/折叠屏不做列表加详情的双栏**（2026-10-16 用户决定，10-17 调整）：不做左边列表、右边详情的双栏布局。10-17 改为：导航用悬浮胶囊放在右下角（去掉左侧导航栏）；详情页在 expanded 档把正文和评论/转发左右并排；首页时间线不做瀑布流（会打乱时间顺序），改为卡片加宽、媒体放到正文右侧。
 
-## 11. 进度与交接（更新于 2026-10-20，发布 v0.8.0 后）
+## 11. 进度与交接（更新于 2026-10-20，原生搜索结果页完成后）
 
 | 里程碑 | 状态 | 提交 |
 |---|---|---|
@@ -281,6 +290,7 @@ test/  (fixtures/ 下只放合成数据)
 | v0.7.0 | ✅ 2026-10-18 发布（Pre-release，APK + 无签名 IPA）：发微博（含图片、可见范围）、删除自己的微博（minor 版本），以及链接卡片不再重复正文（`29d5c42`）。这个修复 10-17 已打了 `v0.6.4` tag，CI 也生成了草稿，但一直没发布；用户决定并入 0.7.0，删掉了 0.6.4 的草稿，`v0.6.4` tag 保留。下载后核对过校验值、三个 APK 的签名证书、IPA 的版本号（0.7.0，build 14，含相册用途说明），arm64 APK 能在模拟器上覆盖安装 0.6.4（之前装的草稿版）并启动（未登录状态） | `64a66c0` `a52dcf7`，见 `v0.7.0` 标签 |
 | 搜索页签 | ✅ 完成（v0.8.0 发布）：「热搜」页签改为「搜索」（放大镜图标，路由 `/hot` 改为 `/search`，代码在 `features/search/`）。顶部是搜索栏（与正文同宽），按键盘上的搜索键后在应用内 WebView 打开 `weiboSearchUrl()`，与点热搜条目相同（`#话题#` 按话题搜），空白不搜；返回后输入的内容还在，有内容时显示清除按钮。下面仍是热搜榜，热搜加载失败时搜索栏照常可用。打开结果前、点搜索栏以外的地方（包括切换页签）、拖动列表时收起键盘。Android 真实会话下核对了搜索 `flutter`（以游客身份显示 m.weibo.cn 的结果）、返回后键盘不再弹出、切换页签时键盘收起，以及浅色和深色主题 | `9542971` |
 | v0.8.0 | ✅ 2026-10-20 发布（Pre-release，APK + 无签名 IPA）：「热搜」页签改为「搜索」，顶部是搜索栏（minor 版本）。下载后核对过校验值、三个 APK 的签名证书、IPA 的版本号（0.8.0，build 15），arm64 APK 能在模拟器上覆盖安装 0.7.0 并启动（未登录状态） | `9542971`，见 `v0.8.0` 标签 |
+| 原生搜索结果 | ✅ 完成（未发布）：搜索栏、热搜条目和正文里的 #话题# 不再打开 WebView，而是打开 `/results?q=`（`SearchResultsPage`）：`statuses/search` 的结果按时间倒序，用与首页相同的微博卡片（点赞、进详情、看图、播视频都一样），滚动加载、下拉刷新，翻到空页为止。话题在列表上方显示话题图、名字、「阅读 · 讨论 · 原创人数」和导语；普通词没有话题头。在结果页里点同一个话题不会再打开一遍。右上角的地球图标在应用内 WebView 打开网页版结果（m.weibo.cn，有「综合」排序和用户、视频等分类，但游客只有第一页）。自己的微博在结果页里删除后从列表移除。诊断页的探针按钮放不下，改成可横向滚动的一行。Android 真实会话下核对了：首页转发里的话题进详情、再点话题进话题页（有话题头，第 2 页 18 条，第 3 页为空后显示「没有更多了」）、热搜第一条（话题头带导语，视频卡片和「展开」正常）、输入 `flutter` 搜索（无话题头）、网页版入口、深色主题 | 见 git log |
 
 ### 已有的基础设施
 
@@ -292,8 +302,8 @@ test/  (fixtures/ 下只放合成数据)
 - **分页列表**：`PagedController<T>`（`lib/core/paging/`）实现首屏、`loadMore()`、去重和过期结果丢弃，子类只需写 `fetchPage(cursor)` 和 `idOf(item)`，游标是字符串（`max_id` 或页码）。用户自己的改动用 `prepend()`、`remove()`、`replace()` 直接改列表（同时调整 `total`），翻页结果会接在改动后的列表后面。界面用 `PagedSliverList`（加载中、错误重试、空列表、页脚）和 `LoadMoreTrigger`（滚到接近底部时加载下一页），都在 `lib/widgets/load_state.dart`。示例见 `features/comments/comments_controller.dart` 和 `features/status/status_detail_providers.dart`（转发，按页码翻页）。
 - **图片**：`WeiboImage` / `weiboImageProvider`（`lib/core/media/weibo_image.dart`）自动带 Referer，缓存 key 去掉头像签名；列表尺寸用 `PicInfo.variantFor(像素)` 选，查看器用 `PicInfo.viewerVariant`（`mw2000` 一档，GIF 用原图）。
 - **视频**：`lib/core/media/video_source.dart` 的 `resolveVideoUrl()` 负责选地址、判断过期、必要时重新请求 `statuses/show`；播放请求带 `videoHttpHeaders`。
-- **路由与入口**：`/status/:id`（详情）、`/comments/:id`（楼中楼）、`/video/:id`、`/viewer`、`/u/:uid`（主页）、`/n/:name`（按昵称打开主页）、`/web?url=`（应用内 WebView），`extra` 传上一页已有的数据（`Status`、`CommentThread`、`ImageViewerArgs`、`WeiboUser`）。卡片和评论上的各种点击统一走 `statusCardActions(context)`（`lib/features/status/status_actions.dart`）：点卡片和「展开」进详情，图片进查看器，视频进播放页，头像和昵称进主页，@ 按昵称进主页，话题在应用内打开搜索页，网页链接用外部浏览器打开。只想改其中一项时用 `StatusCardActions.copyWith`（例如主页里点这个用户自己的头像不再跳转）。`UserAvatar`、`VerifiedIcon`（`lib/widgets/user_avatar.dart`）、`TagLabel`（`lib/widgets/tag_label.dart`，广告/置顶/已关注/热搜标签）是通用组件。
-- **应用内 WebView**：`openWebPage(context, url)`（`lib/features/webview/web_page.dart`）。它与登录页共用 WebView 的 Cookie 存储，UA 也相同，只放行 http(s)（http 会改成 https），可以后退、刷新或用外部浏览器打开。搜索地址用 `weiboSearchUrl(query)`。
+- **路由与入口**：`/status/:id`（详情）、`/comments/:id`（楼中楼）、`/video/:id`、`/viewer`、`/u/:uid`（主页）、`/n/:name`（按昵称打开主页）、`/results?q=`（搜索结果）、`/web?url=`（应用内 WebView），`extra` 传上一页已有的数据（`Status`、`CommentThread`、`ImageViewerArgs`、`WeiboUser`）。卡片和评论上的各种点击统一走 `statusCardActions(context)`（`lib/features/status/status_actions.dart`）：点卡片和「展开」进详情，图片进查看器，视频进播放页，头像和昵称进主页，@ 按昵称进主页，话题打开搜索结果页（`openSearchResults()`），网页链接用外部浏览器打开。只想改其中一项时用 `StatusCardActions.copyWith`（例如主页里点这个用户自己的头像、话题页里点这个话题都不再跳转）。`UserAvatar`、`VerifiedIcon`（`lib/widgets/user_avatar.dart`）、`TagLabel`（`lib/widgets/tag_label.dart`，广告/置顶/已关注/热搜标签）是通用组件。
+- **应用内 WebView**：`openWebPage(context, url)`（`lib/features/webview/web_page.dart`）。它与登录页共用 WebView 的 Cookie 存储，UA 也相同，只放行 http(s)（http 会改成 https），可以后退、刷新或用外部浏览器打开。网页版搜索结果的地址用 `weiboSearchUrl(query)`。
 - **验证码**：`ErrorRetry(error:)` 和 `LoadMoreFooter(error:)` 遇到 `CaptchaRequiredException` 时显示「去验证」，用户在应用内 WebView 里自己完成验证，返回后自动重试一次。
 - **详情页**：`StatusDetailPage` 先显示上一页传来的 `Status`，再用 `statusDetailProvider` 取全文和最新计数。评论和转发列表在页面存续期间保持已加载状态，切换页签或排序不会重复请求。
 - **测试**：`test/support/fakes.dart` 的 `signedInOverrides(adapter)` 一次性给出"已登录（uid 7）+ 假网络"所需的覆盖；`test/support/routes.dart` 的 `stubRouter(home)` 把 `/u`、`/n`、`/status`、`/web` 换成只显示参数的占位页，用来测"点了会跳到哪里"。合成数据的构造函数都在 `test/support/statuses.dart`。
@@ -304,7 +314,7 @@ test/  (fixtures/ 下只放合成数据)
 - **设置**（`lib/core/settings/app_settings.dart`）：`settingsProvider` 是 `AppSettings`（主题、`ImageQuality`、图片缓存上限），存在 `shared_preferences` 里，`main()` 在第一帧前读入（`initialSettingsProvider`），避免主题闪一下。改设置用 `settingsProvider.notifier.update((s) => s.copyWith(...))`，会立即生效并保存。列表里的图片尺寸用 `quality.listPixels(逻辑尺寸, dpr)` 再交给 `PicInfo.variantFor()`，查看器用 `quality.viewerVariant(pic)`。测试用 `test/support/fakes.dart` 的 `InMemorySettingsStorage`。
 - **图片磁盘缓存**（`lib/core/media/image_disk_cache.dart`）：`extended_image` 把图片存在临时目录的 `cacheimage/` 下，自己不清理。`ImageDiskCache` 负责统计大小、清空和按上限删除最早写入的文件；启动时和调低上限时各执行一次。测试用 `FakeImageDiskCache`。
 - **设置页和关于页**：`/settings`（入口是「我」页列表里的「设置」，未登录时也有）、`/about`。关于页的声明和隐私文案要与 README 保持一致。应用固定使用中文的系统控件文案（`MaterialApp.locale`）。
-- **调试**：调试版「我」页列表里的「开发者诊断」进入诊断页：▶ 是 M1 的接口检查，▤ 是「时间线结构」探针，📄 是「详情结构」探针（长文、视频地址和有效期、评论/楼中楼/转发的分页），👤 是「主页与热搜结构」探针，📢 是「广告字段」探针（只读，输入 `@昵称` 或 uid，列出被判为广告的微博的日期和相关字段，以及只有它们才有的字段），🔔 是「通知结构」探针（只读，但会清掉测试账号的消息未读数），👍 是「互动结构」探针（**会真实点赞、评论再删除**，输入 `@昵称` 时只对当前账号关注的人生效，可以只测点赞），↗ 可以输入路由直接打开页面（如 `/n/昵称`、`/status/<id>`，用来进入应用里还没有入口的页面）。日志前缀 `[maxbo-diag]` / `[maxbo]`，用 `adb logcat` 读取。`devLog()` 只在调试版输出，不得记录 Cookie 值或微博正文。
+- **调试**：调试版「我」页列表里的「开发者诊断」进入诊断页：▶ 是 M1 的接口检查，▤ 是「时间线结构」探针，📄 是「详情结构」探针（长文、视频地址和有效期、评论/楼中楼/转发的分页），👤 是「主页与热搜结构」探针，🔍（`manage_search`）是「搜索结构」探针（只读，看 `statuses/search` 的结果能否解析和话题头的字段，长按另外核对翻页），📢 是「广告字段」探针（只读，输入 `@昵称` 或 uid，列出被判为广告的微博的日期和相关字段，以及只有它们才有的字段），🔔 是「通知结构」探针（只读，但会清掉测试账号的消息未读数），👍 是「互动结构」探针（**会真实点赞、评论再删除**，输入 `@昵称` 时只对当前账号关注的人生效，可以只测点赞），↗ 可以输入路由直接打开页面（如 `/n/昵称`、`/status/<id>`，用来进入应用里还没有入口的页面）。日志前缀 `[maxbo-diag]` / `[maxbo]`，用 `adb logcat` 读取。`devLog()` 只在调试版输出，不得记录 Cookie 值或微博正文。
 
 ### 后续要点（M6 之后）
 
@@ -312,7 +322,7 @@ test/  (fixtures/ 下只放合成数据)
 - **iOS 真机/真实登录**：iOS 上只验证过能编译、模拟器上未登录能启动。真实登录、Cookie 读取（`AppDelegate.swift`）、视频播放和 WebView 都没在 iOS 上跑过，需要用户本人在 iOS 模拟器或真机上登录一次。
 - **信息流广告**：还没见到信息流里插入的真实广告，判定规则（§8 第 5 项）仍是推测；见到后用诊断页的「时间线结构」核对。
 - **互动的已知局限**：转发数和时间线卡片上的评论数不会因为用户评论而变化（只有详情页本地加减）；从详情页的楼中楼预览里不能直接删回复（要进楼中楼页）；没有表情面板和 @ 补全；评论字数没有在客户端限制，超长时显示服务端的错误信息。
-- **搜索的已知局限**：结果是 m.weibo.cn 的网页（游客身份，见 §8），不是应用自己的列表；没有搜索历史和联想词。
+- **搜索的已知局限**：结果只按时间倒序，没有网页版的「综合」排序，也没有用户、视频等分类（这些只在右上角的网页版里有，游客只能看第一页）；没有搜索历史、联想词和筛选（接口支持原创、图片、视频和时间段筛选，见 §8）；宽窗口下是 640 单栏，不像首页那样横排卡片；新发的微博不会加进已打开的结果页，在详情页删除的自己的微博也要刷新后才从结果页消失（在结果页卡片上删除的会立即移除）。
 - **发微博的已知局限**：没有表情面板、@ 补全、话题、定位、视频、投票、定时发布、编辑；不显示字数（超长时显示服务端的错误）；图片不压缩、不带水印，相册里的 HEIC 在 iOS 上由插件转成 JPEG；上传中途不能取消。转发（带评论）还没做。
 - **还没做的小项**：`mymblog` 的 `bottom_tips_text` 没有显示（还没见到实例）；验证码的「去验证」还没遇到真实验证码，不知道验证完成后要不要把 WebView 的 Cookie 同步回 API；图片缓存只在启动和调低上限时清理，一次使用中途不会清理。
 - **未在真机上验证的部分**：M3 的双击放大、长图、GIF 和实况照片；「原图」画质下特别大的长图的内存占用。
