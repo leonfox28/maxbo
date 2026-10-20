@@ -18,8 +18,10 @@ final hotSearchProvider = FutureProvider.autoDispose<HotSearch>(
   (ref) => ref.read(weiboApiProvider).fetchHotSearch(),
 );
 
-class HotSearchPage extends ConsumerWidget {
-  const HotSearchPage({super.key});
+/// The search tab: a search bar over the hot search list. A search, as a
+/// hot search entry, opens Weibo's results in the in-app browser.
+class SearchPage extends ConsumerWidget {
+  const SearchPage({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -29,8 +31,74 @@ class HotSearchPage extends ConsumerWidget {
         bottom: false,
         child: switch (ref.watch(sessionProvider)) {
           SignedOut(:final expired) => LoginPrompt(expired: expired),
-          SignedIn() => const _HotSearchList(),
+          SignedIn() => const Column(
+            children: [
+              _SearchField(),
+              Expanded(child: _HotSearchList()),
+            ],
+          ),
         },
+      ),
+    );
+  }
+}
+
+class _SearchField extends StatefulWidget {
+  const _SearchField();
+
+  @override
+  State<_SearchField> createState() => _SearchFieldState();
+}
+
+class _SearchFieldState extends State<_SearchField> {
+  final _controller = TextEditingController();
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _search() {
+    final query = _controller.text.trim();
+    if (query.isEmpty) return;
+    // Or the keyboard comes back with the field when the results close.
+    FocusManager.instance.primaryFocus?.unfocus();
+    openWebPage(context, weiboSearchUrl(query));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // Over the list's column, not spread across a wide window.
+    return ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: readingWidth),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+        child: SearchBar(
+          controller: _controller,
+          hintText: '搜索微博',
+          leading: const Icon(Icons.search),
+          trailing: [
+            ListenableBuilder(
+              listenable: _controller,
+              builder: (context, _) => _controller.text.isEmpty
+                  ? const SizedBox.shrink()
+                  // Part of the field: tapping it keeps the keyboard up.
+                  : TextFieldTapRegion(
+                      child: IconButton(
+                        onPressed: _controller.clear,
+                        tooltip: '清除',
+                        icon: const Icon(Icons.close),
+                      ),
+                    ),
+            ),
+          ],
+          elevation: const WidgetStatePropertyAll(0),
+          textInputAction: TextInputAction.search,
+          onSubmitted: (_) => _search(),
+          // Such as on the tab bar, whose other tabs have no keyboard.
+          onTapOutside: (_) => FocusManager.instance.primaryFocus?.unfocus(),
+        ),
       ),
     );
   }
@@ -71,6 +139,7 @@ class _HotSearchList extends ConsumerWidget {
           primary: true,
           padding: padding,
           physics: const AlwaysScrollableScrollPhysics(),
+          keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
           itemCount: pinned + hot.items.length,
           itemBuilder: (context, i) => i < pinned
               ? _HotSearchTile(hot.pinned[i], pinned: true)

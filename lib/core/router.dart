@@ -9,12 +9,12 @@ import '../features/auth/login_page.dart';
 import '../features/comments/comment_replies_page.dart';
 import '../features/compose/compose_page.dart';
 import '../features/debug/diagnostics_page.dart';
-import '../features/hot_search/hot_search_page.dart';
 import '../features/media_viewer/image_viewer_page.dart';
 import '../features/media_viewer/video_player_page.dart';
 import '../features/notifications/notifications_page.dart';
 import '../features/profile/me_page.dart';
 import '../features/profile/profile_page.dart';
+import '../features/search/search_page.dart';
 import '../features/settings/about_page.dart';
 import '../features/settings/settings_page.dart';
 import '../features/shell/home_shell.dart';
@@ -37,7 +37,7 @@ final routerProvider = Provider<GoRouter>((ref) {
           ),
           StatefulShellBranch(
             routes: [
-              GoRoute(path: '/hot', builder: (_, _) => const HotSearchPage()),
+              GoRoute(path: '/search', builder: (_, _) => const SearchPage()),
             ],
           ),
           StatefulShellBranch(

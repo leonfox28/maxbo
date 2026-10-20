@@ -66,7 +66,7 @@ void main() {
     expect(find.byTooltip('首页'), findsOneWidget);
     expect(find.text('登录后即可浏览关注的人的微博'), findsOneWidget);
 
-    await tester.tap(find.byTooltip('热搜'));
+    await tester.tap(find.byTooltip('搜索'));
     await tester.pumpAndSettle();
     // The home tab's prompt is offstage now.
     expect(find.text('登录后即可浏览关注的人的微博'), findsOneWidget);
@@ -167,7 +167,7 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    await tester.tap(find.byTooltip('热搜'));
+    await tester.tap(find.byTooltip('搜索'));
     await tester.pumpAndSettle();
     expect(find.byTooltip('发微博'), findsNothing);
 
@@ -437,7 +437,7 @@ void main() {
     // the top.
     resize(unfolded);
     await tester.pumpAndSettle();
-    await tester.tap(find.byTooltip('热搜'));
+    await tester.tap(find.byTooltip('搜索'));
     await tester.pumpAndSettle();
     expect(find.byType(StatusCard), findsNothing);
     await tester.tap(find.byTooltip('首页'));

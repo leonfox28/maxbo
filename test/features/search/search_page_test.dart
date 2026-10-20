@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:maxbo/core/net/request_throttle.dart';
-import 'package:maxbo/features/hot_search/hot_search_page.dart';
+import 'package:maxbo/features/search/search_page.dart';
 import 'package:maxbo/widgets/tab_reselect.dart';
 
 import '../../support/fakes.dart';
@@ -24,7 +24,7 @@ void main() {
         overrides: signedInOverrides(adapter),
         child: MaterialApp.router(
           routerConfig: stubRouter(
-            TabReselect(taps: taps, child: const HotSearchPage()),
+            TabReselect(taps: taps, child: const SearchPage()),
           ),
         ),
       ),
@@ -82,6 +82,56 @@ void main() {
     });
   });
 
+  testWidgets('searches Weibo in the app for what the user types', (
+    tester,
+  ) async {
+    respond = (_) => jsonBody(list);
+    await pumpPage(tester);
+
+    await tester.enterText(find.byType(TextField), '  某个词 ');
+    await tester.testTextInput.receiveAction(TextInputAction.search);
+    await tester.pumpAndSettle();
+    expect(openedWebUrl(tester).queryParameters, {
+      'containerid': '100103',
+      'q': '某个词',
+    });
+
+    // What was typed is still there to change.
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+    expect(find.text('  某个词 '), findsOneWidget);
+    await tester.enterText(find.byType(TextField), '#某个话题#');
+    await tester.testTextInput.receiveAction(TextInputAction.search);
+    await tester.pumpAndSettle();
+    expect(openedWebUrl(tester).queryParameters, {
+      'containerid': '231522',
+      'q': '#某个话题#',
+    });
+    // The search page sends nothing itself: the in-app browser loads it.
+    expect(adapter.requests, hasLength(1));
+  });
+
+  testWidgets('a blank search does nothing; the text can be cleared', (
+    tester,
+  ) async {
+    respond = (_) => jsonBody(list);
+    await pumpPage(tester);
+    expect(find.byTooltip('清除'), findsNothing);
+
+    await tester.enterText(find.byType(TextField), '   ');
+    await tester.testTextInput.receiveAction(TextInputAction.search);
+    await tester.pumpAndSettle();
+    expect(find.textContaining('web '), findsNothing);
+
+    await tester.tap(find.byTooltip('清除'));
+    await tester.pump();
+    expect(
+      tester.widget<TextField>(find.byType(TextField)).controller!.text,
+      isEmpty,
+    );
+    expect(find.byTooltip('清除'), findsNothing);
+  });
+
   testWidgets('tapping the tab while at the top refreshes', (tester) async {
     respond = (_) => jsonBody(list);
     await pumpPage(tester);
@@ -97,6 +147,8 @@ void main() {
     respond = (_) => jsonBody({'ok': 0, 'message': '服务繁忙'}, status: 500);
     await pumpPage(tester);
     expect(find.text('服务繁忙'), findsOneWidget);
+    // Searching doesn't need the list.
+    expect(find.text('搜索微博'), findsOneWidget);
 
     respond = (_) => jsonBody(list);
     await tester.tap(find.text('重试'));

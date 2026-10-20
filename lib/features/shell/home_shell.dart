@@ -42,11 +42,7 @@ class _HomeShellState extends ConsumerState<HomeShell> {
 
   static const _destinations = [
     _Destination(Icons.home_outlined, Icons.home, '首页'),
-    _Destination(
-      Icons.local_fire_department_outlined,
-      Icons.local_fire_department,
-      '热搜',
-    ),
+    _Destination(Icons.search_outlined, Icons.search, '搜索'),
     _Destination(Icons.notifications_outlined, Icons.notifications, '通知'),
     _Destination(Icons.person_outline, Icons.person, '我'),
   ];
