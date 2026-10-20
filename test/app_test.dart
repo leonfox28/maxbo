@@ -285,6 +285,90 @@ void main() {
     expect(find.textContaining('maxbo 是非官方客户端'), findsOneWidget);
   });
 
+  testWidgets('the text size applies everywhere, even on a narrow phone', (
+    tester,
+  ) async {
+    // Overflowing text, as from a row too narrow for it, fails the test.
+    tester.view.physicalSize = const Size(360, 640);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final adapter = FakeAdapter(
+      (o) => switch (o.uri.path) {
+        '/2/remind/push_count.json' => jsonBody({'cmt': 1}),
+        '/ajax/side/hotSearch' => jsonBody(
+          hotSearchJson(
+            realtime: [
+              hotItemJson('一条很长很长很长很长很长的热搜', realpos: 1, icon: '热'),
+              hotItemJson('付费的一条', icon: '首发', smallIcon: '商', isAd: 1),
+            ],
+          ),
+        ),
+        '/ajax/message/cmt' => jsonBody(
+          noticePageJson('comments', [commentNoticeJson()]),
+        ),
+        '/ajax/statuses/show' => jsonBody(statusJson(text: '首页的一条微博')),
+        '/ajax/statuses/buildComments' => jsonBody(
+          commentsPageJson([commentJson(text: '一条评论')]),
+        ),
+        _ => jsonBody(
+          feedJson([
+            statusJson(
+              text: '首页的一条微博',
+              user: userJson(name: '一个名字非常非常长的用户'),
+              retweeted: statusJson(
+                id: 5000000000000002,
+                text: '被转发的微博',
+                pics: [picJson('p1'), picJson('p2')],
+              ),
+            ),
+          ]),
+        ),
+      },
+    );
+    await tester.pumpWidget(
+      app(
+        adapter: adapter,
+        settings: const AppSettings(textSize: TextSize.extraLarge),
+        restored: const StoredSession(
+          account: Account(uid: '42', screenName: '测试用户'),
+          cookies: {
+            'weibo.com': {'SUB': 'x'},
+          },
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final post = find.text('首页的一条微博');
+    expect(
+      MediaQuery.textScalerOf(tester.element(post)).scale(10),
+      closeTo(13, 1e-9),
+    );
+
+    await tester.tap(post);
+    await tester.pumpAndSettle();
+    expect(find.text('一条评论'), findsOneWidget);
+    await tester.tap(find.byTooltip('返回'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip('搜索'));
+    await tester.pumpAndSettle();
+    expect(find.text('一条很长很长很长很长很长的热搜'), findsOneWidget);
+    await tester.tap(find.byTooltip('通知'));
+    await tester.pumpAndSettle();
+    expect(find.text('一条评论通知'), findsOneWidget);
+    await tester.tap(find.byTooltip('我'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('设置'));
+    await tester.pumpAndSettle();
+    // Dialogs too.
+    await tester.tap(find.text('字体大小'));
+    await tester.pumpAndSettle();
+    expect(
+      MediaQuery.textScalerOf(tester.element(find.text('特大').last)).scale(10),
+      closeTo(13, 1e-9),
+    );
+  });
+
   testWidgets('unread notifications turn the tab icon red until all seen', (
     tester,
   ) async {

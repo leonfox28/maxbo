@@ -32,7 +32,8 @@ void main() {
     await pumpPage(tester);
 
     expect(find.text('跟随系统'), findsOneWidget);
-    expect(find.text('标准'), findsOneWidget);
+    // The text size and the image quality.
+    expect(find.text('标准'), findsNWidgets(2));
     expect(find.text('300 MB，超出后先删最早下载的图片'), findsOneWidget);
     expect(find.text('已用 450 MB'), findsOneWidget);
   });
@@ -48,6 +49,25 @@ void main() {
     expect(storage.stored.themeMode, ThemeMode.dark);
     expect(find.text('深色'), findsOneWidget);
     expect(find.byType(SimpleDialog), findsNothing);
+  });
+
+  testWidgets('picks a text size, applied at once', (tester) async {
+    await pumpPage(tester);
+
+    await tester.tap(find.text('字体大小'));
+    await tester.pumpAndSettle();
+    expect(
+      find.descendant(
+        of: find.byType(SimpleDialog),
+        matching: find.byType(RadioListTile<TextSize>),
+      ),
+      findsNWidgets(TextSize.values.length),
+    );
+    await tester.tap(find.text('特大'));
+    await tester.pumpAndSettle();
+
+    expect(storage.stored.textSize, TextSize.extraLarge);
+    expect(find.text('特大'), findsOneWidget);
   });
 
   testWidgets('picks an image quality', (tester) async {

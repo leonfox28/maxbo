@@ -12,6 +12,7 @@ class MaxboApp extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final textSize = ref.watch(settingsProvider.select((s) => s.textSize));
     return MaterialApp.router(
       title: 'maxbo',
       theme: buildTheme(Brightness.light),
@@ -24,7 +25,12 @@ class MaxboApp extends ConsumerWidget {
         value: Theme.of(context).brightness == Brightness.dark
             ? SystemUiOverlayStyle.light
             : SystemUiOverlayStyle.dark,
-        child: child!,
+        child: MediaQuery(
+          data: MediaQuery.of(context).copyWith(
+            textScaler: textSize.applyTo(MediaQuery.textScalerOf(context)),
+          ),
+          child: child!,
+        ),
       ),
       // The UI is Chinese only, so built-in widgets (back tooltips, the
       // licence page) speak Chinese too, whatever the system language.

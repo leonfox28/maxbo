@@ -35,6 +35,30 @@ void main() {
     });
   });
 
+  group('TextSize', () {
+    test('scales text on top of the device setting', () {
+      const device = TextScaler.linear(2);
+      expect(TextSize.standard.applyTo(device), same(device));
+      expect(TextSize.large.applyTo(device).scale(10), closeTo(23, 1e-9));
+      expect(TextSize.small.applyTo(device).scale(10), closeTo(18, 1e-9));
+      expect(
+        TextSize.extraLarge.applyTo(TextScaler.noScaling).scale(10),
+        closeTo(13, 1e-9),
+      );
+    });
+
+    test('equal sizes give equal scalers, sparing rebuilds', () {
+      expect(
+        TextSize.large.applyTo(TextScaler.noScaling),
+        TextSize.large.applyTo(TextScaler.noScaling),
+      );
+      expect(
+        TextSize.large.applyTo(TextScaler.noScaling),
+        isNot(TextSize.extraLarge.applyTo(TextScaler.noScaling)),
+      );
+    });
+  });
+
   test('starts from the loaded settings and saves every change', () async {
     final storage = InMemorySettingsStorage();
     final container = ProviderContainer(

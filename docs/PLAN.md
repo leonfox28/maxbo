@@ -260,7 +260,7 @@ test/  (fixtures/ 下只放合成数据)
 - **包名**：`io.github.leonfox28.maxbo`（v0.1.0 起不再改；iOS Bundle ID 和平台通道名 `io.github.leonfox28.maxbo/cookies` 同步改过）。
 - **平板/折叠屏不做列表加详情的双栏**（2026-10-16 用户决定，10-17 调整）：不做左边列表、右边详情的双栏布局。10-17 改为：导航用悬浮胶囊放在右下角（去掉左侧导航栏）；详情页在 expanded 档把正文和评论/转发左右并排；首页时间线不做瀑布流（会打乱时间顺序），改为卡片加宽、媒体放到正文右侧。
 
-## 11. 进度与交接（更新于 2026-10-20，发布 v0.9.0 后）
+## 11. 进度与交接（更新于 2026-10-20，v0.9.0 之后加了字体大小）
 
 | 里程碑 | 状态 | 提交 |
 |---|---|---|
@@ -292,6 +292,7 @@ test/  (fixtures/ 下只放合成数据)
 | v0.8.0 | ✅ 2026-10-20 发布（Pre-release，APK + 无签名 IPA）：「热搜」页签改为「搜索」，顶部是搜索栏（minor 版本）。下载后核对过校验值、三个 APK 的签名证书、IPA 的版本号（0.8.0，build 15），arm64 APK 能在模拟器上覆盖安装 0.7.0 并启动（未登录状态） | `9542971`，见 `v0.8.0` 标签 |
 | 原生搜索结果 | ✅ 完成（v0.9.0 发布）：搜索栏、热搜条目和正文里的 #话题# 不再打开 WebView，而是打开 `/results?q=`（`SearchResultsPage`）：`statuses/search` 的结果按时间倒序，用与首页相同的微博卡片（点赞、进详情、看图、播视频都一样），滚动加载、下拉刷新，翻到空页为止。话题在列表上方显示话题图、名字、「阅读 · 讨论 · 原创人数」和导语；普通词没有话题头。在结果页里点同一个话题不会再打开一遍。右上角的地球图标在应用内 WebView 打开网页版结果（m.weibo.cn，有「综合」排序和用户、视频等分类，但游客只有第一页）。自己的微博在结果页里删除后从列表移除。诊断页的探针按钮放不下，改成可横向滚动的一行。Android 真实会话下核对了：首页转发里的话题进详情、再点话题进话题页（有话题头，第 2 页 18 条，第 3 页为空后显示「没有更多了」）、热搜第一条（话题头带导语，视频卡片和「展开」正常）、输入 `flutter` 搜索（无话题头）、网页版入口、深色主题 | 见 git log |
 | v0.9.0 | ✅ 2026-10-20 发布（Pre-release，APK + 无签名 IPA）：搜索结果、热搜条目和正文里的 #话题# 改为应用自己的列表，话题带话题头（minor 版本）。下载后核对过校验值、三个 APK 的签名证书、IPA 的版本号（0.9.0，build 16），arm64 APK 能在模拟器上覆盖安装 0.8.0 并启动（未登录状态） | `70c5009`，见 `v0.9.0` 标签 |
+| 字体大小 | ✅ 完成（未发布）：回应 GitHub issue #1。设置页「外观」下加「字体大小」：小（0.9）、标准、大（1.15）、特大（1.3），在系统字体大小的基础上相乘（`TextSize.applyTo()`，保留系统的非线性缩放），由 `MaxboApp` 的 `builder` 套在 `MediaQuery.textScaler` 上，所以所有页面、弹窗、提示条都跟着变，正文里的表情图标由 `WidgetSpan` 自动按字号缩放；选了立即生效并保存。Widget 测试在 360 宽的窗口、特大字号下走一遍首页、详情页（含评论）、搜索、通知、我、设置页和弹窗，没有溢出（临时调到 3 倍时会报两处溢出，说明测试能发现问题）。Android 真实会话下核对了设置页和选择弹窗、首页（卡片头部一行放不下时省略号截断）、详情页、「我」页，重启后保持特大，核对完已改回标准。issue 评论里提的浏览历史、我的关注还没做 | 见 git log |
 
 ### 已有的基础设施
 
@@ -312,7 +313,7 @@ test/  (fixtures/ 下只放合成数据)
   - `likesProvider`（`likes.dart`）按 `(kind, id)` 保存用户在应用里改过的点赞，所有列表和页面共用，所以同一条微博或评论在时间线、主页、详情页、楼中楼页显示一致。每条改动记着改动时页面数据的样子（`base`），**只有页面数据还是那个样子时才套用改动**；之后加载的数据已经包含这次改动，以新数据为准。界面用 `LikeBuilder`：点了立即显示，请求期间不能再点，失败时回滚并用 `showErrorSnackBar()` 提示（验证码时给「去验证」，验证后由用户自己再点一次）。
   - `showCommentComposer()`（`comment_composer.dart`）是写评论/回复的底部弹层：发送中禁用、失败时在弹层里显示原因、关掉弹层不丢草稿（草稿存在页面的 `Map` 里）。`CommentBar` 是详情页和楼中楼页底部的输入条，`confirmDeleteComment()` 是删除前的菜单加二次确认。
   - 详情页：底部条写评论和点赞，点评论回复它，长按自己的评论删除。楼中楼页：底部条回复根评论，点任一条回复它，长按自己的回复删除。楼中楼页的改动通过 `editOpenCommentLists()` 同步到详情页里已打开的评论列表（只改已加载的列表，不会因此发请求）。评论数在详情页本地加减，刷新后以服务端为准。
-- **设置**（`lib/core/settings/app_settings.dart`）：`settingsProvider` 是 `AppSettings`（主题、`ImageQuality`、图片缓存上限），存在 `shared_preferences` 里，`main()` 在第一帧前读入（`initialSettingsProvider`），避免主题闪一下。改设置用 `settingsProvider.notifier.update((s) => s.copyWith(...))`，会立即生效并保存。列表里的图片尺寸用 `quality.listPixels(逻辑尺寸, dpr)` 再交给 `PicInfo.variantFor()`，查看器用 `quality.viewerVariant(pic)`。测试用 `test/support/fakes.dart` 的 `InMemorySettingsStorage`。
+- **设置**（`lib/core/settings/app_settings.dart`）：`settingsProvider` 是 `AppSettings`（主题、`TextSize`、`ImageQuality`、图片缓存上限），存在 `shared_preferences` 里，`main()` 在第一帧前读入（`initialSettingsProvider`），避免主题闪一下。改设置用 `settingsProvider.notifier.update((s) => s.copyWith(...))`，会立即生效并保存。列表里的图片尺寸用 `quality.listPixels(逻辑尺寸, dpr)` 再交给 `PicInfo.variantFor()`，查看器用 `quality.viewerVariant(pic)`。测试用 `test/support/fakes.dart` 的 `InMemorySettingsStorage`。
 - **图片磁盘缓存**（`lib/core/media/image_disk_cache.dart`）：`extended_image` 把图片存在临时目录的 `cacheimage/` 下，自己不清理。`ImageDiskCache` 负责统计大小、清空和按上限删除最早写入的文件；启动时和调低上限时各执行一次。测试用 `FakeImageDiskCache`。
 - **设置页和关于页**：`/settings`（入口是「我」页列表里的「设置」，未登录时也有）、`/about`。关于页的声明和隐私文案要与 README 保持一致。应用固定使用中文的系统控件文案（`MaterialApp.locale`）。
 - **调试**：调试版「我」页列表里的「开发者诊断」进入诊断页：▶ 是 M1 的接口检查，▤ 是「时间线结构」探针，📄 是「详情结构」探针（长文、视频地址和有效期、评论/楼中楼/转发的分页），👤 是「主页与热搜结构」探针，🔍（`manage_search`）是「搜索结构」探针（只读，看 `statuses/search` 的结果能否解析和话题头的字段，长按另外核对翻页），📢 是「广告字段」探针（只读，输入 `@昵称` 或 uid，列出被判为广告的微博的日期和相关字段，以及只有它们才有的字段），🔔 是「通知结构」探针（只读，但会清掉测试账号的消息未读数），👍 是「互动结构」探针（**会真实点赞、评论再删除**，输入 `@昵称` 时只对当前账号关注的人生效，可以只测点赞），↗ 可以输入路由直接打开页面（如 `/n/昵称`、`/status/<id>`，用来进入应用里还没有入口的页面）。日志前缀 `[maxbo-diag]` / `[maxbo]`，用 `adb logcat` 读取。`devLog()` 只在调试版输出，不得记录 Cookie 值或微博正文。

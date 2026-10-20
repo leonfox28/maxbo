@@ -93,6 +93,24 @@ class SettingsPage extends ConsumerWidget {
                 }
               },
             ),
+            ListTile(
+              leading: const Icon(Icons.format_size),
+              title: const Text('字体大小'),
+              subtitle: Text(settings.textSize.label),
+              onTap: () async {
+                final size = await _choose(
+                  context,
+                  title: '字体大小',
+                  selected: settings.textSize,
+                  options: {
+                    for (final s in TextSize.values) s: (s.label, null),
+                  },
+                );
+                if (size != null) {
+                  await controller.update((s) => s.copyWith(textSize: size));
+                }
+              },
+            ),
             const _SectionHeader('图片'),
             ListTile(
               leading: const Icon(Icons.image_outlined),

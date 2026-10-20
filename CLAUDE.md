@@ -40,7 +40,7 @@ Flutter stable 3.47.x（Dart 3.13），通过 Homebrew cask 安装。
   - `SessionController`（`sessionProvider`）
   - 会话存在 Keystore / Keychain
 - `lib/core/media/`：`WeiboImage`，所有微博图片都经它加载（自动带 Referer，缓存 key 去掉签名参数）；`video_source.dart` 负责选视频地址，地址过期时重新请求 `statuses/show`；`image_disk_cache.dart` 按设置的上限清理图片磁盘缓存
-- `lib/core/settings/`：`settingsProvider`（主题、图片质量、缓存上限），存在 `shared_preferences`，`main()` 在第一帧前读入。图片尺寸要经过 `ImageQuality` 选择
+- `lib/core/settings/`：`settingsProvider`（主题、字体大小、图片质量、缓存上限），存在 `shared_preferences`，`main()` 在第一帧前读入。图片尺寸要经过 `ImageQuality` 选择；字体大小由 `MaxboApp` 统一套在 `MediaQuery.textScaler` 上（在系统字体大小的基础上乘倍数），页面里不用单独处理
 - `lib/core/paging/`：`PagedController<T>`，分页列表（评论、转发等）都继承它，界面用 `widgets/load_state.dart` 里的 `PagedSliverList` 和 `LoadMoreTrigger`
 - `lib/data/api/weibo_api.dart`：所有端点都集中在这里。新增端点时写成 `WeiboApi` 的方法，内部调用 `getJson()` / `getPage()`。当前用户从 weibo.com 首页内嵌的 `window.$CONFIG` 解析得到（`/ajax/config` 不存在）。
 - `lib/data/models/`：`Status`、`Comment` 等模型，`tryFromJson` 容错解析，字段读取用 `core/util/json_read.dart`

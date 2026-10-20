@@ -25,15 +25,58 @@ enum ImageQuality {
       this == original ? pic.largest ?? pic.viewerVariant : pic.viewerVariant;
 }
 
+/// How large text is, relative to the font size set on the device.
+enum TextSize {
+  small('小', 0.9),
+  standard('标准', 1),
+  large('大', 1.15),
+  extraLarge('特大', 1.3);
+
+  const TextSize(this.label, this.factor);
+
+  final String label;
+  final double factor;
+
+  /// The device's text scaling, [system], enlarged or reduced to this size.
+  TextScaler applyTo(TextScaler system) =>
+      factor == 1 ? system : _ScaledTextScaler(system, factor);
+}
+
+/// Scales text as [base] does, then by [factor], keeping [base]'s
+/// nonlinear scaling, if any.
+final class _ScaledTextScaler extends TextScaler {
+  const _ScaledTextScaler(this.base, this.factor);
+
+  final TextScaler base;
+  final double factor;
+
+  @override
+  double scale(double fontSize) => base.scale(fontSize) * factor;
+
+  @override
+  double get textScaleFactor => scale(14) / 14;
+
+  @override
+  bool operator ==(Object other) =>
+      other is _ScaledTextScaler &&
+      other.base == base &&
+      other.factor == factor;
+
+  @override
+  int get hashCode => Object.hash(base, factor);
+}
+
 /// User preferences, kept on the device only.
 class AppSettings {
   const AppSettings({
     this.themeMode = ThemeMode.system,
+    this.textSize = TextSize.standard,
     this.imageQuality = ImageQuality.standard,
     this.imageCacheLimitMb = 300,
   });
 
   final ThemeMode themeMode;
+  final TextSize textSize;
   final ImageQuality imageQuality;
 
   /// How large the picture disk cache may grow before the oldest pictures
@@ -44,10 +87,12 @@ class AppSettings {
 
   AppSettings copyWith({
     ThemeMode? themeMode,
+    TextSize? textSize,
     ImageQuality? imageQuality,
     int? imageCacheLimitMb,
   }) => AppSettings(
     themeMode: themeMode ?? this.themeMode,
+    textSize: textSize ?? this.textSize,
     imageQuality: imageQuality ?? this.imageQuality,
     imageCacheLimitMb: imageCacheLimitMb ?? this.imageCacheLimitMb,
   );
@@ -60,6 +105,7 @@ abstract interface class SettingsStorage {
 
 class PrefsSettingsStorage implements SettingsStorage {
   static const _theme = 'settings.theme';
+  static const _textSize = 'settings.textSize';
   static const _quality = 'settings.imageQuality';
   static const _cacheLimit = 'settings.imageCacheLimitMb';
 
@@ -77,6 +123,11 @@ class PrefsSettingsStorage implements SettingsStorage {
         await _prefs.getString(_theme),
         defaults.themeMode,
       ),
+      textSize: byName(
+        TextSize.values,
+        await _prefs.getString(_textSize),
+        defaults.textSize,
+      ),
       imageQuality: byName(
         ImageQuality.values,
         await _prefs.getString(_quality),
@@ -91,6 +142,7 @@ class PrefsSettingsStorage implements SettingsStorage {
   @override
   Future<void> save(AppSettings settings) async {
     await _prefs.setString(_theme, settings.themeMode.name);
+    await _prefs.setString(_textSize, settings.textSize.name);
     await _prefs.setString(_quality, settings.imageQuality.name);
     await _prefs.setInt(_cacheLimit, settings.imageCacheLimitMb);
   }
