@@ -137,7 +137,7 @@ test/  (fixtures/ 下只放合成数据)
 | 用户资料 | GET `/ajax/profile/info?uid=` 或 `?screen_name=` | — |
 | 用户微博 | GET `/ajax/statuses/mymblog?uid&page&feature=0` | `page`（`since_id` 为空时到底） |
 | 热搜 | GET `/ajax/side/hotSearch` | — |
-| 搜索（含话题） | GET `/ajax/statuses/search?q=&count=20&page=`，不带 `atten`，见第 8 节 | `page`（到空页为止） |
+| 搜索（含话题） | GET `/ajax/statuses/search?q=&count=20&page=`，不带 `atten`（用户确认可以这样用），见第 8 节 | `page`（到空页为止） |
 | 网页版搜索结果（应用内 WebView） | `https://m.weibo.cn/search?containerid=231522`（话题）或 `100103`（普通词）`&q=` | — |
 | 表情 | GET `/ajax/statuses/config` | — |
 | 点赞 / 取消（微博） | POST `/ajax/statuses/setLike`、`/ajax/statuses/cancelLike`（表单 `id=<mid>`） | — |
@@ -239,7 +239,7 @@ test/  (fixtures/ 下只放合成数据)
 - **weibo.com 没有现成的搜索结果接口**：前端脚本里「搜索结果」页用的 `GET /ajax/search/all?containerid=…` 已经下线，带登录态请求也返回 404「你访问的地址不存在」；网页版顶部搜索栏直接打开 `s.weibo.com`。
 - **m.weibo.cn 只能以游客身份用，而游客只能看第一页**：`/api/container/getIndex?containerid=100103type=1&q=…&page_type=searchall`（话题是 `231522type=1&t=10&q=#话题#`）不带 Cookie 时返回 `ok:-100`；带 WebView 浏览 m.weibo.cn 时拿到的游客 Cookie（`SUB`/`SUBP`，`/api/config` 是 `login:false`）能取到第 1 页（10–17 条，`card_type` 9 是微博，11 是一组卡片，话题的 `cardlistInfo.cardlist_head_cards[].head_data` 是话题头），**第 2 页起返回 `ok:-100`**。应用内 WebView 的搜索页往下滚过第一页也会跳到登录页。微博的格式是 m.weibo.cn 的（`pics[]`、`page_info.urls`、`bid`），与 weibo.com 不同。用 weibo.com 的登录态单点登录 m.weibo.cn（`passport.weibo.com/sso/signin?entry=wapsso&source=wapssowb&url=https://m.weibo.cn/`）也不行：直接请求只得到一个由风控脚本（`wbBotDetector`、易盾）驱动的登录页，不能也不该去模拟；在 WebView 里打开显示的是登录表单，没有自动登录（没有做任何输入就退出了）。
 - **`s.weibo.com/weibo?q=`**（桌面 UA，带 weibo.com 的登录态）是已登录的 PC 版 HTML，每页约 20 条，有分页链接，能翻页，但要解析 PC 版 HTML，太脆弱，没有采用。
-- **采用 `GET /ajax/statuses/search`**：网页版首页的「搜索我关注的人的微博」用它，带 `atten=1`、`count=10`、`page`（另有 `hasori`/`haspic`/`hasvideo`/`starttime`/`endtime` 等筛选）。**不带 `atten`（或 `atten=0`）时搜的是全站**：10 条结果里没有一条的作者是测试账号关注的人，`total_number` 为 735；带 `atten=1` 时同一个词 0 条。这是网页版前端不会发出的参数组合，但仍是 weibo.com 网页端接口、用登录态、只在用户操作时请求，没有绕过任何验证，判断在第 2 节的边界之内。返回 `{ok, statuses[], total_number, absstr, intention, topicHeads, …}`（不在 `data` 里），`statuses` 与时间线同构，`Status.tryFromJson` 直接解析，图片、视频、转发、混排、长文「展开」都有；样本中没有广告（`isAd=false`、`readtimetype=mblog`）。**按发布时间倒序**（不是 m.weibo.cn 默认的「综合」排序）。`page` 从 1 开始，连续 3 页互不重叠（新微博不断进来时偶有 1 条错位，分页控制器会去重）；`count=20` 有效，我们用 20。`total_number` 只是约数（同一个词连续几次在 727–749 之间），话题的讨论数也可能远多于能翻到的条数（245 讨论的话题翻 2 页共 38 条后就是空页），所以只以空页为末页。
+- **采用 `GET /ajax/statuses/search`**：网页版首页的「搜索我关注的人的微博」用它，带 `atten=1`、`count=10`、`page`（另有 `hasori`/`haspic`/`hasvideo`/`starttime`/`endtime` 等筛选）。**不带 `atten`（或 `atten=0`）时搜的是全站**：10 条结果里没有一条的作者是测试账号关注的人，`total_number` 为 735；带 `atten=1` 时同一个词 0 条。这是网页版前端不会发出的参数组合，但仍是 weibo.com 网页端接口、用登录态、只在用户操作时请求，没有绕过任何验证，判断在第 2 节的边界之内，用户已确认可以这样用。返回 `{ok, statuses[], total_number, absstr, intention, topicHeads, …}`（不在 `data` 里），`statuses` 与时间线同构，`Status.tryFromJson` 直接解析，图片、视频、转发、混排、长文「展开」都有；样本中没有广告（`isAd=false`、`readtimetype=mblog`）。**按发布时间倒序**（不是 m.weibo.cn 默认的「综合」排序）。`page` 从 1 开始，连续 3 页互不重叠（新微博不断进来时偶有 1 条错位，分页控制器会去重）；`count=20` 有效，我们用 20。`total_number` 只是约数（同一个词连续几次在 727–749 之间），话题的讨论数也可能远多于能翻到的条数（245 讨论的话题翻 2 页共 38 条后就是空页），所以只以空页为末页。
 - **`topicHeads`**：搜任何词都带。`count` 里 `read`、`mention`、`ori_uv` 是总阅读、讨论、原创人数（另有 `24h_read`、`24h_mention`、`1h_mention` 等短期数）。只有话题的 `object` 里有 `display_name`（话题名，不带 `#`，大小写可能和查询不同）、`summary`（导语，可能为空）、`id`（`1022:231522…`）、`image.url`；普通词的 `object` 只有 `media_counts`、空的 `summary` 和 `image`，所以以有没有 `display_name` 判断是不是话题。另有 `claim_info`（主持人）、`band_info`（在热搜榜上的位置），没有用。
 
 ## 9. 分发
