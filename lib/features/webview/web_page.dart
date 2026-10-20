@@ -26,7 +26,7 @@ String webPageLocation(Uri url) =>
     Uri(path: '/web', queryParameters: {'url': '$url'}).toString();
 
 /// A web page inside the app, for what maxbo has no page of its own for,
-/// such as search results or Weibo's security checks.
+/// such as Weibo's own search results or its security checks.
 ///
 /// It shares the WebView cookie store with the login page and sends the same
 /// browser identity, so Weibo sees the signed-in user in the same browser.

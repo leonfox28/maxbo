@@ -8,7 +8,7 @@ import '../../widgets/rich_text/status_text_parser.dart';
 import '../../widgets/status_card/status_card.dart';
 import '../interactions/delete_status.dart';
 import '../media_viewer/image_viewer_page.dart';
-import '../webview/web_page.dart';
+import '../search/search_results_page.dart';
 
 /// What tapping parts of a status card (or a comment) does throughout the
 /// app.
@@ -38,10 +38,7 @@ StatusCardActions statusCardActions(BuildContext context) {
       MentionLink(:final screenName) => context.push(
         '/n/${Uri.encodeComponent(screenName)}',
       ),
-      TopicLink(:final topic) => openWebPage(
-        context,
-        weiboSearchUrl('#$topic#'),
-      ),
+      TopicLink(:final topic) => openSearchResults(context, '#$topic#'),
       ImageLink(:final url) when url.host.endsWith('.sinaimg.cn') =>
         viewPictures([PicInfo.fromUrl('$url')], 0),
       ImageLink(:final url) => openExternally(url),

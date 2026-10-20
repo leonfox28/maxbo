@@ -11,7 +11,7 @@ import '../../widgets/load_state.dart';
 import '../../widgets/tab_reselect.dart';
 import '../../widgets/tag_label.dart';
 import '../auth/login_prompt.dart';
-import '../webview/web_page.dart';
+import 'search_results_page.dart';
 
 /// Loaded when the tab is first opened, and again only on pull to refresh.
 final hotSearchProvider = FutureProvider.autoDispose<HotSearch>(
@@ -19,7 +19,7 @@ final hotSearchProvider = FutureProvider.autoDispose<HotSearch>(
 );
 
 /// The search tab: a search bar over the hot search list. A search, as a
-/// hot search entry, opens Weibo's results in the in-app browser.
+/// hot search entry, opens the posts found for it.
 class SearchPage extends ConsumerWidget {
   const SearchPage({super.key});
 
@@ -64,7 +64,7 @@ class _SearchFieldState extends State<_SearchField> {
     if (query.isEmpty) return;
     // Or the keyboard comes back with the field when the results close.
     FocusManager.instance.primaryFocus?.unfocus();
-    openWebPage(context, weiboSearchUrl(query));
+    openSearchResults(context, query);
   }
 
   @override
@@ -189,7 +189,7 @@ class _HotSearchTile extends StatelessWidget {
     }
 
     return InkWell(
-      onTap: () => openWebPage(context, weiboSearchUrl(item.query)),
+      onTap: () => openSearchResults(context, item.query),
       child: Padding(
         padding: const EdgeInsets.fromLTRB(12, 13, 16, 13),
         child: Row(

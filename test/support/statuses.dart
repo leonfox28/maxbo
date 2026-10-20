@@ -355,3 +355,52 @@ Map<String, Object?> likeNoticeJson({
     'comment': ?comment,
   };
 }
+
+/// A statuses/search response. A search for a word comes with a
+/// [topicHeads] too, without a name: see [topicHeadsJson].
+Map<String, Object?> searchJson(
+  List<Map<String, Object?>> statuses, {
+  Map<String, Object?>? topicHeads,
+  int total = 700,
+}) => {
+  'ok': 1,
+  'statuses': statuses,
+  'total_number': total,
+  'absstr': '',
+  'intention': 0,
+  'topicHeads': topicHeads ?? topicHeadsJson(),
+};
+
+/// The `topicHeads` of a search: for the topic [name], or for a word when
+/// null.
+Map<String, Object?> topicHeadsJson({
+  String? name,
+  String summary = '',
+  int read = 42262434,
+  int mention = 9365,
+  int authors = 1997,
+}) => {
+  'count': {
+    'read': read,
+    'mention': mention,
+    'ori_uv': authors,
+    'r_valid': read - 1000,
+    'interact': 28912,
+  },
+  '24h_read': read ~/ 2,
+  '24h_mention': mention ~/ 2,
+  'topic_ori': name ?? '某个词',
+  'object': {
+    'media_counts': 209,
+    'summary': summary,
+    'image': {'url': 'https://wx1.sinaimg.cn/thumb180/topic.jpg'},
+    if (name != null) ...{
+      'display_name': name,
+      'id': '1022:231522topic',
+      'object_type': 'search_topic',
+      'url': 'https://s.weibo.com/weibo?q=%23$name%23',
+    },
+  },
+  'claim_info': [],
+  'band_info': [],
+};

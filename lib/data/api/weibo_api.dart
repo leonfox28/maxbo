@@ -16,6 +16,7 @@ import '../models/hot_search.dart';
 import '../models/notice.dart';
 import '../models/paged.dart';
 import '../models/status.dart';
+import '../models/topic.dart';
 import '../models/user_profile.dart';
 import 'page_config.dart';
 
@@ -27,6 +28,9 @@ final weiboApiProvider = Provider<WeiboApi>((ref) {
     onSessionExpired: () => ref.read(sessionProvider.notifier).expire(),
   );
 });
+
+/// A page of search results, with the topic if one was searched for.
+typedef SearchResults = ({Paged<Status> statuses, Topic? topic});
 
 /// The pid in picupload's answer [body], or null if the upload failed.
 ///
@@ -248,6 +252,33 @@ class WeiboApi {
   Future<HotSearch> fetchHotSearch() async {
     final json = await getJson('$_web/ajax/side/hotSearch');
     return HotSearch.fromJson(readMap(json['data']) ?? const {});
+  }
+
+  /// Page [page] (from 1) of the posts across Weibo that match [query],
+  /// newest first. A `#话题#` finds the posts in that topic, and comes with
+  /// the topic.
+  ///
+  /// This is weibo.com's search of the home feed, which sends `atten=1` to
+  /// keep to followed users; without it, it searches everyone (PLAN §8).
+  Future<SearchResults> searchStatuses(String query, {int page = 1}) async {
+    final json = await getJson(
+      '$_web/ajax/statuses/search',
+      query: {'q': query, 'count': 20, 'page': page},
+    );
+    final statuses = [
+      for (final s in readMaps(json['statuses'])) ?Status.tryFromJson(s),
+    ];
+    // Results come in as they are posted, so the next page may repeat the
+    // end of this one; only an empty page ends them.
+    devLog('search p$page: ${statuses.length}');
+    return (
+      statuses: Paged(
+        statuses,
+        nextCursor: statuses.isEmpty ? null : '${page + 1}',
+        total: readInt(json['total_number']),
+      ),
+      topic: Topic.tryFromJson(json['topicHeads']),
+    );
   }
 
   /// Which kinds of notifications are unread.

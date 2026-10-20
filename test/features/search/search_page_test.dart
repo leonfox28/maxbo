@@ -61,40 +61,30 @@ void main() {
     expect(find.text('首发'), findsNothing);
   });
 
-  testWidgets('opens Weibo search for an entry in the app', (tester) async {
+  testWidgets('an entry opens the posts found for it', (tester) async {
     respond = (_) => jsonBody(list);
     await pumpPage(tester);
 
     await tester.tap(find.text('第一条'));
     await tester.pumpAndSettle();
-    final topic = openedWebUrl(tester);
-    expect(topic.host, 'm.weibo.cn');
-    expect(topic.path, '/search');
-    expect(topic.queryParameters, {'containerid': '231522', 'q': '#第一条#'});
+    // A topic, as Weibo sends it.
+    expect(openedSearch(tester), '#第一条#');
 
     await tester.pageBack();
     await tester.pumpAndSettle();
     await tester.tap(find.text('第二条'));
     await tester.pumpAndSettle();
-    expect(openedWebUrl(tester).queryParameters, {
-      'containerid': '100103',
-      'q': '第二条',
-    });
+    expect(openedSearch(tester), '第二条');
   });
 
-  testWidgets('searches Weibo in the app for what the user types', (
-    tester,
-  ) async {
+  testWidgets('searches for what the user types', (tester) async {
     respond = (_) => jsonBody(list);
     await pumpPage(tester);
 
     await tester.enterText(find.byType(TextField), '  某个词 ');
     await tester.testTextInput.receiveAction(TextInputAction.search);
     await tester.pumpAndSettle();
-    expect(openedWebUrl(tester).queryParameters, {
-      'containerid': '100103',
-      'q': '某个词',
-    });
+    expect(openedSearch(tester), '某个词');
 
     // What was typed is still there to change.
     await tester.pageBack();
@@ -103,11 +93,8 @@ void main() {
     await tester.enterText(find.byType(TextField), '#某个话题#');
     await tester.testTextInput.receiveAction(TextInputAction.search);
     await tester.pumpAndSettle();
-    expect(openedWebUrl(tester).queryParameters, {
-      'containerid': '231522',
-      'q': '#某个话题#',
-    });
-    // The search page sends nothing itself: the in-app browser loads it.
+    expect(openedSearch(tester), '#某个话题#');
+    // The results page does the searching.
     expect(adapter.requests, hasLength(1));
   });
 
@@ -121,7 +108,7 @@ void main() {
     await tester.enterText(find.byType(TextField), '   ');
     await tester.testTextInput.receiveAction(TextInputAction.search);
     await tester.pumpAndSettle();
-    expect(find.textContaining('web '), findsNothing);
+    expect(find.textContaining('results '), findsNothing);
 
     await tester.tap(find.byTooltip('清除'));
     await tester.pump();

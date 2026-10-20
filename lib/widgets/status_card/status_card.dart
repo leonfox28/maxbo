@@ -48,12 +48,13 @@ class StatusCardActions {
   final ValueChanged<Status>? onDelete;
 
   StatusCardActions copyWith({
+    ValueChanged<StatusLink>? onLink,
     ValueChanged<WeiboUser>? onUser,
     ValueChanged<Status>? onExpand,
     ValueChanged<Status>? onDelete,
   }) => StatusCardActions(
     onOpen: onOpen,
-    onLink: onLink,
+    onLink: onLink ?? this.onLink,
     onUser: onUser ?? this.onUser,
     onExpand: onExpand ?? this.onExpand,
     onPicture: onPicture,

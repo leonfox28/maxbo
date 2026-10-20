@@ -61,13 +61,11 @@ void main() {
     expect(find.text('name 朋友'), findsOneWidget);
   });
 
-  testWidgets('a topic opens its search in the app', (tester) async {
+  testWidgets('a topic opens the posts in it', (tester) async {
     await pumpCard(tester);
 
     await tester.tapOnText(find.textRange.ofSubstring('#话题#'));
     await tester.pumpAndSettle();
-    final url = openedWebUrl(tester);
-    expect(url.host, 'm.weibo.cn');
-    expect(url.queryParameters['q'], '#话题#');
+    expect(openedSearch(tester), '#话题#');
   });
 }

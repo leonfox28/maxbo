@@ -200,6 +200,47 @@ void main() {
     });
   });
 
+  group('searchStatuses', () {
+    test('searches everyone, a page by number at a time', () async {
+      respond = (_) => jsonBody(
+        searchJson([statusJson(id: 1), statusJson(id: 2)], total: 735),
+      );
+      final api = fakeApi(adapter);
+
+      final first = await api.searchStatuses('某个词');
+      expect(adapter.requests.single.uri.path, '/ajax/statuses/search');
+      // No atten=1: that keeps to followed users.
+      expect(query(), {'q': '某个词', 'count': '20', 'page': '1'});
+      expect(first.statuses.items.map((s) => s.id), ['1', '2']);
+      expect(first.statuses.nextCursor, '2');
+      expect(first.statuses.total, 735);
+      expect(first.topic, isNull);
+
+      await api.searchStatuses('某个词', page: 2);
+      expect(query()['page'], '2');
+    });
+
+    test('a topic comes with its lead and counts', () async {
+      respond = (_) => jsonBody(
+        searchJson([
+          statusJson(id: 1),
+        ], topicHeads: topicHeadsJson(name: '某个话题', summary: '话题导语')),
+      );
+
+      final results = await fakeApi(adapter).searchStatuses('#某个话题#');
+      expect(query()['q'], '#某个话题#');
+      expect(results.topic?.name, '某个话题');
+      expect(results.topic?.summary, '话题导语');
+    });
+
+    test('only an empty page ends the results', () async {
+      respond = (_) => jsonBody(searchJson([], total: 735));
+
+      final page = await fakeApi(adapter).searchStatuses('某个词', page: 37);
+      expect(page.statuses.nextCursor, isNull);
+    });
+  });
+
   test('fetchHotSearch reads the list', () async {
     respond = (_) =>
         jsonBody(hotSearchJson(realtime: [hotItemJson('第一条', realpos: 1)]));

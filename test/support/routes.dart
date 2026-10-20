@@ -20,6 +20,13 @@ GoRouter stubRouter(Widget home) => GoRouter(
       builder: (_, state) => Text('status ${state.pathParameters['id']}'),
     ),
     GoRoute(
+      path: '/results',
+      builder: (_, state) => Scaffold(
+        appBar: AppBar(),
+        body: Text('results ${state.uri.queryParameters['q']}'),
+      ),
+    ),
+    GoRoute(
       path: '/web',
       builder: (context, state) => Scaffold(
         appBar: AppBar(),
@@ -33,4 +40,10 @@ GoRouter stubRouter(Widget home) => GoRouter(
 Uri openedWebUrl(WidgetTester tester) {
   final text = tester.widget<Text>(find.textContaining('web ')).data!;
   return Uri.parse(text.substring('web '.length));
+}
+
+/// The query a stand-in `/results` page was opened with.
+String openedSearch(WidgetTester tester) {
+  final text = tester.widget<Text>(find.textContaining('results ')).data!;
+  return text.substring('results '.length);
 }

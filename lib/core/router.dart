@@ -15,6 +15,7 @@ import '../features/notifications/notifications_page.dart';
 import '../features/profile/me_page.dart';
 import '../features/profile/profile_page.dart';
 import '../features/search/search_page.dart';
+import '../features/search/search_results_page.dart';
 import '../features/settings/about_page.dart';
 import '../features/settings/settings_page.dart';
 import '../features/shell/home_shell.dart';
@@ -102,6 +103,15 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: '/n/:name',
         builder: (_, state) =>
             ProfilePage(screenName: state.pathParameters['name']!),
+      ),
+      GoRoute(
+        path: '/results',
+        builder: (_, state) => switch (state.uri.queryParameters['q']) {
+          final query? when query.trim().isNotEmpty => SearchResultsPage(
+            query: query,
+          ),
+          _ => const _MissingPage(),
+        },
       ),
       GoRoute(
         path: '/web',
