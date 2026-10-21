@@ -170,6 +170,8 @@ class _Header extends StatelessWidget {
             ],
           ],
         ),
+      if (p == null && !profile.hasError)
+        _LinePlaceholder(width: 240, style: theme.textTheme.bodyMedium),
       if (p == null && profile.hasError)
         Row(
           children: [
@@ -210,14 +212,20 @@ class _Header extends StatelessWidget {
                       children: [
                         Row(
                           children: [
-                            Flexible(
-                              child: Text(
-                                user?.screenName ?? '',
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
+                            if (user != null)
+                              Flexible(
+                                child: Text(
+                                  user.screenName,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: theme.textTheme.titleLarge,
+                                ),
+                              )
+                            else if (!profile.hasError)
+                              _LinePlaceholder(
+                                width: 120,
                                 style: theme.textTheme.titleLarge,
                               ),
-                            ),
                             if (VerifiedIcon.shows(verified)) ...[
                               const SizedBox(width: 4),
                               VerifiedIcon(verified!, size: 18),
@@ -232,9 +240,9 @@ class _Header extends StatelessWidget {
                         if (p != null)
                           _Counts(profile: p)
                         else if (!profile.hasError)
-                          const SizedBox(
-                            width: 120,
-                            child: LinearProgressIndicator(),
+                          _LinePlaceholder(
+                            width: 160,
+                            style: theme.textTheme.bodyMedium,
                           ),
                       ],
                     ),
@@ -249,6 +257,39 @@ class _Header extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+/// A grey bar holding the place of a line of text in [style] until the
+/// profile arrives, so the header keeps its height when it does.
+class _LinePlaceholder extends StatelessWidget {
+  const _LinePlaceholder({required this.width, this.style});
+
+  final double width;
+  final TextStyle? style;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: width,
+      child: Stack(
+        children: [
+          // Invisible, for the height of a line.
+          Text(' ', style: style),
+          Positioned.fill(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 3),
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                  borderRadius: BorderRadius.circular(4),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

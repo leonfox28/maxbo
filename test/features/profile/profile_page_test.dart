@@ -60,6 +60,11 @@ void main() {
     );
     // App bar and header, before anything arrives.
     expect(find.text('示例用户'), findsNWidgets(2));
+    // Only the statuses spin; the header holds placeholders.
+    expect(
+      find.byWidgetPredicate((w) => w is ProgressIndicator),
+      findsOneWidget,
+    );
 
     await tester.pumpAndSettle();
 
