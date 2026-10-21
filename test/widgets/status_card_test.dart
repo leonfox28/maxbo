@@ -279,6 +279,33 @@ void main() {
     expect(opened, ['1', '2']);
   });
 
+  testWidgets('the repost count reposts the post, if anything does', (
+    tester,
+  ) async {
+    final opened = <String>[];
+    final reposted = <String>[];
+    await pumpCard(
+      tester,
+      statusJson(id: 1),
+      actions: StatusCardActions(
+        onOpen: (s) => opened.add(s.id),
+        onRepost: (s) => reposted.add(s.id),
+      ),
+    );
+
+    await tester.tap(find.text('3'));
+    expect(reposted, ['1']);
+    expect(opened, isEmpty);
+
+    await pumpCard(
+      tester,
+      statusJson(id: 1),
+      actions: StatusCardActions(onOpen: (s) => opened.add(s.id)),
+    );
+    await tester.tap(find.text('3'));
+    expect(opened, ['1']);
+  });
+
   testWidgets('a deleted retweet does not open', (tester) async {
     final opened = <String>[];
     await pumpCard(

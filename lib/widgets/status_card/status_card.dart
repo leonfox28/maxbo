@@ -28,6 +28,7 @@ class StatusCardActions {
     this.onExpand,
     this.onPicture,
     this.onVideo,
+    this.onRepost,
     this.onDelete,
   });
 
@@ -44,6 +45,9 @@ class StatusCardActions {
   /// `Status.videoAt` does.
   final void Function(Status status, int? index)? onVideo;
 
+  /// The repost count, which reposts the card's post.
+  final ValueChanged<Status>? onRepost;
+
   /// Deleting a post of the signed-in user's, offered on their posts only.
   final ValueChanged<Status>? onDelete;
 
@@ -59,6 +63,7 @@ class StatusCardActions {
     onExpand: onExpand ?? this.onExpand,
     onPicture: onPicture,
     onVideo: onVideo,
+    onRepost: onRepost,
     onDelete: onDelete ?? this.onDelete,
   );
 }
@@ -118,7 +123,7 @@ class StatusCard extends StatelessWidget {
           const SizedBox(height: 8),
           _Retweeted(status: retweeted, actions: actions),
         ],
-        if (!detail) _Counts(status: status),
+        if (!detail) _Counts(status: status, actions: actions),
       ],
     );
   }
@@ -138,7 +143,7 @@ class StatusCard extends StatelessWidget {
           _Body(status: status, actions: actions, withMedia: retweeted != null),
         ],
       ),
-      footer: _Counts(status: status),
+      footer: _Counts(status: status, actions: actions),
       aside: aside,
     );
   }
@@ -574,11 +579,13 @@ class _PageCardView extends StatelessWidget {
   }
 }
 
-/// Repost, comment and like counts; the like count is a like button.
+/// Repost, comment and like counts; the repost count is a repost button and
+/// the like count a like button.
 class _Counts extends StatelessWidget {
-  const _Counts({required this.status});
+  const _Counts({required this.status, required this.actions});
 
   final Status status;
+  final StatusCardActions actions;
 
   @override
   Widget build(BuildContext context) {
@@ -616,9 +623,15 @@ class _Counts extends StatelessWidget {
       );
     }
 
+    final onRepost = actions.onRepost;
     return Row(
       children: [
-        item(Icons.repeat, status.repostsCount, '转发'),
+        item(
+          Icons.repeat,
+          status.repostsCount,
+          '转发',
+          onTap: onRepost == null ? null : () => onRepost(status),
+        ),
         item(Icons.chat_bubble_outline, status.commentsCount, '评论'),
         LikeBuilder(
           target: (kind: LikeKind.status, id: status.id),

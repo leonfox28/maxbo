@@ -127,6 +127,23 @@ void main() {
       expect(s.retweeted?.text, '抱歉，此微博已被作者删除。');
     });
 
+    test('keeps the plain text only while it is whole', () {
+      Status? parse(Map<String, Object?> extra) =>
+          Status.tryFromJson(statusJson(text: '<b>正文</b>', extra: extra));
+
+      expect(parse({'text_raw': '正文'})!.plainText, '正文');
+      // Lists cut long posts short; their detail has all of it.
+      final cut = {'isLongText': true, 'text_raw': '正'};
+      expect(parse(cut)!.plainText, isNull);
+      expect(
+        parse({
+          ...cut,
+          'longText': {'content': '正文全文'},
+        })!.plainText,
+        '正文全文',
+      );
+    });
+
     test('falls back to text_raw for a retweet source in mentions', () {
       Status? retweetOf(Map<String, Object?> source) =>
           Status.tryFromJson(statusJson(text: '转发', retweeted: source))!

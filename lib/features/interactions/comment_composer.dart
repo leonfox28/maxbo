@@ -83,7 +83,6 @@ class _ComposerState extends State<_Composer> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     final error = _error;
     final canSend = !_sending && _text.text.trim().isNotEmpty;
     return Padding(
@@ -109,29 +108,7 @@ class _ComposerState extends State<_Composer> {
               border: const OutlineInputBorder(),
             ),
           ),
-          if (error != null)
-            Padding(
-              padding: const EdgeInsets.only(top: 8),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      error.message,
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: theme.colorScheme.error,
-                      ),
-                    ),
-                  ),
-                  if (error case CaptchaRequiredException(:final url))
-                    TextButton(
-                      // The user takes the check, then sends again
-                      // themselves (PLAN §2).
-                      onPressed: () => openWebPage(context, url),
-                      child: const Text('去验证'),
-                    ),
-                ],
-              ),
-            ),
+          if (error != null) SendError(error),
           const SizedBox(height: 8),
           Align(
             alignment: Alignment.centerRight,
@@ -145,6 +122,42 @@ class _ComposerState extends State<_Composer> {
                   : const Text('发送'),
             ),
           ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Why sending what the user wrote failed, under it, with a way to take
+/// the check when Weibo asks for one.
+class SendError extends StatelessWidget {
+  const SendError(this.error, {super.key});
+
+  final WeiboException error;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final error = this.error;
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              error.message,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.error,
+              ),
+            ),
+          ),
+          if (error case CaptchaRequiredException(:final url))
+            TextButton(
+              // The user takes the check, then sends again themselves
+              // (PLAN §2).
+              onPressed: () => openWebPage(context, url),
+              child: const Text('去验证'),
+            ),
         ],
       ),
     );

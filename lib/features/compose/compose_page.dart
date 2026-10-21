@@ -10,10 +10,10 @@ import 'package:image_picker_platform_interface/image_picker_platform_interface.
 
 import '../../core/net/weibo_exception.dart';
 import '../../core/util/dev_log.dart';
-import '../../data/models/status.dart';
 import '../../widgets/adaptive_layout.dart';
-import '../webview/web_page.dart';
+import '../interactions/comment_composer.dart';
 import 'compose_draft.dart';
+import 'visibility_button.dart';
 
 /// Picks pictures from the gallery, at most [limit]; overridden in tests.
 final picturePickerProvider =
@@ -193,7 +193,7 @@ class _ComposePageState extends ConsumerState<ComposePage> {
               const SizedBox(height: 12),
               Align(
                 alignment: AlignmentDirectional.centerStart,
-                child: _VisibilityButton(
+                child: VisibilityButton(
                   value: draft.visibility,
                   onChanged: _sending
                       ? null
@@ -210,29 +210,7 @@ class _ComposePageState extends ConsumerState<ComposePage> {
                     style: theme.textTheme.bodySmall,
                   ),
                 ),
-              if (error != null)
-                Padding(
-                  padding: const EdgeInsets.only(top: 8),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          error.message,
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: theme.colorScheme.error,
-                          ),
-                        ),
-                      ),
-                      if (error case CaptchaRequiredException(:final url))
-                        TextButton(
-                          // The user takes the check, then sends again
-                          // themselves (PLAN §2).
-                          onPressed: () => openWebPage(context, url),
-                          child: const Text('去验证'),
-                        ),
-                    ],
-                  ),
-                ),
+              if (error != null) SendError(error),
             ],
           ),
         ),
@@ -332,43 +310,6 @@ class _PictureGrid extends StatelessWidget {
           ],
         );
       },
-    );
-  }
-}
-
-class _VisibilityButton extends StatelessWidget {
-  const _VisibilityButton({required this.value, required this.onChanged});
-
-  final StatusVisibility value;
-  final ValueChanged<StatusVisibility>? onChanged;
-
-  static IconData _iconOf(StatusVisibility v) => switch (v) {
-    StatusVisibility.public => Icons.public,
-    StatusVisibility.friends => Icons.group_outlined,
-    StatusVisibility.onlyMe => Icons.lock_outline,
-    StatusVisibility.fans => Icons.people_outline,
-  };
-
-  @override
-  Widget build(BuildContext context) {
-    final onChanged = this.onChanged;
-    return MenuAnchor(
-      menuChildren: [
-        for (final v in StatusVisibility.choices)
-          MenuItemButton(
-            leadingIcon: Icon(_iconOf(v)),
-            trailingIcon: v == value ? const Icon(Icons.check) : null,
-            onPressed: () => onChanged?.call(v),
-            child: Text(v.label),
-          ),
-      ],
-      builder: (context, menu, _) => OutlinedButton.icon(
-        onPressed: onChanged == null
-            ? null
-            : () => menu.isOpen ? menu.close() : menu.open(),
-        icon: Icon(_iconOf(value), size: 18),
-        label: Text(value.label),
-      ),
     );
   }
 }

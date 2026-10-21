@@ -373,6 +373,40 @@ void main() {
     expect(find.text('赞 6'), findsOneWidget);
   });
 
+  testWidgets('the bar reposts the status, which goes atop the open list '
+      'and is counted', (tester) async {
+    await pumpPage(tester);
+    await tester.pumpAndSettle();
+    writes['/ajax/statuses/normal_repost'] = () => jsonBody({
+      'ok': 1,
+      'data': {
+        'statuses': statusJson(
+          id: 9,
+          text: '我的转发',
+          user: userJson(id: 7, name: '我'),
+          retweeted: statusJson(id: 1),
+        ),
+      },
+    });
+    await tester.tap(find.text('转发 3'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.widgetWithText(TextButton, '转发'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, '转发'));
+    await tester.pumpAndSettle();
+
+    expect(adapter.requests.last.uri.path, '/ajax/statuses/normal_repost');
+    expect(sentForm()['id'], '1');
+    expect(find.text('转发成功'), findsOneWidget);
+    expect(find.text('转发 4'), findsOneWidget);
+    final texts = tester
+        .widgetList<Text>(find.byType(Text))
+        .map((t) => t.data ?? t.textSpan?.toPlainText())
+        .toList();
+    expect(texts.indexOf('我的转发'), lessThan(texts.indexOf('转发了这条')));
+  });
+
   testWidgets('a comment is counted until data that has it loads', (
     tester,
   ) async {

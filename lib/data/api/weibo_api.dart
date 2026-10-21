@@ -474,6 +474,32 @@ class WeiboApi {
     return Status.tryFromJson(json['data']);
   }
 
+  /// Reposts status [id] with [text], for [visibility]; Weibo puts in
+  /// 转发微博 when [text] is empty. With [alsoComment] the text also goes as
+  /// a comment on it. Returns the new status as Weibo shows it, or null
+  /// when its answer has none.
+  Future<Status?> repostStatus({
+    required String id,
+    String text = '',
+    bool alsoComment = false,
+    StatusVisibility visibility = StatusVisibility.public,
+  }) async {
+    final json = await postForm('$_web/ajax/statuses/normal_repost', {
+      'id': id,
+      // weibo.com leaves it out when empty.
+      if (text.isNotEmpty) 'comment': text,
+      'is_comment': alsoComment ? 1 : 0,
+      // Don't also comment on the retweeted post.
+      'comment_ori': 0,
+      'is_repost': 0,
+      'visible': visibility.code,
+    });
+    // weibo.com reads it from `data.statuses`.
+    final data = json['data'];
+    return Status.tryFromJson(readMap(data)?['statuses']) ??
+        Status.tryFromJson(data);
+  }
+
   /// Deletes status [id], which the user posted.
   Future<void> deleteStatus(String id) =>
       postForm('$_web/ajax/statuses/destroy', {'id': id});

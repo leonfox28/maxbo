@@ -37,6 +37,7 @@ class Status {
     this.source,
     this.region,
     this.text = '',
+    this.plainText,
     this.urls = const [],
     this.pics = const [],
     this.picCount = 0,
@@ -71,6 +72,10 @@ class Status {
 
   /// The body as HTML; see `parseStatusText`.
   final String text;
+
+  /// The body as plain text, in full, as a repost of this one quotes it;
+  /// null when Weibo sent only a cut-short one (long posts in lists).
+  final String? plainText;
 
   /// Short links in [text] and what they resolve to.
   final List<UrlEntity> urls;
@@ -131,6 +136,9 @@ class Status {
       source: _plainText(readString(map['source'])),
       region: readString(map['region_name']),
       text: _textOf(map, urlStruct),
+      plainText:
+          readString(readMap(map['longText'])?['content']) ??
+          (map['isLongText'] == true ? null : readString(map['text_raw'])),
       urls: [for (final u in urlStruct) ?UrlEntity.tryFromJson(u)],
       pics: pics,
       picCount: readInt(map['pic_num']) ?? pics.length,

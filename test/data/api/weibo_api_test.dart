@@ -486,6 +486,54 @@ void main() {
       expect(form(), {'content': '只有字', 'visible': '0'});
     });
 
+    test('repostStatus reposts with the text, for an audience', () async {
+      respond = (_) => jsonBody({
+        'ok': 1,
+        'msg': '转发成功',
+        'data': {
+          'statuses': statusJson(
+            id: 78,
+            text: '说两句',
+            retweeted: statusJson(id: 1),
+          ),
+        },
+      });
+
+      final repost = await fakeApi(adapter).repostStatus(
+        id: '1',
+        text: '说两句 & //@某人:原话',
+        alsoComment: true,
+        visibility: StatusVisibility.onlyMe,
+      );
+
+      expect(adapter.requests.single.uri.path, '/ajax/statuses/normal_repost');
+      expect(form(), {
+        'id': '1',
+        'comment': '说两句 & //@某人:原话',
+        'is_comment': '1',
+        'comment_ori': '0',
+        'is_repost': '0',
+        'visible': '1',
+      });
+      expect(repost?.id, '78');
+      expect(repost?.retweeted?.id, '1');
+    });
+
+    test('repostStatus without text sends no comment', () async {
+      respond = (_) => jsonBody({'ok': 1, 'data': statusJson(id: 78)});
+
+      final repost = await fakeApi(adapter).repostStatus(id: '1');
+
+      expect(form(), {
+        'id': '1',
+        'is_comment': '0',
+        'comment_ori': '0',
+        'is_repost': '0',
+        'visible': '0',
+      });
+      expect(repost?.id, '78');
+    });
+
     test('deleteStatus', () async {
       respond = (_) => jsonBody({'ok': 1, 'data': statusJson(id: 77)});
 

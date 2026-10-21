@@ -7,6 +7,7 @@ import '../../data/models/status.dart';
 import '../../widgets/rich_text/status_text_parser.dart';
 import '../../widgets/status_card/status_card.dart';
 import '../interactions/delete_status.dart';
+import '../interactions/repost.dart';
 import '../media_viewer/image_viewer_page.dart';
 import '../search/search_results_page.dart';
 
@@ -51,6 +52,7 @@ StatusCardActions statusCardActions(BuildContext context) {
       index == null ? '/video/${status.id}' : '/video/${status.id}?i=$index',
       extra: status,
     ),
+    onRepost: (status) => repostStatus(context, status),
     onDelete: (status) => deleteOwnStatus(context, status),
   );
 }
