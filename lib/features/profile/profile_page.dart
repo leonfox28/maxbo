@@ -147,9 +147,8 @@ class _ProfileView extends ConsumerWidget {
                     onRetry: () => ref.invalidate(profileProvider(query)),
                   ),
                 ),
-                const SliverToBoxAdapter(
-                  child: Divider(height: 8, thickness: 8),
-                ),
+                // A line like those between the statuses.
+                const SliverToBoxAdapter(child: Divider(height: 1)),
                 PagedSliverList<Status>(
                   value: statuses,
                   itemBuilder: (context, status) =>
