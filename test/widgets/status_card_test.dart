@@ -306,6 +306,49 @@ void main() {
     expect(opened, ['1']);
   });
 
+  testWidgets('pressing a count shows no ink, its own or the card\'s', (
+    tester,
+  ) async {
+    await pumpCard(
+      tester,
+      statusJson(id: 1),
+      actions: StatusCardActions(onOpen: (_) {}, onRepost: (_) {}),
+    );
+    // The scaffold's Material, which the card's ink is drawn on.
+    final material = Material.of(tester.element(find.byType(StatusCard)));
+    Iterable<Color> visibleInk() => [
+      for (final feature
+          in (material as dynamic).debugInkFeatures as List<InkFeature>? ??
+              const <InkFeature>[])
+        if (feature is InteractiveInkFeature && feature.color.a > 0)
+          feature.color,
+    ];
+
+    for (final icon in [
+      Icons.repeat,
+      Icons.chat_bubble_outline,
+      Icons.thumb_up_outlined,
+    ]) {
+      final press = await tester.startGesture(
+        tester.getCenter(find.byIcon(icon)),
+      );
+      // Past the press timeout, and the highlight's fade-in.
+      await tester.pump(const Duration(milliseconds: 150));
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(visibleInk(), isEmpty, reason: '$icon');
+      await press.cancel();
+      await tester.pumpAndSettle();
+    }
+
+    // Pressing the card itself still shows.
+    final press = await tester.startGesture(
+      tester.getCenter(find.text('一条示例微博')),
+    );
+    await tester.pump(const Duration(milliseconds: 150));
+    expect(visibleInk(), isNotEmpty);
+    await press.cancel();
+  });
+
   testWidgets('a deleted retweet does not open', (tester) async {
     final opened = <String>[];
     await pumpCard(

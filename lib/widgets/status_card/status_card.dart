@@ -612,18 +612,22 @@ class _Counts extends StatelessWidget {
           ],
         ),
       );
+      // No ink on the counts. An InkWell rather than a GestureDetector all
+      // the same, so a press keeps the card's own ink from showing.
       return Expanded(
         child: onTap == null
             ? content
             : InkWell(
                 onTap: onTap,
-                borderRadius: BorderRadius.circular(6),
+                splashFactory: NoSplash.splashFactory,
+                highlightColor: Colors.transparent,
                 child: content,
               ),
       );
     }
 
     final onRepost = actions.onRepost;
+    final onOpen = actions.onOpen;
     return Row(
       children: [
         item(
@@ -632,7 +636,13 @@ class _Counts extends StatelessWidget {
           '转发',
           onTap: onRepost == null ? null : () => onRepost(status),
         ),
-        item(Icons.chat_bubble_outline, status.commentsCount, '评论'),
+        // Opens the status, as the card does, without lighting it all up.
+        item(
+          Icons.chat_bubble_outline,
+          status.commentsCount,
+          '评论',
+          onTap: onOpen == null ? null : () => onOpen(status),
+        ),
         LikeBuilder(
           target: (kind: LikeKind.status, id: status.id),
           loaded: LikeState(liked: status.liked, count: status.likesCount),
