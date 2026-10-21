@@ -10,6 +10,7 @@ import 'package:maxbo/widgets/rich_text/status_text_parser.dart';
 import 'package:maxbo/widgets/status_card/status_card.dart';
 
 import '../support/fakes.dart';
+import '../support/ink.dart';
 import '../support/statuses.dart';
 
 void main() {
@@ -314,39 +315,20 @@ void main() {
       statusJson(id: 1),
       actions: StatusCardActions(onOpen: (_) {}, onRepost: (_) {}),
     );
-    // The scaffold's Material, which the card's ink is drawn on.
-    final material = Material.of(tester.element(find.byType(StatusCard)));
-    Iterable<Color> visibleInk() => [
-      for (final feature
-          in (material as dynamic).debugInkFeatures as List<InkFeature>? ??
-              const <InkFeature>[])
-        if (feature is InteractiveInkFeature && feature.color.a > 0)
-          feature.color,
-    ];
 
     for (final icon in [
       Icons.repeat,
       Icons.chat_bubble_outline,
       Icons.thumb_up_outlined,
     ]) {
-      final press = await tester.startGesture(
-        tester.getCenter(find.byIcon(icon)),
+      expect(
+        await inkWhilePressing(tester, find.byIcon(icon)),
+        isEmpty,
+        reason: '$icon',
       );
-      // Past the press timeout, and the highlight's fade-in.
-      await tester.pump(const Duration(milliseconds: 150));
-      await tester.pump(const Duration(milliseconds: 300));
-      expect(visibleInk(), isEmpty, reason: '$icon');
-      await press.cancel();
-      await tester.pumpAndSettle();
     }
-
     // Pressing the card itself still shows.
-    final press = await tester.startGesture(
-      tester.getCenter(find.text('一条示例微博')),
-    );
-    await tester.pump(const Duration(milliseconds: 150));
-    expect(visibleInk(), isNotEmpty);
-    await press.cancel();
+    expect(await inkWhilePressing(tester, find.text('一条示例微博')), isNotEmpty);
   });
 
   testWidgets('a deleted retweet does not open', (tester) async {

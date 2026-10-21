@@ -154,10 +154,13 @@ class _LikeButton extends StatelessWidget {
       loaded: LikeState(liked: comment.liked, count: comment.likesCount),
       builder: (context, like, onToggle) {
         final color = like.liked ? theme.colorScheme.primary : muted;
+        // No ink, as on a card's counts; an InkWell all the same, so a press
+        // keeps the tile's own ink from showing.
         return InkWell(
           // While a like is on its way, taps do nothing (rather than reply).
           onTap: onToggle ?? () {},
-          borderRadius: BorderRadius.circular(4),
+          splashFactory: NoSplash.splashFactory,
+          highlightColor: Colors.transparent,
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
             child: Row(

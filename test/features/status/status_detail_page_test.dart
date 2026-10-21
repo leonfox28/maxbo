@@ -12,6 +12,7 @@ import 'package:maxbo/data/models/status.dart';
 import 'package:maxbo/features/status/status_detail_page.dart';
 
 import '../../support/fakes.dart';
+import '../../support/ink.dart';
 import '../../support/statuses.dart';
 
 void main() {
@@ -371,6 +372,19 @@ void main() {
     expect(adapter.requests.last.uri.path, '/ajax/statuses/setLike');
     expect(sentForm(), {'id': '1'});
     expect(find.text('赞 6'), findsOneWidget);
+  });
+
+  testWidgets('pressing the bar\'s buttons shows no ink', (tester) async {
+    await pumpPage(tester);
+    await tester.pumpAndSettle();
+
+    for (final icon in [Icons.repeat, Icons.thumb_up_outlined]) {
+      final button = find.descendant(
+        of: find.byType(TextButton),
+        matching: find.byIcon(icon),
+      );
+      expect(await inkWhilePressing(tester, button), isEmpty, reason: '$icon');
+    }
   });
 
   testWidgets('the bar reposts the status, which goes atop the open list '

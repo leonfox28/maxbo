@@ -7,6 +7,7 @@ import 'package:maxbo/data/models/pic_info.dart';
 import 'package:maxbo/features/comments/comment_tile.dart';
 import 'package:maxbo/widgets/status_card/status_card.dart';
 
+import '../../support/ink.dart';
 import '../../support/statuses.dart';
 
 void main() {
@@ -16,6 +17,7 @@ void main() {
     String? authorId,
     StatusCardActions actions = const StatusCardActions(),
     VoidCallback? onThread,
+    VoidCallback? onTap,
   }) => tester.pumpWidget(
     ProviderScope(
       retry: noRetry,
@@ -26,6 +28,7 @@ void main() {
             authorId: authorId,
             actions: actions,
             onThread: onThread,
+            onTap: onTap,
           ),
         ),
       ),
@@ -40,6 +43,18 @@ void main() {
     expect(find.textContaining('来自上海'), findsOneWidget);
     expect(find.text('1.2万'), findsOneWidget);
     expect(find.text('博主'), findsNothing);
+  });
+
+  testWidgets('pressing the like button shows no ink, its own or the '
+      'comment\'s', (tester) async {
+    await pumpTile(tester, commentJson(), onTap: () {});
+
+    expect(
+      await inkWhilePressing(tester, find.byIcon(Icons.thumb_up_outlined)),
+      isEmpty,
+    );
+    // Pressing the comment itself still shows.
+    expect(await inkWhilePressing(tester, find.text('一条示例评论')), isNotEmpty);
   });
 
   testWidgets('labels comments by the status author', (tester) async {

@@ -278,9 +278,12 @@ class _StatusDetailPageState extends ConsumerState<StatusDetailPage> {
 
   Widget _bottomBar(Status status) {
     final colors = Theme.of(context).colorScheme;
-    final muted = TextButton.styleFrom(
-      foregroundColor: colors.onSurfaceVariant,
+    // No ink, as on a card's counts.
+    ButtonStyle plain(Color color) => TextButton.styleFrom(
+      foregroundColor: color,
+      overlayColor: Colors.transparent,
     );
+    final muted = plain(colors.onSurfaceVariant);
     return CommentBar(
       hint: '写评论…',
       onTap: () => _comment(status),
@@ -299,9 +302,7 @@ class _StatusDetailPageState extends ConsumerState<StatusDetailPage> {
             loaded: LikeState(liked: status.liked, count: status.likesCount),
             builder: (context, like, onToggle) => TextButton.icon(
               onPressed: onToggle,
-              style: like.liked
-                  ? TextButton.styleFrom(foregroundColor: colors.primary)
-                  : muted,
+              style: like.liked ? plain(colors.primary) : muted,
               icon: Icon(like.liked ? Icons.thumb_up : Icons.thumb_up_outlined),
               label: Text(like.count > 0 ? formatCount(like.count) : '赞'),
             ),
