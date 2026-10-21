@@ -89,9 +89,8 @@ class SearchResultsPage extends ConsumerWidget {
                 slivers: [
                   if (topic != null) ...[
                     SliverToBoxAdapter(child: _TopicHeader(topic)),
-                    const SliverToBoxAdapter(
-                      child: Divider(height: 8, thickness: 8),
-                    ),
+                    // A line like those between the statuses.
+                    const SliverToBoxAdapter(child: Divider(height: 1)),
                   ],
                   PagedSliverList<Status>(
                     value: results,
