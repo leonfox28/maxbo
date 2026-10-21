@@ -83,6 +83,28 @@ void main() {
     expect(requestsTo('/ajax/statuses/mymblog').single['uid'], '1001');
   });
 
+  testWidgets('the app bar hides scrolling down, returns scrolling up', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(400, 400);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    await pumpPage(tester, const ProfilePage(uid: '1001'));
+    await tester.pumpAndSettle();
+    final title = find
+        .descendant(of: find.byType(AppBar), matching: find.text('示例用户'))
+        .hitTestable();
+    expect(title, findsOneWidget);
+
+    await tester.drag(find.text('这是一段简介'), const Offset(0, -150));
+    await tester.pumpAndSettle();
+    expect(title, findsNothing);
+
+    await tester.drag(find.text('普通的微博'), const Offset(0, 60));
+    await tester.pumpAndSettle();
+    expect(title, findsOneWidget);
+  });
+
   testWidgets('by name: looks the user up, then lists their statuses', (
     tester,
   ) async {

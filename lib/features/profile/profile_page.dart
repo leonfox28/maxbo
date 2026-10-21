@@ -8,6 +8,7 @@ import '../../data/models/status.dart';
 import '../../data/models/user_profile.dart';
 import '../../data/models/weibo_user.dart';
 import '../../widgets/adaptive_layout.dart';
+import '../../widgets/bars_on_scroll.dart';
 import '../../widgets/load_state.dart';
 import '../../widgets/status_card/status_card.dart';
 import '../../widgets/tag_label.dart';
@@ -19,7 +20,7 @@ import 'profile_providers.dart';
 ///
 /// Opened from an avatar it has the uid and loads both at once; opened from
 /// a mention it has only the name, so the statuses wait for the profile.
-class ProfilePage extends ConsumerWidget {
+class ProfilePage extends ConsumerStatefulWidget {
   const ProfilePage({super.key, this.uid, this.screenName, this.initial})
     : assert(uid != null || screenName != null);
 
@@ -30,25 +31,67 @@ class ProfilePage extends ConsumerWidget {
   /// arrives.
   final WeiboUser? initial;
 
-  ProfileQuery get _query => uid != null
-      ? (uid: uid, screenName: null)
-      : (uid: null, screenName: screenName);
+  @override
+  ConsumerState<ProfilePage> createState() => _ProfilePageState();
+}
+
+class _ProfilePageState extends ConsumerState<ProfilePage> {
+  final _bars = BarsOnScroll();
+
+  ProfileQuery get _query => widget.uid != null
+      ? (uid: widget.uid, screenName: null)
+      : (uid: null, screenName: widget.screenName);
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
     final profile = ref.watch(profileProvider(_query));
-    final user = profile.value?.user ?? initial;
-    final uid = this.uid ?? user?.id;
+    final user = profile.value?.user ?? widget.initial;
+    final uid = widget.uid ?? user?.id;
+    final title = Text(user?.screenName ?? widget.screenName ?? '');
+    if (uid == null) {
+      return Scaffold(
+        appBar: AppBar(title: title),
+        body: profile.hasError
+            ? ErrorRetry(
+                error: profile.error,
+                onRetry: () => ref.invalidate(profileProvider(_query)),
+              )
+            : const Center(child: CircularProgressIndicator()),
+      );
+    }
+    // The app bar gives way while the user reads down, as the home tab bar
+    // does.
     return Scaffold(
-      appBar: AppBar(title: Text(user?.screenName ?? screenName ?? '')),
-      body: uid != null
-          ? _ProfileView(uid: uid, query: _query, initial: user)
-          : profile.hasError
-          ? ErrorRetry(
-              error: profile.error,
-              onRetry: () => ref.invalidate(profileProvider(_query)),
-            )
-          : const Center(child: CircularProgressIndicator()),
+      body: SafeArea(
+        bottom: false,
+        child: Column(
+          children: [
+            ClipRect(
+              child: AnimatedAlign(
+                alignment: Alignment.bottomCenter,
+                heightFactor: _bars.visible ? 1 : 0,
+                duration: BarsOnScroll.duration,
+                curve: BarsOnScroll.curve,
+                child: AppBar(
+                  title: title,
+                  primary: false,
+                  // It sits above the list, never over it.
+                  notificationPredicate: (_) => false,
+                ),
+              ),
+            ),
+            Expanded(
+              child: NotificationListener<ScrollUpdateNotification>(
+                onNotification: (n) {
+                  if (_bars.onScroll(n)) setState(() {});
+                  return false;
+                },
+                child: _ProfileView(uid: uid, query: _query, initial: user),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
