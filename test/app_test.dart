@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:maxbo/app.dart';
@@ -285,6 +286,68 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.textContaining('maxbo 是非官方客户端'), findsOneWidget);
   });
+
+  // Both need pages with the platform's transitions, which go_router's
+  // `builder:` doesn't give maxbo (see `_page()` in router.dart).
+  testWidgets('pages follow the predictive back gesture', (tester) async {
+    Future<void> backGesture(String method, [Map<String, Object?>? args]) =>
+        tester.binding.defaultBinaryMessenger.handlePlatformMessage(
+          'flutter/backgesture',
+          const StandardMethodCodec().encodeMethodCall(
+            MethodCall(method, args),
+          ),
+          (_) {},
+        );
+
+    await tester.pumpWidget(app());
+    await tester.tap(find.byTooltip('我'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('设置'));
+    await tester.pumpAndSettle();
+
+    final section = find.text('外观');
+    final before = tester.getTopLeft(section);
+    await backGesture('startBackGesture', {
+      'touchOffset': [5.0, 300.0],
+      'progress': 0.0,
+      'swipeEdge': 0,
+    });
+    await backGesture('updateBackGestureProgress', {
+      'x': 100.0,
+      'y': 300.0,
+      'progress': 0.35,
+      'swipeEdge': 0,
+    });
+    await tester.pumpAndSettle();
+    expect(tester.getTopLeft(section), isNot(before));
+
+    await backGesture('commitBackGesture');
+    await tester.pumpAndSettle();
+    expect(section, findsNothing);
+    expect(find.text('设置'), findsOneWidget);
+  });
+
+  testWidgets('pages swipe back from the edge', (tester) async {
+    await tester.pumpWidget(app());
+    await tester.tap(find.byTooltip('我'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('设置'));
+    await tester.pumpAndSettle();
+
+    final section = find.text('外观');
+    final before = tester.getTopLeft(section);
+    final swipe = await tester.startGesture(const Offset(5, 300));
+    for (var i = 0; i < 10; i++) {
+      await swipe.moveBy(const Offset(50, 0));
+      await tester.pump(const Duration(milliseconds: 16));
+    }
+    expect(tester.getTopLeft(section).dx, greaterThan(before.dx));
+
+    await swipe.up();
+    await tester.pumpAndSettle();
+    expect(section, findsNothing);
+    expect(find.text('设置'), findsOneWidget);
+  }, variant: TargetPlatformVariant.only(TargetPlatform.iOS));
 
   testWidgets('the text size applies everywhere, even on a narrow phone', (
     tester,

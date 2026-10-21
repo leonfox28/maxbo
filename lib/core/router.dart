@@ -28,7 +28,7 @@ final routerProvider = Provider<GoRouter>((ref) {
   final router = GoRouter(
     routes: [
       StatefulShellRoute(
-        builder: (_, _, shell) => shell,
+        pageBuilder: (_, state, shell) => _page(state, shell),
         navigatorContainerBuilder: (_, shell, branches) =>
             HomeShell(shell: shell, branches: branches),
         branches: [
@@ -59,24 +59,30 @@ final routerProvider = Provider<GoRouter>((ref) {
       // has, such as the status that was tapped; some can't do without it.
       GoRoute(
         path: '/status/:id',
-        builder: (_, state) => StatusDetailPage(
-          id: state.pathParameters['id']!,
-          initial: state.extra is Status ? state.extra! as Status : null,
+        pageBuilder: (_, state) => _page(
+          state,
+          StatusDetailPage(
+            id: state.pathParameters['id']!,
+            initial: state.extra is Status ? state.extra! as Status : null,
+          ),
         ),
       ),
       GoRoute(
         path: '/comments/:id',
-        builder: (_, state) => switch (state.extra) {
+        pageBuilder: (_, state) => _page(state, switch (state.extra) {
           final CommentThread thread => CommentRepliesPage(thread: thread),
           _ => const _MissingPage(),
-        },
+        }),
       ),
       GoRoute(
         path: '/video/:id',
-        builder: (_, state) => VideoPlayerPage(
-          id: state.pathParameters['id']!,
-          index: int.tryParse(state.uri.queryParameters['i'] ?? ''),
-          initial: state.extra is Status ? state.extra! as Status : null,
+        pageBuilder: (_, state) => _page(
+          state,
+          VideoPlayerPage(
+            id: state.pathParameters['id']!,
+            index: int.tryParse(state.uri.queryParameters['i'] ?? ''),
+            initial: state.extra is Status ? state.extra! as Status : null,
+          ),
         ),
       ),
       GoRoute(
@@ -95,33 +101,42 @@ final routerProvider = Provider<GoRouter>((ref) {
       // Profiles by uid, or by name for mentions, as weibo.com has them.
       GoRoute(
         path: '/u/:uid',
-        builder: (_, state) => ProfilePage(
-          uid: state.pathParameters['uid']!,
-          initial: state.extra is WeiboUser ? state.extra! as WeiboUser : null,
+        pageBuilder: (_, state) => _page(
+          state,
+          ProfilePage(
+            uid: state.pathParameters['uid']!,
+            initial: state.extra is WeiboUser
+                ? state.extra! as WeiboUser
+                : null,
+          ),
         ),
       ),
       GoRoute(
         path: '/n/:name',
-        builder: (_, state) =>
-            ProfilePage(screenName: state.pathParameters['name']!),
+        pageBuilder: (_, state) => _page(
+          state,
+          ProfilePage(screenName: state.pathParameters['name']!),
+        ),
       ),
       GoRoute(
         path: '/results',
-        builder: (_, state) => switch (state.uri.queryParameters['q']) {
-          final query? when query.trim().isNotEmpty => SearchResultsPage(
-            query: query,
-          ),
-          _ => const _MissingPage(),
-        },
+        pageBuilder: (_, state) =>
+            _page(state, switch (state.uri.queryParameters['q']) {
+              final query? when query.trim().isNotEmpty => SearchResultsPage(
+                query: query,
+              ),
+              _ => const _MissingPage(),
+            }),
       ),
       GoRoute(
         path: '/web',
-        builder: (_, state) =>
-            switch (Uri.tryParse(state.uri.queryParameters['url'] ?? '')) {
-              final url? when url.isScheme('https') || url.isScheme('http') =>
-                WebPage(url: url),
-              _ => const _MissingPage(),
-            },
+        pageBuilder: (_, state) => _page(state, switch (Uri.tryParse(
+          state.uri.queryParameters['url'] ?? '',
+        )) {
+          final url? when url.isScheme('https') || url.isScheme('http') =>
+            WebPage(url: url),
+          _ => const _MissingPage(),
+        }),
       ),
       GoRoute(
         path: '/login',
@@ -133,19 +148,38 @@ final routerProvider = Provider<GoRouter>((ref) {
         pageBuilder: (_, _) =>
             const MaterialPage(fullscreenDialog: true, child: ComposePage()),
       ),
-      GoRoute(path: '/settings', builder: (_, _) => const SettingsPage()),
-      GoRoute(path: '/text-size', builder: (_, _) => const TextSizePage()),
-      GoRoute(path: '/about', builder: (_, _) => const AboutPage()),
+      GoRoute(
+        path: '/settings',
+        pageBuilder: (_, state) => _page(state, const SettingsPage()),
+      ),
+      GoRoute(
+        path: '/text-size',
+        pageBuilder: (_, state) => _page(state, const TextSizePage()),
+      ),
+      GoRoute(
+        path: '/about',
+        pageBuilder: (_, state) => _page(state, const AboutPage()),
+      ),
       if (kDebugMode)
         GoRoute(
           path: '/diagnostics',
-          builder: (_, _) => const DiagnosticsPage(),
+          pageBuilder: (_, state) => _page(state, const DiagnosticsPage()),
         ),
     ],
   );
   ref.onDispose(router.dispose);
   return router;
 });
+
+/// A page with the platform's transitions: sliding in, following the
+/// predictive back gesture on Android and the swipe back on iOS.
+///
+/// go_router's `builder:` can't be relied on for this: it looks for
+/// material_ui's MaterialApp, not Flutter's own one that maxbo uses, and
+/// without it gives pages no transition at all. The tabs' own pages are the
+/// first in their navigators and never transition, so they keep `builder:`.
+Page<void> _page(GoRouterState state, Widget child) =>
+    MaterialPage(key: state.pageKey, child: child);
 
 /// Shown when a page that needs data from the previous one is opened
 /// without it.
