@@ -96,15 +96,24 @@ class StatusCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final onOpen = actions.onOpen;
+    final content = detail
+        ? _narrow()
+        : LayoutBuilder(
+            builder: (context, constraints) =>
+                constraints.maxWidth + 32 >= wideCardFrom ? _wide() : _narrow(),
+          );
+    final activity = detail ? null : status.activity;
     final card = Padding(
       padding: EdgeInsets.fromLTRB(16, 12, 16, detail ? 12 : 0),
-      child: detail
-          ? _narrow()
-          : LayoutBuilder(
-              builder: (context, constraints) =>
-                  constraints.maxWidth + 32 >= wideCardFrom
-                  ? _wide()
-                  : _narrow(),
+      child: activity == null
+          ? content
+          : Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _Activity(activity),
+                const SizedBox(height: 8),
+                content,
+              ],
             ),
     );
     if (detail || onOpen == null) return card;
@@ -252,6 +261,43 @@ class _RenderWideLayout extends RenderBox
       if (hit) return true;
     }
     return false;
+  }
+}
+
+/// `Status.activity`, above the card, so a post by someone else on a user's
+/// profile doesn't pass for theirs.
+class _Activity extends StatelessWidget {
+  const _Activity(this.label);
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final color = theme.colorScheme.onSurfaceVariant;
+    final style = theme.textTheme.bodySmall?.copyWith(color: color);
+    // The icons of the counts under a card.
+    final icon = label.contains('赞')
+        ? Icons.thumb_up_outlined
+        : label.contains('评论')
+        ? Icons.chat_bubble_outline
+        : null;
+    return Row(
+      children: [
+        if (icon != null) ...[
+          Icon(icon, size: 14, color: color),
+          const SizedBox(width: 6),
+        ],
+        Flexible(
+          child: Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: style,
+          ),
+        ),
+      ],
+    );
   }
 }
 

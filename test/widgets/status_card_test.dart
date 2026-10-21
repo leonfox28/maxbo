@@ -83,6 +83,37 @@ void main() {
     expect(find.text('公开'), findsNothing);
   });
 
+  testWidgets('says why a post by someone else is on a profile', (
+    tester,
+  ) async {
+    final json = statusJson(
+      user: userJson(id: 2002, name: '另一位用户'),
+      extra: {
+        'title': {
+          'text': '他10-17赞过的微博(10)',
+          'structs': [
+            {
+              'name': '他10-17赞过的微博(10)',
+              'scheme': 'sinaweibo://cardlist?containerid=1001_-_mix',
+            },
+          ],
+        },
+      },
+    );
+    await pumpCard(tester, json);
+    final label = find.text('他10-17赞过的微博');
+    expect(label, findsOneWidget);
+    // Atop the card, over its author.
+    expect(
+      tester.getRect(label).bottom,
+      lessThan(tester.getRect(find.text('另一位用户')).top),
+    );
+
+    // The detail page is about the post alone.
+    await pumpCard(tester, json, detail: true);
+    expect(label, findsNothing);
+  });
+
   testWidgets('offers to delete the signed-in user\'s posts only', (
     tester,
   ) async {

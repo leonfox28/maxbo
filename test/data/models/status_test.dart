@@ -349,6 +349,33 @@ void main() {
       expect(pinned.pinned, isTrue);
       expect(Status.tryFromJson(statusJson())!.pinned, isFalse);
     });
+
+    test('reads why a post by someone else is on a profile', () {
+      Status parse(Map<String, Object?> title) =>
+          Status.tryFromJson(statusJson(extra: {'title': title}))!;
+      Map<String, Object?> linked(String text) => {
+        'text': text,
+        'structs': [
+          {
+            'name': text,
+            'scheme': 'sinaweibo://cardlist?containerid=1001_-_comment',
+          },
+        ],
+      };
+      // Without the length of the list it links to, which we can't open.
+      expect(parse(linked('他10-17赞过的微博(10)')).activity, '他10-17赞过的微博');
+      expect(parse(linked('他1小时前评论过的微博')).activity, '他1小时前评论过的微博');
+      // Other titles link nowhere.
+      expect(
+        parse({
+          'text': '公开',
+          'base_color': 1,
+          'icon_url': 'https://h5.sinaimg.cn/upload/a.png',
+        }).activity,
+        isNull,
+      );
+      expect(Status.tryFromJson(statusJson())!.activity, isNull);
+    });
   });
 
   group('PicInfo', () {

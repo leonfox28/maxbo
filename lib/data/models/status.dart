@@ -51,6 +51,7 @@ class Status {
     this.liked = false,
     this.isAd = false,
     this.pinned = false,
+    this.activity,
     this.visibility = StatusVisibility.public,
   });
 
@@ -103,6 +104,11 @@ class Status {
 
   /// Pinned atop its author's profile; only set in profile lists.
   final bool pinned;
+
+  /// Why someone else's post is on a user's profile: Weibo puts posts they
+  /// liked or commented on among their own, labelled like `他10-17赞过的微博`
+  /// (PLAN §8). Only set in profile lists.
+  final String? activity;
 
   /// Who can see it. Others' posts are public as far as the viewer knows.
   final StatusVisibility visibility;
@@ -159,6 +165,7 @@ class Status {
       liked: readInt(map['attitudes_status']) == 1,
       isAd: _isAd(map),
       pinned: readInt(map['isTop']) == 1,
+      activity: _activityOf(map),
       visibility: StatusVisibility.of(
         readInt(readMap(map['visible'])?['type']),
       ),
@@ -185,6 +192,18 @@ class Status {
     return map['isAd'] == true ||
         map['readtimetype'] == 'adMblog' ||
         mark.contains('mark_ad');
+  }
+
+  // Such a label links (`title.structs`) to that day's whole list in
+  // Weibo's app, and ends in its length, e.g. `(10)`; we can't open the
+  // list, so the length goes. Other titles, such as 公开 in the home feed,
+  // link nowhere.
+  static String? _activityOf(Map<String, Object?> map) {
+    final title = readMap(map['title']);
+    if (title == null || readMaps(title['structs']).isEmpty) return null;
+    final text = readString(title['text'])
+        ?.replaceFirst(RegExp(r'\(\d+\)$'), '');
+    return text == null || text.isEmpty ? null : text;
   }
 
   // Retweet sources in `statuses/mentions` come without `user`. Their

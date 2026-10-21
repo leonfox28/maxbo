@@ -294,6 +294,22 @@ class _DiagnosticsPageState extends ConsumerState<DiagnosticsPage> {
       };
       _log('$key: ${shapes.join(' | ')}');
     }
+    // Card labels: short ones (公开) as they are, longer ones masked but for
+    // their kind and whether they name the author.
+    for (final s in all) {
+      final title = readMap(s['title']);
+      if (title == null) continue;
+      final text = readString(title['text']) ?? '';
+      _log(
+        '  title: ${text.length <= 4 ? text : _redact(text)} '
+        'len=${text.length} '
+        'author=${text.contains('${readMap(s['user'])?['screen_name']}')} '
+        'kind=${['赞过', '评论过', '快转', '热门', '推荐'].where(text.contains).join(',')} '
+        'base_color=${title['base_color']} '
+        'icon=${_urlPattern('${title['icon_url']}')} '
+        'retweet=${s['retweeted_status'] != null}',
+      );
+    }
     final retweetKeys = {for (final r in retweets) ...r.keys}.toList()..sort();
     _log('retweet keys: ${retweetKeys.join(', ')}');
     final deleted = retweets.where((r) => r['user'] == null).toList();
@@ -1562,8 +1578,9 @@ class _DiagnosticsPageState extends ConsumerState<DiagnosticsPage> {
   }
 
   /// Logs the ad-related fields of a user's statuses, to see why a normal
-  /// post got the 广告 label (PLAN §11). Read-only; logs post dates and field
-  /// values, never post text.
+  /// post got the 广告 label (PLAN §11), and how the statuses on their page
+  /// by someone else differ from their own. Read-only; logs post dates and
+  /// field values, never post text.
   Future<void> _probeAds() async {
     final session = ref.read(sessionProvider);
     if (session is! SignedIn) {
@@ -1575,7 +1592,7 @@ class _DiagnosticsPageState extends ConsumerState<DiagnosticsPage> {
     final input = await showDialog<String>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('广告字段'),
+        title: const Text('广告与他人微博字段'),
         content: TextField(
           autofocus: true,
           onChanged: (v) => text = v,
@@ -1605,11 +1622,18 @@ class _DiagnosticsPageState extends ConsumerState<DiagnosticsPage> {
       ),
     );
     try {
-      final user = input.startsWith('@')
-          ? (await api.fetchProfile(screenName: input.substring(1))).user.id
-          : input;
+      // `adb shell input text` can't type Chinese, so a name may come
+      // percent-encoded.
+      final owner = input.startsWith('@')
+          ? (await api.fetchProfile(
+              screenName: Uri.decodeComponent(input.substring(1)),
+            )).user
+          : (await api.fetchProfile(uid: input)).user;
+      final user = owner.id;
       final flagged = <Map<String, Object?>>[];
       final normal = <Map<String, Object?>>[];
+      final own = <Map<String, Object?>>[];
+      final others = <Map<String, Object?>>[];
       for (var page = 1; page <= 3; page++) {
         final json = await api.getJson(
           'https://weibo.com/ajax/statuses/mymblog',
@@ -1620,6 +1644,7 @@ class _DiagnosticsPageState extends ConsumerState<DiagnosticsPage> {
         for (final s in list) {
           final status = Status.tryFromJson(s);
           (status?.isAd ?? false ? flagged : normal).add(s);
+          (status?.user?.id == user ? own : others).add(s);
           if (status?.isAd != true) continue;
           final date = status?.createdAt?.toIso8601String().substring(0, 10);
           final mark = '${s['mark'] ?? ''}';
@@ -1636,36 +1661,61 @@ class _DiagnosticsPageState extends ConsumerState<DiagnosticsPage> {
       }
       _log('== page_info');
       _logPageInfos([...flagged, ...normal]);
-      // Fields that only flagged statuses have, or that they all share with
-      // a value no normal status has.
-      final flaggedKeys = {for (final s in flagged) ...s.keys};
-      final normalKeys = {for (final s in normal) ...s.keys};
-      _log('flagged=${flagged.length} normal=${normal.length}');
-      _log('only flagged: ${flaggedKeys.difference(normalKeys).join(', ')}');
-      for (final key in flaggedKeys.difference(normalKeys)) {
+      _logOnly('flagged', flagged, normal);
+      _log('== by others: ${others.length} of ${own.length + others.length}');
+      for (final s in others) {
+        final status = Status.tryFromJson(s);
+        // The title is a label, not post text: logged with the user's name
+        // masked.
+        final title = (readString(readMap(s['title'])?['text']) ?? '')
+            .replaceAll(owner.screenName, '<name>');
         _log(
-          '  $key: ${{for (final s in flagged) describeShape(s[key], maxDepth: 3)}.join(' | ')}',
+          '  ${status?.createdAt?.toIso8601String().substring(0, 10)} '
+          'isTop=${s['isTop']} mblogtype=${s['mblogtype']} '
+          'retweet=${s['retweeted_status'] != null} '
+          'title=${title.length <= 20 ? title : _redact(title)} '
+          'scheme=${_patterns([for (final t in _maps(readMap(s['title'])?['structs'])) _redact('${t['scheme']}')])} '
+          'uid at: ${_pathsOf(s, user).take(6).join(' ')}',
         );
       }
-      for (final key in flaggedKeys.intersection(normalKeys)) {
-        // Scalars by value (masked), anything else by shape.
-        String value(Map<String, Object?> s) => switch (s[key]) {
-          final bool v => '$v',
-          final num v => _redact('$v'),
-          final String v when v.length <= 40 => _redact(v),
-          final v => describeShape(v, maxDepth: 2),
-        };
-        final a = {for (final s in flagged) value(s)};
-        final b = {for (final s in normal) value(s)};
-        if (a.length == 1 && !b.contains(a.single)) {
-          _log('  $key: flagged=${a.single} normal=${b.take(3).join(' | ')}');
-        }
-      }
+      _logOnly('others', others, own);
     } on Exception catch (e) {
       _log('ad probe: $e');
     }
     _log('== done');
     if (mounted) setState(() => _running = false);
+  }
+
+  /// Logs the fields that only the statuses in [a] have, and those they all
+  /// share with a value none in [b] has, as `[name]`.
+  void _logOnly(
+    String name,
+    List<Map<String, Object?>> a,
+    List<Map<String, Object?>> b,
+  ) {
+    final aKeys = {for (final s in a) ...s.keys};
+    final bKeys = {for (final s in b) ...s.keys};
+    _log('$name=${a.length} rest=${b.length}');
+    _log('only $name: ${aKeys.difference(bKeys).join(', ')}');
+    for (final key in aKeys.difference(bKeys)) {
+      _log(
+        '  $key: ${{for (final s in a) describeShape(s[key], maxDepth: 3)}.join(' | ')}',
+      );
+    }
+    for (final key in aKeys.intersection(bKeys)) {
+      // Scalars by value (masked), anything else by shape.
+      String value(Map<String, Object?> s) => switch (s[key]) {
+        final bool v => '$v',
+        final num v => _redact('$v'),
+        final String v when v.length <= 40 => _redact(v),
+        final v => describeShape(v, maxDepth: 2),
+      };
+      final av = {for (final s in a) value(s)};
+      final bv = {for (final s in b) value(s)};
+      if (av.length == 1 && !bv.contains(av.single)) {
+        _log('  $key: $name=${av.single} rest=${bv.take(3).join(' | ')}');
+      }
+    }
   }
 
   /// Logs what liking and commenting answer, on one status the user picked
@@ -2365,7 +2415,7 @@ class _DiagnosticsPageState extends ConsumerState<DiagnosticsPage> {
                   onPressed: _running ? null : _probeInteractions,
                 ),
                 IconButton(
-                  tooltip: '广告字段（只读）',
+                  tooltip: '广告与他人微博字段（只读）',
                   icon: const Icon(Icons.campaign_outlined),
                   onPressed: _running ? null : _probeAds,
                 ),
