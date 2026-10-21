@@ -6,7 +6,10 @@ import '../../data/api/weibo_api.dart';
 import '../../data/models/account.dart';
 import '../net/cookie_jar.dart';
 import '../net/weibo_dio.dart';
+import '../net/weibo_exception.dart';
+import '../util/dev_log.dart';
 import 'cookie_bridge.dart';
+import 'session_renewer.dart';
 import 'session_storage.dart';
 
 /// Overridden in `main()` with the session restored from secure storage.
@@ -18,6 +21,10 @@ final sessionStorageProvider = Provider<SessionStorage>(
 
 final cookieBridgeProvider = Provider<CookieBridge>(
   (ref) => const CookieBridge(),
+);
+
+final sessionRenewerProvider = Provider<SessionRenewer>(
+  (ref) => WebViewSessionRenewer(ref.watch(cookieBridgeProvider)),
 );
 
 /// The cookies every API request is sent with.
@@ -50,6 +57,8 @@ final class SignedIn extends SessionState {
 
 class SessionController extends Notifier<SessionState> {
   Future<void> _lastSave = Future.value();
+  Future<bool>? _renewal;
+  DateTime? _renewedAt;
 
   @override
   SessionState build() {
@@ -70,17 +79,10 @@ class SessionController extends Notifier<SessionState> {
   /// signed-in user (visitors get a `SUB` cookie too), or another
   /// `WeiboException` if the check itself failed.
   Future<void> completeLogin(Map<String, Map<String, String>> cookies) async {
-    final candidate = WeiboCookieJar(cookies);
-    final dio = ref.read(weiboDioFactoryProvider)(candidate);
-    try {
-      final account = await WeiboApi(dio).fetchCurrentAccount();
-      state = SignedIn(account);
-      ref.read(cookieJarProvider).replaceAll(candidate.toJson());
-      await _lastSave;
-    } finally {
-      dio.close();
-      candidate.dispose();
-    }
+    final (account, verified) = await _verify(cookies);
+    state = SignedIn(account);
+    ref.read(cookieJarProvider).replaceAll(verified);
+    await _lastSave;
   }
 
   Future<void> logout() async {
@@ -92,7 +94,51 @@ class SessionController extends Notifier<SessionState> {
     await ref.read(cookieBridgeProvider).clearAll();
   }
 
-  /// Called when Weibo rejects the stored session.
+  /// Called when Weibo rejects the session of a request sent at [sentAt].
+  ///
+  /// Renews the session as a browser would (see [SessionRenewer]) and
+  /// returns whether it is good again; if it can't be, signs out. Rejections
+  /// that come in together share one renewal, and one for a session renewed
+  /// since the request went out needs none.
+  Future<bool> renewOrExpire(DateTime sentAt) {
+    if (state is! SignedIn) return Future.value(false);
+    if (_renewedAt case final renewedAt? when renewedAt.isAfter(sentAt)) {
+      return Future.value(true);
+    }
+    return _renewal ??= _renew().whenComplete(() => _renewal = null);
+  }
+
+  Future<bool> _renew() async {
+    final uid = (state as SignedIn).account.uid;
+    final jar = ref.read(cookieJarProvider);
+    var renewed = false;
+    try {
+      renewed = await ref
+          .read(sessionRenewerProvider)
+          .renew(
+            lapsedSub: jar.value('weibo.com', 'SUB'),
+            adopt: (cookies) async {
+              try {
+                final (account, verified) = await _verify(cookies);
+                // The user may have signed out meanwhile.
+                if (account.uid != uid || state is! SignedIn) return false;
+                jar.replaceAll(verified);
+                _renewedAt = DateTime.now();
+                return true;
+              } on WeiboException {
+                return false;
+              }
+            },
+          );
+    } on Exception catch (e) {
+      devLog('session renewal: $e');
+    }
+    devLog('session renewal: ${renewed ? 'renewed' : 'failed'}');
+    if (!renewed) expire();
+    return renewed;
+  }
+
+  /// Signs out after Weibo rejected the session for good.
   ///
   /// WebView cookies are kept: if the browser session is still alive there,
   /// opening the login page signs the user straight back in.
@@ -102,6 +148,25 @@ class SessionController extends Notifier<SessionState> {
     ref.read(cookieJarProvider).clear();
     final storage = ref.read(sessionStorageProvider);
     _lastSave = _lastSave.then((_) => storage.clear());
+  }
+
+  /// Checks [cookies] against the API, returning the account they sign in
+  /// as and the cookies with any the server set meanwhile.
+  ///
+  /// Throws `SessionExpiredException` if they don't belong to a signed-in
+  /// user (visitors get a `SUB` cookie too).
+  Future<(Account, Map<String, Map<String, String>>)> _verify(
+    Map<String, Map<String, String>> cookies,
+  ) async {
+    final candidate = WeiboCookieJar(cookies);
+    final dio = ref.read(weiboDioFactoryProvider)(candidate);
+    try {
+      final account = await WeiboApi(dio).fetchCurrentAccount();
+      return (account, candidate.toJson());
+    } finally {
+      dio.close();
+      candidate.dispose();
+    }
   }
 
   // Saves are chained so an older snapshot can never overwrite a newer one.

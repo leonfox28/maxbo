@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -16,16 +18,32 @@ const _webCookies = {
   'weibo.com': {'SUB': 'user-sub', 'XSRF-TOKEN': 'token'},
 };
 
+const _signedIn = StoredSession(
+  account: Account(uid: '42'),
+  cookies: _webCookies,
+);
+
+/// Answers like weibo.com once the session's `SUB` lapsed: requests with it
+/// are rejected, those with [renewedSub] get `{"ok":1}`.
+ResponseBody _lapsed(RequestOptions o, {String renewedSub = 'renewed-sub'}) {
+  if (o.uri.path == '/') return homePage();
+  return '${o.headers['Cookie']}'.contains('SUB=$renewedSub')
+      ? jsonBody({'ok': 1})
+      : jsonBody({'ok': -100, 'url': 'https://weibo.com/login.php'});
+}
+
 void main() {
   late InMemorySessionStorage storage;
   late FakeCookieBridge bridge;
-  late ResponseBody Function(RequestOptions) respond;
+  late FakeSessionRenewer renewer;
+  late FutureOr<ResponseBody> Function(RequestOptions) respond;
 
   ProviderContainer container({StoredSession? restored}) {
     final c = ProviderContainer(
       overrides: [
         sessionStorageProvider.overrideWithValue(storage),
         cookieBridgeProvider.overrideWithValue(bridge),
+        sessionRenewerProvider.overrideWithValue(renewer),
         restoredSessionProvider.overrideWithValue(restored),
         weiboDioFactoryProvider.overrideWithValue(
           (WeiboCookieJar jar) => createWeiboDio(
@@ -42,6 +60,7 @@ void main() {
   setUp(() {
     storage = InMemorySessionStorage();
     bridge = FakeCookieBridge();
+    renewer = FakeSessionRenewer();
     respond = (o) => o.uri.path == '/' ? homePage() : jsonBody({'ok': 1});
   });
 
@@ -127,17 +146,9 @@ void main() {
     expect(bridge.cleared, isTrue);
   });
 
-  test('an API call rejected by Weibo expires the session', () async {
-    final c = container(
-      restored: const StoredSession(
-        account: Account(uid: '42'),
-        cookies: _webCookies,
-      ),
-    );
-    storage.stored = const StoredSession(
-      account: Account(uid: '42'),
-      cookies: _webCookies,
-    );
+  test('a session Weibo rejects and won\'t renew expires', () async {
+    final c = container(restored: _signedIn);
+    storage.stored = _signedIn;
     respond = (_) =>
         jsonBody({'ok': -100, 'url': 'https://weibo.com/login.php'});
 
@@ -147,6 +158,7 @@ void main() {
     );
     await Future<void>.delayed(Duration.zero);
 
+    expect(renewer.runs, 1);
     expect(
       c.read(sessionProvider),
       isA<SignedOut>().having((s) => s.expired, 'expired', isTrue),
@@ -155,5 +167,123 @@ void main() {
     expect(storage.stored, isNull);
     // The WebView keeps its cookies so re-login can be one tap.
     expect(bridge.cleared, isFalse);
+  });
+
+  group('renewal', () {
+    test('a renewed session takes over and the read goes again', () async {
+      final c = container(restored: _signedIn);
+      final before = c.read(sessionProvider);
+      renewer.cookies = {
+        'weibo.com': {'SUB': 'renewed-sub'},
+      };
+      respond = _lapsed;
+
+      final json = await c
+          .read(weiboApiProvider)
+          .getJson('https://weibo.com/ajax/feed/x');
+      await Future<void>.delayed(Duration.zero);
+
+      expect(json['ok'], 1);
+      // Still the same session, so nothing on screen reloads.
+      expect(c.read(sessionProvider), same(before));
+      expect(
+        c.read(cookieJarProvider).value('weibo.com', 'SUB'),
+        'renewed-sub',
+      );
+      expect(storage.stored?.cookies['weibo.com']?['SUB'], 'renewed-sub');
+    });
+
+    test('a write isn\'t sent again', () async {
+      final c = container(restored: _signedIn);
+      renewer.cookies = {
+        'weibo.com': {'SUB': 'renewed-sub'},
+      };
+      var posts = 0;
+      respond = (o) {
+        if (o.method == 'POST') posts++;
+        return _lapsed(o);
+      };
+
+      await expectLater(
+        c.read(weiboApiProvider).postForm(
+          'https://weibo.com/ajax/statuses/update',
+          {'content': 'x'},
+        ),
+        throwsA(
+          isA<WeiboApiException>().having(
+            (e) => e.message,
+            'message',
+            '登录状态已更新，请再试一次',
+          ),
+        ),
+      );
+
+      expect(posts, 1);
+      expect(c.read(sessionProvider), isA<SignedIn>());
+      expect(
+        c.read(cookieJarProvider).value('weibo.com', 'SUB'),
+        'renewed-sub',
+      );
+    });
+
+    test('a visitor or another account isn\'t taken', () async {
+      for (final uid in [0, 43]) {
+        final c = container(restored: _signedIn);
+        renewer.cookies = {
+          'weibo.com': {'SUB': 'renewed-sub'},
+        };
+        respond = (o) => o.uri.path == '/' ? homePage(uid: uid) : _lapsed(o);
+
+        await expectLater(
+          c.read(weiboApiProvider).getJson('https://weibo.com/ajax/feed/x'),
+          throwsA(isA<SessionExpiredException>()),
+        );
+
+        expect(c.read(sessionProvider), isA<SignedOut>(), reason: 'uid $uid');
+        expect(c.read(cookieJarProvider).isEmpty, isTrue);
+      }
+    });
+
+    test('rejections that come in together share one renewal', () async {
+      final c = container(restored: _signedIn);
+      renewer.cookies = {
+        'weibo.com': {'SUB': 'renewed-sub'},
+      };
+      respond = _lapsed;
+      final api = c.read(weiboApiProvider);
+
+      final answers = await Future.wait([
+        api.getJson('https://weibo.com/ajax/feed/x'),
+        api.getJson('https://weibo.com/ajax/feed/y'),
+      ]);
+
+      expect(answers.map((json) => json['ok']), [1, 1]);
+      expect(renewer.runs, 1);
+    });
+
+    test(
+      'one rejected after its session was renewed just goes again',
+      () async {
+        final c = container(restored: _signedIn);
+        renewer.cookies = {
+          'weibo.com': {'SUB': 'renewed-sub'},
+        };
+        final slow = Completer<void>();
+        respond = (o) async {
+          if (o.uri.path == '/ajax/slow' && !slow.isCompleted) {
+            await slow.future;
+          }
+          return _lapsed(o);
+        };
+        final api = c.read(weiboApiProvider);
+
+        final slowAnswer = api.getJson('https://weibo.com/ajax/slow');
+        await api.getJson('https://weibo.com/ajax/feed/x');
+        slow.complete();
+
+        expect((await slowAnswer)['ok'], 1);
+        expect(renewer.runs, 1);
+      },
+    );
   });
 }

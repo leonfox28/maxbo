@@ -25,7 +25,8 @@ final weiboApiProvider = Provider<WeiboApi>((ref) {
   ref.onDispose(dio.close);
   return WeiboApi(
     dio,
-    onSessionExpired: () => ref.read(sessionProvider.notifier).expire(),
+    onSessionExpired: (sentAt) =>
+        ref.read(sessionProvider.notifier).renewOrExpire(sentAt),
   );
 });
 
@@ -62,9 +63,9 @@ class WeiboApi {
 
   final Dio _dio;
 
-  /// Called whenever Weibo rejects the session, before the exception is
-  /// rethrown to the caller.
-  final void Function()? onSessionExpired;
+  /// Called whenever Weibo rejects the session of a request sent at the given
+  /// time; completes with whether the session has been renewed.
+  final Future<bool> Function(DateTime sentAt)? onSessionExpired;
 
   /// The signed-in account; throws [SessionExpiredException] for visitors.
   ///
@@ -507,7 +508,7 @@ class WeiboApi {
   Future<Map<String, Object?>> getJson(
     String url, {
     Map<String, Object?>? query,
-  }) => _guard(() async {
+  }) => _guard(resend: true, () async {
     final response = await _dio.get<Object?>(url, queryParameters: query);
     final data = response.data;
     _logResponse(response, 'ok=${data is Map ? data['ok'] : data.runtimeType}');
@@ -541,7 +542,7 @@ class WeiboApi {
   });
 
   /// Fetches an HTML page as a signed-in browser would.
-  Future<String> getPage(String url) => _guard(() async {
+  Future<String> getPage(String url) => _guard(resend: true, () async {
     final response = await _dio.get<String>(
       url,
       options: Options(
@@ -561,14 +562,25 @@ class WeiboApi {
     return response.data ?? '';
   });
 
-  Future<T> _guard<T>(Future<T> Function() request) async {
+  /// Runs [request], turning its failures into `WeiboException`s.
+  ///
+  /// When Weibo rejects the session and it gets renewed, a request that
+  /// only reads is sent again, once; others fail asking the user to try
+  /// again, as sending a change twice is theirs to decide.
+  Future<T> _guard<T>(
+    Future<T> Function() request, {
+    bool resend = false,
+  }) async {
+    final sentAt = DateTime.now();
     try {
       return await request();
     } on DioException catch (e) {
       throw mapDioException(e);
     } on SessionExpiredException {
-      onSessionExpired?.call();
-      rethrow;
+      final renewed = await onSessionExpired?.call(sentAt) ?? false;
+      if (!renewed) rethrow;
+      if (resend) return _guard(request);
+      throw const WeiboApiException('登录状态已更新，请再试一次');
     }
   }
 

@@ -279,7 +279,10 @@ void main() {
           }),
           throttle: RequestThrottle(minInterval: Duration.zero),
         )..httpClientAdapter = adapter,
-        onSessionExpired: () => expired = true,
+        onSessionExpired: (_) async {
+          expired = true;
+          return false;
+        },
       );
 
       await expectLater(

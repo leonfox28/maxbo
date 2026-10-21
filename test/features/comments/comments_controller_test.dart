@@ -34,6 +34,7 @@ void main() {
       overrides: [
         sessionStorageProvider.overrideWithValue(InMemorySessionStorage()),
         cookieBridgeProvider.overrideWithValue(FakeCookieBridge()),
+        sessionRenewerProvider.overrideWithValue(FakeSessionRenewer()),
         restoredSessionProvider.overrideWithValue(
           const StoredSession(
             account: Account(uid: '7'),

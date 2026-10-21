@@ -38,6 +38,7 @@ Flutter stable 3.47.x（Dart 3.13），通过 Homebrew cask 安装。
 - `lib/core/session/`：会话
   - 登录 Cookie 经原生平台通道读取（`SUB` 是 HttpOnly，Android 端在 `CookieBridge.kt`，iOS 端在 `ios/Runner/AppDelegate.swift`）
   - `SessionController`（`sessionProvider`）
+  - `SUB` 在服务端约 7 天失效。接口报过期时，`SessionRenewer` 在不显示的 WebView 里打开 weibo.com，让微博用 30 天的 `ALC` 换新 `SUB`（PLAN §8「会话续期」）。读请求续期后重发一次，写请求不重发。续期失败才退出登录
   - 会话存在 Keystore / Keychain
 - `lib/core/media/`：`WeiboImage`，所有微博图片都经它加载（自动带 Referer，缓存 key 去掉签名参数）；`video_source.dart` 负责选视频地址，地址过期时重新请求 `statuses/show`；`image_disk_cache.dart` 按设置的上限清理图片磁盘缓存
 - `lib/core/settings/`：`settingsProvider`（主题、字体大小、图片质量、缓存上限），存在 `shared_preferences`，`main()` 在第一帧前读入。图片尺寸要经过 `ImageQuality` 选择；字体大小由 `MaxboApp` 统一套在 `MediaQuery.textScaler` 上（在系统字体大小的基础上乘倍数），页面里不用单独处理
@@ -56,6 +57,6 @@ Flutter stable 3.47.x（Dart 3.13），通过 Homebrew cask 安装。
 
 - **语言**：代码注释用英文，界面文案用中文。
 - **数据**：ID 一律用字符串；JSON 手写容错解析，不用代码生成。
-- **依赖注入**：Riverpod 3（不用代码生成）。测试通过覆盖 `weiboDioFactoryProvider`、`sessionStorageProvider`、`cookieBridgeProvider` 注入假实现，假实现见 `test/support/fakes.dart`（`signedInOverrides()` 一次给齐）。测跳转用 `test/support/routes.dart` 的 `stubRouter()`。
+- **依赖注入**：Riverpod 3（不用代码生成）。测试通过覆盖 `weiboDioFactoryProvider`、`sessionStorageProvider`、`cookieBridgeProvider`、`sessionRenewerProvider` 注入假实现，假实现见 `test/support/fakes.dart`（`signedInOverrides()` 一次给齐）。测跳转用 `test/support/routes.dart` 的 `stubRouter()`。
 - **版本号**：`pubspec.yaml` 的 `version` 和 `lib/core/app_info.dart` 的 `appVersion` 一起改（有测试核对）。
 - **提交**：用英文写提交信息，先一句话概括，再空一行写原因。每完成一个里程碑或一个独立修复就提交一次。

@@ -34,6 +34,7 @@ void main() {
       overrides: [
         sessionStorageProvider.overrideWithValue(InMemorySessionStorage()),
         cookieBridgeProvider.overrideWithValue(FakeCookieBridge()),
+        sessionRenewerProvider.overrideWithValue(FakeSessionRenewer()),
         restoredSessionProvider.overrideWithValue(restored),
         weiboDioFactoryProvider.overrideWithValue(
           (WeiboCookieJar jar) => createWeiboDio(

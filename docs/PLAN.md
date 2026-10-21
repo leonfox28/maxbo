@@ -100,7 +100,7 @@ test/  (fixtures/ 下只放合成数据)
    - 移动入口：`passport.weibo.cn/signin/login`，之后再加载一次 `https://weibo.com/` 完成跨域单点登录
 2. 页面加载完成后，通过平台通道读取 `weibo.com` 和 `m.weibo.cn` 两个域的 Cookie，写入 CookieStore。
 3. **登录成功以服务端为准，不以 Cookie 为准**。游客也会拿到 `SUB`，所以判断条件是 weibo.com 首页内嵌的 `$CONFIG` 中有当前用户的 uid（见第 8 节）。
-4. 判定会话过期的信号：`ok == -100`、403 加"请登录"、401、跳转到 passport 或 login.sina.com.cn、返回 HTML 页面。过期后清掉本地会话并回到登录页。
+4. 判定会话过期的信号：`ok == -100`、403 加"请登录"、401、跳转到 passport 或 login.sina.com.cn、返回 HTML 页面。收到这些信号时先续期：在不显示的 WebView 里打开 weibo.com，让微博自己的页面用 30 天的自动登录凭证换一个新的 `SUB`（见第 8 节「会话续期实测结论」）。确认还是同一个 uid 后换进 CookieStore，读请求再发一次。续期失败才清掉本地会话，回到登录页。
 5. 退出登录：同时清空 CookieStore 和 WebView 的 Cookie。
 
 **网络层**（Dio 拦截器链）
@@ -250,6 +250,24 @@ test/  (fixtures/ 下只放合成数据)
 - **采用 `GET /ajax/statuses/search`**：网页版首页的「搜索我关注的人的微博」用它，带 `atten=1`、`count=10`、`page`（另有 `hasori`/`haspic`/`hasvideo`/`starttime`/`endtime` 等筛选）。**不带 `atten`（或 `atten=0`）时搜的是全站**：10 条结果里没有一条的作者是测试账号关注的人，`total_number` 为 735；带 `atten=1` 时同一个词 0 条。这是网页版前端不会发出的参数组合，但仍是 weibo.com 网页端接口、用登录态、只在用户操作时请求，没有绕过任何验证，判断在第 2 节的边界之内，用户已确认可以这样用。返回 `{ok, statuses[], total_number, absstr, intention, topicHeads, …}`（不在 `data` 里），`statuses` 与时间线同构，`Status.tryFromJson` 直接解析，图片、视频、转发、混排、长文「展开」都有；样本中没有广告（`isAd=false`、`readtimetype=mblog`）。**按发布时间倒序**（不是 m.weibo.cn 默认的「综合」排序）。`page` 从 1 开始，连续 3 页互不重叠（新微博不断进来时偶有 1 条错位，分页控制器会去重）；`count=20` 有效，我们用 20。`total_number` 只是约数（同一个词连续几次在 727–749 之间），话题的讨论数也可能远多于能翻到的条数（245 讨论的话题翻 2 页共 38 条后就是空页），所以只以空页为末页。
 - **`topicHeads`**：搜任何词都带。`count` 里 `read`、`mention`、`ori_uv` 是总阅读、讨论、原创人数（另有 `24h_read`、`24h_mention`、`1h_mention` 等短期数）。只有话题的 `object` 里有 `display_name`（话题名，不带 `#`，大小写可能和查询不同）、`summary`（导语，可能为空）、`id`（`1022:231522…`）、`image.url`；普通词的 `object` 只有 `media_counts`、空的 `summary` 和 `image`，所以以有没有 `display_name` 判断是不是话题。另有 `claim_info`（主持人）、`band_info`（在热搜榜上的位置），没有用。
 
+**会话续期实测结论（2026-10-21，用户同意后在模拟器的真实登录态上实验，只看 Cookie 的名字和有效期，没有读值）：**
+
+- **为什么约 7 天就要重新登录**：`.weibo.com` 的 `SUB` 在客户端的有效期是 1 年，但服务端只认约 7 天（10-14 登录，10-21 失效）。登录时还会写下两个 30 天的自动登录凭证，和 `SUB` 是同一时刻写入的：一个是 `.weibo.com` 的 `ALF`，值为 `02_<到期时间戳>`，时间戳与它的有效期一致；另一个是 `.passport.weibo.com` 的 HttpOnly `ALC`。`.sina.com.cn` 上一个 Cookie 都没有（登录的最后一跳是 403，见第 1 项）。原来的 maxbo 有两个问题：接口请求直接打 `/ajax/*`，收到 `-100` 就退出登录；登录页直接打开 passport 的登录表单，而这个表单不会尝试自动登录，所以每次都要短信和人机验证。
+- **浏览器怎么续期**（以游客身份看 passport 页面的脚本，只看接口形态）：
+  1. weibo.com 把没有有效 `SUB` 的请求 302 到 `passport.weibo.com/visitor/visitor`。
+  2. 页面脚本用微博自己的 `wbBotDetector` 取得风控 `rid`，再 POST `/visitor/genvisitor2`。这个请求带着 passport 域的 `ALC`。
+  3. 服务端认得凭证时返回 `alt` 票据，页面跳到 `passport.weibo.com/sso/v2/login?entry=sso&source=visitor_restore&type=3&alt=…`，在这里写入新的 `SUB`/`SUBP`。之后经 `login.sina.com.cn/sso/v2/crossdomain`（在 WebView 里同样是 403）回到 weibo.com。
+  4. 没有凭证时 `alt` 为空，走游客流程，得到游客 `SUB`，最后停在 `weibo.com/newlogin`。
+- **WebView 里有登录后的 weibo.com Cookie（`WBPSESS` 等）时**，weibo.com 先把请求送到老的单点登录网关 `login.sina.com.cn/sso/login.php`。因为没有 .sina.com.cn 的登录态，网关返回 `retcode=6102`，在 `weibo.com/login.php` 和网关之间来回一两次后，同样到 passport 的游客页续期。用假值的 Cookie 名复现不出这条路，说明服务端是按真实的值决定的。
+- **续期会顺延 30 天**：续期后 `ALF`、`ALC` 都重新签发，到期时间变成续期时刻加 30 天。带着有效 `SUB` 打开 weibo.com 也会顺延。所以只要 30 天内打开过应用，就能一直保持登录。新旧 `SUB` 可以并存，续期不会让应用手里的那份立即失效。
+- **在不显示的 WebView 里能走通**（Android，诊断页「模拟登录过期」）：WebView 不挂在界面上，微博的脚本照常运行，从接口被拒到重发的请求返回共约 5 秒。另外两种情况也测了：
+  - WebView 里的 `SUB` 也是无效的：先拿它验证一次，不通就继续等。随后微博清掉它并完成续期，成功。
+  - 删掉 `ALC`：约 5 秒得到游客 `SUB`，判定失败并退出登录（测完把 WebView 的 Cookie 库恢复了原样）。
+
+  iOS 没有测过。
+- **做法**：`WebViewSessionRenewer`（`lib/core/session/session_renewer.dart`）用与登录页相同的 UA，在不挂到界面上的 WebView 里打开 weibo.com，每次主框架加载完成或失败都读一次 Cookie。出现没试过的 `SUB` 就交给 `SessionController`，用首页 `$CONFIG` 核对是不是同一个 uid。以下情况算失败：续期途中微博写入的 `SUB` 不是这个账号的（即游客），或者 20 秒内没有结果。结束后载入 `about:blank`，免得 weibo.com 的页面在后台继续轮询。
+- **合规**：这和浏览器打开 weibo.com 完全一样。跑的是微博自己的脚本（包括风控脚本），我们不构造也不伪造任何参数。只在用户操作触发的请求被拒时才续期，不轮询。也不做提前刷新：`SUB` 有效时 weibo.com 不经过续期页面，也没找到能提前换新 `SUB` 的接口。
+
 ## 9. 分发
 
 - **Android**：GitHub Releases 发布按 ABI 拆分的 APK（`flutter build apk --release --split-per-abi`）。签名密钥不进 git：本地密钥库是 `~/.config/maxbo/release.jks`（别名 `maxbo`），密码在 `android/key.properties`（已 gitignore）；CI 用的副本存在 GitHub 仓库 `release` 环境的 Secrets 里（见下方 CI）。Secrets 写入后读不回来，不能当备份。证书 SHA-256 是 `A1:7A:66:0B:CA:65:D7:BB:89:D6:F3:07:AB:A4:61:06:F3:F8:AF:CB:90:F5:D0:B3:EC:40:EB:28:6D:71:79:E2`。**密钥丢了，已安装的用户就无法覆盖升级**，这两个文件要另外备份。没有 `key.properties` 时 release 包退回调试密钥签名。调试版的包名带 `.debug` 后缀，名称是「maxbo debug」，和 release 版可以同时安装。国行手机通常没有 GMS，暂不受 Google 开发者验证影响；2027 年该政策全球生效后再评估。
@@ -304,11 +322,18 @@ test/  (fixtures/ 下只放合成数据)
 | v0.9.1 | ✅ 2026-10-20 发布（Pre-release，APK + 无签名 IPA）：字体大小（滑动条，标准左右各两档，带预览）。下载后核对过校验值、三个 APK 的签名证书、IPA 的版本号（0.9.1，build 17），arm64 APK 能在模拟器上覆盖安装 0.9.0 并启动（未登录状态），release 包里打开过字体大小页。发布后在 issue #1 回复了字体大小已添加，并说明评论里提的浏览历史和「我的关注」还没做；issue 保持打开 | `8fd7ab4`，见 `v0.9.1` 标签 |
 | 转发 | ✅ 完成（v0.10.0 发布）：卡片上的转发数和详情页底部条的「转发」打开转发弹层（`repostStatus()`，`interactions/repost.dart`）。弹层里有输入框、可见范围（与发微博共用 `VisibilityButton`）、「同时评论」和「转发」按钮，可以不写字。转发的转发预填 `//@作者:原文`，光标在最前；列表里被截断的长转发，先请求一次 `statuses/show` 取全文再预填。草稿按微博 id 保存（`repostDraftsProvider`，换账号清空）。发出后，新转发加到已打开的首页、自己主页和这条微博的转发列表顶部，详情页的转发数本地 +1。Android 真实会话下核对了：时间线里转发的转发的预填；在详情页转发（仅自己可见、同时评论）后，转发数 +1、新转发出现在转发列表顶部、首页顶部出现带「仅自己可见」标签的转发；刷新后服务端为转发 1、评论 1。随后删除了评论和转发，测试微博恢复为 0 转发、0 评论 | `906d7ce` |
 | v0.10.0 | ✅ 2026-10-21 发布（Pre-release，APK + 无签名 IPA）：转发（可以不写字、同时评论、选可见范围，转发的转发预填转发链），属于新功能，所以升 minor 版本。下载后核对过校验值、三个 APK 的签名证书、IPA 的版本号（0.10.0，build 18），arm64 APK 能在模拟器上覆盖安装 0.9.1 并启动（未登录状态） | `0f49d09`，见 `v0.10.0` 标签 |
+| 会话续期 | ✅ 完成（未发布）：之前大约每 7 天要重新登录一次（要短信和人机验证），现在接口报登录过期时，先在不显示的 WebView 里打开 weibo.com，让微博用 30 天的自动登录凭证 `ALC` 换新的 `SUB`，确认是同一个 uid 后继续使用；读请求续期后重发一次，写请求提示再试一次。每次续期都会把 30 天往后顺延。Android 真实会话下用诊断页「模拟登录过期」核对了三种情况：WebView 里有有效 `SUB`（直接采用）、WebView 里的 `SUB` 也无效（经 login.sina.com.cn 和游客页续期成功，约 5 秒）、删掉 `ALC`（约 5 秒判定失败并退出登录，测完恢复了 WebView 的 Cookie）。iOS 没有测过 | 见 git log |
 
 ### 已有的基础设施
 
 - **网络**：`weiboApiProvider`（`lib/data/api/weibo_api.dart`）。新端点加成 `WeiboApi` 的方法，读用 `getJson()` / `getPage()`，写用 `postForm()`（表单提交，`ok=1` 但带 `error` 的也当失败），统一完成错误映射和登录过期处理。请求头、Cookie、XSRF、限流都由 `createWeiboDio()` 的拦截器负责，调用方不用操心。
-- **会话**：`sessionProvider` 为 `SignedIn(account)` 时可拿到 `account.uid`；登录失效时会自动切到 `SignedOut(expired: true)`，界面统一显示 `LoginPrompt`。
+- **会话**：`sessionProvider` 为 `SignedIn(account)` 时可拿到 `account.uid`。接口报登录过期时，`WeiboApi` 先调 `SessionController.renewOrExpire()` 续期（见 §8「会话续期实测结论」）：
+  - 同时被拒的请求共用一次续期；在续期之前发出、续期之后才被拒的请求直接重发。
+  - 续期成功后 `getJson()`/`getPage()` 重发一次；`postForm()` 和上传不重发，提示「登录状态已更新，请再试一次」。
+  - 续期不会改变 `sessionProvider` 的状态，页面不会因此重新加载。
+  - 续期失败才切到 `SignedOut(expired: true)`，界面统一显示 `LoginPrompt`。
+
+  测试里 `sessionRenewerProvider` 要覆盖成 `FakeSessionRenewer`，`signedInOverrides()` 已经包含。
 - **错误类型**：`SessionExpiredException` / `CaptchaRequiredException` / `RateLimitedException` / `NetworkException` / `WeiboApiException`，都带有可以直接展示的中文 `message`；界面上用 `loadErrorMessage(error)` 取。
 - **不自动重试**：`main.dart` 的 `ProviderScope(retry: noRetry)` 关掉了 Riverpod 默认的失败重试（默认最多 10 次），保证每个请求都由用户操作触发。测试里的 `ProviderScope`/`ProviderContainer` 也要传 `noRetry`。
 - **模型**（`lib/data/models/`）：`Status`、`WeiboUser`、`PicInfo`、`VideoInfo`、`PageCard`、`UrlEntity`、`FeedPage`、`Comment`、`Paged<T>`、`UserProfile`、`HotSearch`，都用 `tryFromJson`/`fromJson` 容错解析，读字段用 `lib/core/util/json_read.dart`。时间、计数、时长的格式化在 `lib/core/util/format.dart`。`picsOf(json)` 解析任何带 `pic_ids`/`pic_infos` 的对象。
@@ -328,11 +353,16 @@ test/  (fixtures/ 下只放合成数据)
 - **设置**（`lib/core/settings/app_settings.dart`）：`settingsProvider` 是 `AppSettings`（主题、`TextSize`、`ImageQuality`、图片缓存上限），存在 `shared_preferences` 里，`main()` 在第一帧前读入（`initialSettingsProvider`），避免主题闪一下。改设置用 `settingsProvider.notifier.update((s) => s.copyWith(...))`，会立即生效并保存。列表里的图片尺寸用 `quality.listPixels(逻辑尺寸, dpr)` 再交给 `PicInfo.variantFor()`，查看器用 `quality.viewerVariant(pic)`。测试用 `test/support/fakes.dart` 的 `InMemorySettingsStorage`。
 - **图片磁盘缓存**（`lib/core/media/image_disk_cache.dart`）：`extended_image` 把图片存在临时目录的 `cacheimage/` 下，自己不清理。`ImageDiskCache` 负责统计大小、清空和按上限删除最早写入的文件；启动时和调低上限时各执行一次。测试用 `FakeImageDiskCache`。
 - **设置页和关于页**：`/settings`（入口是「我」页列表里的「设置」，未登录时也有）、`/text-size`（字体大小）、`/about`。关于页的声明和隐私文案要与 README 保持一致。应用固定使用中文的系统控件文案（`MaterialApp.locale`）。
-- **调试**：调试版「我」页列表里的「开发者诊断」进入诊断页：▶ 是 M1 的接口检查，▤ 是「时间线结构」探针（也列出卡片的 `title`，四个字以内的原样显示），📄 是「详情结构」探针（长文、视频地址和有效期、评论/楼中楼/转发的分页），👤 是「主页与热搜结构」探针，🔍（`manage_search`）是「搜索结构」探针（只读，看 `statuses/search` 的结果能否解析和话题头的字段，长按另外核对翻页），📢 是「广告与他人微博字段」探针（只读，输入 `@昵称` 或 uid，列出被判为广告的微博的日期和相关字段，以及只有它们才有的字段；再列出主页里不是本人发的微博、它们的 `title` 和其中出现主页用户 uid 的位置。adb 输不了中文，昵称可以写成 URL 编码，如 `@%E7%A4%BA…`；「打开页面」的 `/n/` 路由也认 URL 编码），🔔 是「通知结构」探针（只读，但会清掉测试账号的消息未读数），👍 是「互动结构」探针（**会真实点赞、评论再删除**，输入 `@昵称` 时只对当前账号关注的人生效，可以只测点赞），↗ 可以输入路由直接打开页面（如 `/n/昵称`、`/status/<id>`，用来进入应用里还没有入口的页面）。日志前缀 `[maxbo-diag]` / `[maxbo]`，用 `adb logcat` 读取。`devLog()` 只在调试版输出，不得记录 Cookie 值或微博正文。
+- **调试**：调试版「我」页列表里的「开发者诊断」进入诊断页：▶ 是 M1 的接口检查，▤ 是「时间线结构」探针（也列出卡片的 `title`，四个字以内的原样显示），📄 是「详情结构」探针（长文、视频地址和有效期、评论/楼中楼/转发的分页），👤 是「主页与热搜结构」探针，🔍（`manage_search`）是「搜索结构」探针（只读，看 `statuses/search` 的结果能否解析和话题头的字段，长按另外核对翻页），📢 是「广告与他人微博字段」探针（只读，输入 `@昵称` 或 uid，列出被判为广告的微博的日期和相关字段，以及只有它们才有的字段；再列出主页里不是本人发的微博、它们的 `title` 和其中出现主页用户 uid 的位置。adb 输不了中文，昵称可以写成 URL 编码，如 `@%E7%A4%BA…`；「打开页面」的 `/n/` 路由也认 URL 编码），🔔 是「通知结构」探针（只读，但会清掉测试账号的消息未读数），👍 是「互动结构」探针（**会真实点赞、评论再删除**，输入 `@昵称` 时只对当前账号关注的人生效，可以只测点赞），🔄（`autorenew`）是「模拟登录过期」：把会话的 `SUB` 换成无效值，再通过应用自己的接口加载时间线，看续期是否成功、用了多久，日志里有 `session renewal` 的每一跳（只有 host 和 path）。续期失败时会用原来的 Cookie 登录回来，前提是原来的 `SUB` 仍然有效。↗ 可以输入路由直接打开页面（如 `/n/昵称`、`/status/<id>`，用来进入应用里还没有入口的页面）。日志前缀 `[maxbo-diag]` / `[maxbo]`，用 `adb logcat` 读取。`devLog()` 只在调试版输出，不得记录 Cookie 值或微博正文。
 
 ### 后续要点（M6 之后）
 
 - **发版**：按 §9 的发版流程。v0.2.0 是 `release.yml` 第一次真正运行，暴露了一个问题：runner 上最新的 build-tools 37 的 `apksigner` 输出格式变了（`V2 Signer: certificate SHA-256 digest:`，旧版是 `Signer #1 certificate SHA-256 digest:`），签名核对已改为两种都认。tag 推上去但还没生成 Release 时可以修好后移动 tag 重跑；已发布的 tag 不要再动。
+- **会话续期的已知局限**：
+  - iOS 上没测过不显示的 WebView 能否跑完续期（WKWebView 不在界面上时，脚本可能被限流）。
+  - 登录页仍然直接打开 passport 的登录表单，续期失败后（比如 30 天没打开过应用）要完整登录。
+  - 写操作遇到过期时，续期后不重发。
+  - 真实的第 7 天自然过期还没遇到：模拟器上应用当前的 `SUB` 是 2026-10-21 续期得到的，预计 10-28 左右失效，到时用 logcat 的 `session renewal` 核对。
 - **iOS 真机/真实登录**：iOS 上只验证过能编译、模拟器上未登录能启动。真实登录、Cookie 读取（`AppDelegate.swift`）、视频播放和 WebView 都没在 iOS 上跑过，需要用户本人在 iOS 模拟器或真机上登录一次。
 - **信息流广告**：还没见到信息流里插入的真实广告，判定规则（§8 第 5 项）仍是推测；见到后用诊断页的「时间线结构」核对。
 - **互动的已知局限**：转发数和时间线卡片上的评论数不会因为用户评论而变化（只有详情页本地加减）；从详情页的楼中楼预览里不能直接删回复（要进楼中楼页）；没有表情面板和 @ 补全；评论字数没有在客户端限制，超长时显示服务端的错误信息。

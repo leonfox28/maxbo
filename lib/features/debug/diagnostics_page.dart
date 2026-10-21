@@ -1119,6 +1119,77 @@ class _DiagnosticsPageState extends ConsumerState<DiagnosticsPage> {
   /// page (mentions, comments, likes), and which list clears which count.
   ///
   /// Logs shapes, counts and cursors only, never names or text.
+  /// Has Weibo reject the session, as it does about a week after signing
+  /// in, to watch it get renewed (PLAN §8): swaps the session's `SUB` for one
+  /// Weibo doesn't know, then loads the timeline through the app's own API.
+  /// If that doesn't renew it, the session is put back as it was.
+  Future<void> _probeRenewal() async {
+    setState(() {
+      _lines.clear();
+      _running = true;
+    });
+    final session = ref.read(sessionProvider);
+    if (session is! SignedIn) {
+      _log('renewal probe needs a signed-in session');
+      setState(() => _running = false);
+      return;
+    }
+    const lapsed = 'lapsed-by-diagnostics';
+    final jar = ref.read(cookieJarProvider);
+    final bridge = ref.read(cookieBridgeProvider);
+    final saved = jar.toJson();
+    final savedSub = saved['weibo.com']?['SUB'];
+    Future<String?> webSub() async =>
+        (await bridge.readWeiboCookies())['weibo.com']?['SUB'];
+    String compare(String? sub) => switch (sub) {
+      null => 'missing',
+      lapsed => 'the lapsed one',
+      _ when sub == savedSub => 'as before',
+      _ => 'new',
+    };
+
+    final webBefore = await webSub();
+    _log('webview SUB: ${compare(webBefore)}');
+    jar.replaceAll({
+      ...saved,
+      'weibo.com': {...?saved['weibo.com'], 'SUB': lapsed},
+    });
+    final watch = Stopwatch()..start();
+    try {
+      final page = await ref
+          .read(weiboApiProvider)
+          .fetchHomeTimeline(uid: session.account.uid);
+      _log(
+        'timeline: ${page.statuses.length} statuses '
+        'after ${watch.elapsedMilliseconds} ms',
+      );
+    } on Exception catch (e) {
+      _log('timeline: $e after ${watch.elapsedMilliseconds} ms');
+    }
+    final sessionSub = jar.value('weibo.com', 'SUB');
+    final webAfter = await webSub();
+    _log('session SUB: ${compare(sessionSub)}');
+    _log(
+      'webview SUB: ${compare(webAfter)}'
+      '${webAfter == webBefore ? ' (unchanged)' : ' (changed)'}'
+      '${webAfter == sessionSub ? ', same as the session' : ''}',
+    );
+
+    if (ref.read(sessionProvider) is! SignedIn) {
+      _log('signed out: signing back in with the cookies from before');
+      try {
+        await ref.read(sessionProvider.notifier).completeLogin(saved);
+        _log('signed back in');
+      } on Exception catch (e) {
+        _log('signing back in: $e');
+      }
+    } else if (sessionSub == lapsed) {
+      jar.replaceAll(saved);
+      _log('not renewed: put the session back');
+    }
+    if (mounted) setState(() => _running = false);
+  }
+
   Future<void> _probeNotifications() async {
     setState(() {
       _lines.clear();
@@ -2403,6 +2474,11 @@ class _DiagnosticsPageState extends ConsumerState<DiagnosticsPage> {
                   tooltip: '打开页面',
                   icon: const Icon(Icons.open_in_new),
                   onPressed: _openRoute,
+                ),
+                IconButton(
+                  tooltip: '模拟登录过期（会触发续期）',
+                  icon: const Icon(Icons.autorenew),
+                  onPressed: _running ? null : _probeRenewal,
                 ),
                 IconButton(
                   tooltip: '通知结构（只读，会清掉未读数）',

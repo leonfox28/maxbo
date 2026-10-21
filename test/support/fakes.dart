@@ -10,6 +10,7 @@ import 'package:maxbo/core/net/request_throttle.dart';
 import 'package:maxbo/core/net/weibo_dio.dart';
 import 'package:maxbo/core/session/cookie_bridge.dart';
 import 'package:maxbo/core/session/session_controller.dart';
+import 'package:maxbo/core/session/session_renewer.dart';
 import 'package:maxbo/core/session/session_storage.dart';
 import 'package:maxbo/core/settings/app_settings.dart';
 import 'package:maxbo/data/api/weibo_api.dart';
@@ -58,6 +59,7 @@ WeiboApi fakeApi(FakeAdapter adapter) => WeiboApi(
 List<Override> signedInOverrides(FakeAdapter adapter) => [
   sessionStorageProvider.overrideWithValue(InMemorySessionStorage()),
   cookieBridgeProvider.overrideWithValue(FakeCookieBridge()),
+  sessionRenewerProvider.overrideWithValue(FakeSessionRenewer()),
   restoredSessionProvider.overrideWithValue(
     const StoredSession(
       account: Account(uid: '7'),
@@ -137,6 +139,28 @@ class FakeCookieBridge implements CookieBridge {
   Future<void> clearAll() async {
     cleared = true;
     cookies = {};
+  }
+}
+
+/// A renewal whose pages leave [cookies], or nothing new when they're null.
+class FakeSessionRenewer implements SessionRenewer {
+  FakeSessionRenewer([this.cookies]);
+
+  Map<String, Map<String, String>>? cookies;
+  int runs = 0;
+
+  @override
+  Future<bool> renew({
+    required String? lapsedSub,
+    required Future<bool> Function(Map<String, Map<String, String>> cookies)
+    adopt,
+  }) async {
+    runs++;
+    final cookies = this.cookies;
+    if (cookies == null || cookies['weibo.com']?['SUB'] == lapsedSub) {
+      return false;
+    }
+    return adopt(cookies);
   }
 }
 

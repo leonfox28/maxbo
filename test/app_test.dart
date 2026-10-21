@@ -39,6 +39,7 @@ void main() {
     overrides: [
       sessionStorageProvider.overrideWithValue(InMemorySessionStorage()),
       cookieBridgeProvider.overrideWithValue(bridge ?? FakeCookieBridge()),
+      sessionRenewerProvider.overrideWithValue(FakeSessionRenewer()),
       restoredSessionProvider.overrideWithValue(restored),
       initialSettingsProvider.overrideWithValue(settings),
       settingsStorageProvider.overrideWithValue(InMemorySettingsStorage()),
