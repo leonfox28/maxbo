@@ -237,19 +237,9 @@ class _StatusDetailPageState extends ConsumerState<StatusDetailPage> {
               bottom: false,
               child: Column(
                 children: [
-                  ClipRect(
-                    child: AnimatedAlign(
-                      alignment: Alignment.bottomCenter,
-                      heightFactor: _bars.visible ? 1 : 0,
-                      duration: BarsOnScroll.duration,
-                      curve: BarsOnScroll.curve,
-                      child: AppBar(
-                        title: const Text(_title),
-                        primary: false,
-                        // It sits above the list, never over it.
-                        notificationPredicate: (_) => false,
-                      ),
-                    ),
+                  HidingAppBar(
+                    visible: _bars.visible,
+                    title: const Text(_title),
                   ),
                   Expanded(
                     child: NotificationListener<ScrollUpdateNotification>(

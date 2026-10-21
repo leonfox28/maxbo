@@ -53,6 +53,33 @@ void main() {
     expect(find.text('第二条结果'), findsOneWidget);
   });
 
+  testWidgets('the app bar hides scrolling down, returns scrolling up', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(400, 400);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    respond = (_) => jsonBody(
+      searchJson([
+        statusJson(id: 1, text: '第一条结果'),
+        statusJson(id: 2, text: '第二条结果'),
+      ], topicHeads: topicHeadsJson(name: '某个话题', summary: '话题导语')),
+    );
+    await pumpPage(tester, '#某个话题#');
+    final title = find
+        .descendant(of: find.byType(AppBar), matching: find.text('#某个话题#'))
+        .hitTestable();
+    expect(title, findsOneWidget);
+
+    await tester.drag(find.text('第一条结果'), const Offset(0, -150));
+    await tester.pumpAndSettle();
+    expect(title, findsNothing);
+
+    await tester.drag(find.text('第二条结果'), const Offset(0, 60));
+    await tester.pumpAndSettle();
+    expect(title, findsOneWidget);
+  });
+
   testWidgets('a word: just the posts, a page at a time', (tester) async {
     respond = (o) => jsonBody(switch (o.uri.queryParameters['page']) {
       '1' => searchJson([statusJson(id: 1, text: '第一页的结果')]),

@@ -1,4 +1,4 @@
-import 'package:flutter/widgets.dart';
+import 'package:flutter/material.dart';
 
 /// Whether bars that give way to reading should show: they hide while the
 /// user scrolls down a list and come back when they scroll up or reach its
@@ -43,5 +43,87 @@ class BarsOnScroll {
   void show() {
     visible = true;
     _scrolled = 0;
+  }
+}
+
+/// An app bar that folds away while [visible] is false. It sits above the
+/// list it gives way to, never over it, so goes in a column with it.
+class HidingAppBar extends StatelessWidget {
+  const HidingAppBar({
+    super.key,
+    required this.visible,
+    required this.title,
+    this.actions,
+  });
+
+  final bool visible;
+  final Widget title;
+  final List<Widget>? actions;
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipRect(
+      child: AnimatedAlign(
+        alignment: Alignment.bottomCenter,
+        heightFactor: visible ? 1 : 0,
+        duration: BarsOnScroll.duration,
+        curve: BarsOnScroll.curve,
+        child: AppBar(
+          title: title,
+          actions: actions,
+          primary: false,
+          // The list scrolls under nothing, so the bar never tints.
+          notificationPredicate: (_) => false,
+        ),
+      ),
+    );
+  }
+}
+
+/// [body] under a [HidingAppBar] of [title] and [actions], which gives way
+/// while the user reads down the body, as the home tab bar does. For a
+/// scaffold without an app bar of its own.
+class HidingAppBarBody extends StatefulWidget {
+  const HidingAppBarBody({
+    super.key,
+    required this.title,
+    this.actions,
+    required this.body,
+  });
+
+  final Widget title;
+  final List<Widget>? actions;
+  final Widget body;
+
+  @override
+  State<HidingAppBarBody> createState() => _HidingAppBarBodyState();
+}
+
+class _HidingAppBarBodyState extends State<HidingAppBarBody> {
+  final _bars = BarsOnScroll();
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      bottom: false,
+      child: Column(
+        children: [
+          HidingAppBar(
+            visible: _bars.visible,
+            title: widget.title,
+            actions: widget.actions,
+          ),
+          Expanded(
+            child: NotificationListener<ScrollUpdateNotification>(
+              onNotification: (n) {
+                if (_bars.onScroll(n)) setState(() {});
+                return false;
+              },
+              child: widget.body,
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }

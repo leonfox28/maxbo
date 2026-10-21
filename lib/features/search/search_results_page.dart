@@ -8,6 +8,7 @@ import '../../core/util/format.dart';
 import '../../data/models/status.dart';
 import '../../data/models/topic.dart';
 import '../../widgets/adaptive_layout.dart';
+import '../../widgets/bars_on_scroll.dart';
 import '../../widgets/load_state.dart';
 import '../../widgets/rich_text/status_text_parser.dart';
 import '../../widgets/status_card/status_card.dart';
@@ -66,7 +67,7 @@ class SearchResultsPage extends ConsumerWidget {
       ),
     );
     return Scaffold(
-      appBar: AppBar(
+      body: HidingAppBarBody(
         title: Text(query, maxLines: 1, overflow: TextOverflow.ellipsis),
         actions: [
           IconButton(
@@ -75,35 +76,35 @@ class SearchResultsPage extends ConsumerWidget {
             onPressed: () => openWebPage(context, weiboSearchUrl(query)),
           ),
         ],
-      ),
-      body: RefreshIndicator(
-        onRefresh: () => _refresh(context, ref),
-        child: LoadMoreTrigger(
-          onNearEnd: results.value?.loadMoreError == null
-              ? controller.loadMore
-              : null,
-          child: CustomScrollView(
-            physics: const AlwaysScrollableScrollPhysics(),
-            slivers: [
-              ReadingSlivers(
-                slivers: [
-                  if (topic != null) ...[
-                    SliverToBoxAdapter(child: _TopicHeader(topic)),
-                    // A line like those between the statuses.
-                    const SliverToBoxAdapter(child: Divider(height: 1)),
+        body: RefreshIndicator(
+          onRefresh: () => _refresh(context, ref),
+          child: LoadMoreTrigger(
+            onNearEnd: results.value?.loadMoreError == null
+                ? controller.loadMore
+                : null,
+            child: CustomScrollView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              slivers: [
+                ReadingSlivers(
+                  slivers: [
+                    if (topic != null) ...[
+                      SliverToBoxAdapter(child: _TopicHeader(topic)),
+                      // A line like those between the statuses.
+                      const SliverToBoxAdapter(child: Divider(height: 1)),
+                    ],
+                    PagedSliverList<Status>(
+                      value: results,
+                      itemBuilder: (context, status) =>
+                          StatusCard(status, actions: actions),
+                      dividerIndent: 0,
+                      emptyText: '没有找到相关微博',
+                      onRetry: () => ref.invalidate(provider),
+                      onLoadMore: controller.loadMore,
+                    ),
                   ],
-                  PagedSliverList<Status>(
-                    value: results,
-                    itemBuilder: (context, status) =>
-                        StatusCard(status, actions: actions),
-                    dividerIndent: 0,
-                    emptyText: '没有找到相关微博',
-                    onRetry: () => ref.invalidate(provider),
-                    onLoadMore: controller.loadMore,
-                  ),
-                ],
-              ),
-            ],
+                ),
+              ],
+            ),
           ),
         ),
       ),

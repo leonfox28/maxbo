@@ -20,7 +20,7 @@ import 'profile_providers.dart';
 ///
 /// Opened from an avatar it has the uid and loads both at once; opened from
 /// a mention it has only the name, so the statuses wait for the profile.
-class ProfilePage extends ConsumerStatefulWidget {
+class ProfilePage extends ConsumerWidget {
   const ProfilePage({super.key, this.uid, this.screenName, this.initial})
     : assert(uid != null || screenName != null);
 
@@ -31,23 +31,16 @@ class ProfilePage extends ConsumerStatefulWidget {
   /// arrives.
   final WeiboUser? initial;
 
-  @override
-  ConsumerState<ProfilePage> createState() => _ProfilePageState();
-}
-
-class _ProfilePageState extends ConsumerState<ProfilePage> {
-  final _bars = BarsOnScroll();
-
-  ProfileQuery get _query => widget.uid != null
-      ? (uid: widget.uid, screenName: null)
-      : (uid: null, screenName: widget.screenName);
+  ProfileQuery get _query => uid != null
+      ? (uid: uid, screenName: null)
+      : (uid: null, screenName: screenName);
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final profile = ref.watch(profileProvider(_query));
-    final user = profile.value?.user ?? widget.initial;
-    final uid = widget.uid ?? user?.id;
-    final title = Text(user?.screenName ?? widget.screenName ?? '');
+    final user = profile.value?.user ?? initial;
+    final uid = this.uid ?? user?.id;
+    final title = Text(user?.screenName ?? screenName ?? '');
     if (uid == null) {
       return Scaffold(
         appBar: AppBar(title: title),
@@ -59,38 +52,10 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
             : const Center(child: CircularProgressIndicator()),
       );
     }
-    // The app bar gives way while the user reads down, as the home tab bar
-    // does.
     return Scaffold(
-      body: SafeArea(
-        bottom: false,
-        child: Column(
-          children: [
-            ClipRect(
-              child: AnimatedAlign(
-                alignment: Alignment.bottomCenter,
-                heightFactor: _bars.visible ? 1 : 0,
-                duration: BarsOnScroll.duration,
-                curve: BarsOnScroll.curve,
-                child: AppBar(
-                  title: title,
-                  primary: false,
-                  // It sits above the list, never over it.
-                  notificationPredicate: (_) => false,
-                ),
-              ),
-            ),
-            Expanded(
-              child: NotificationListener<ScrollUpdateNotification>(
-                onNotification: (n) {
-                  if (_bars.onScroll(n)) setState(() {});
-                  return false;
-                },
-                child: _ProfileView(uid: uid, query: _query, initial: user),
-              ),
-            ),
-          ],
-        ),
+      body: HidingAppBarBody(
+        title: title,
+        body: _ProfileView(uid: uid, query: _query, initial: user),
       ),
     );
   }
