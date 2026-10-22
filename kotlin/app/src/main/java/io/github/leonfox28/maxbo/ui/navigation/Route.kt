@@ -9,5 +9,10 @@ sealed interface Route {
     /** The four tabs. */
     data object Home : Route
 
+    data object Login : Route
+
     data object Settings : Route
+
+    /** Debug builds only. */
+    data object Diagnostics : Route
 }

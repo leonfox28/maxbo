@@ -59,6 +59,7 @@ import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.unit.dp
 import io.github.leonfox28.maxbo.ui.profile.MePage
 import io.github.leonfox28.maxbo.ui.theme.UnreadColor
+import io.github.leonfox28.maxbo.ui.widget.AppSnackbarHost
 import io.github.leonfox28.maxbo.ui.widget.FloatingPill
 import kotlinx.coroutines.launch
 
@@ -86,6 +87,7 @@ fun HomeShell() {
                 onSelected = { current = it.ordinal },
             )
         },
+        snackbarHost = { AppSnackbarHost() },
         contentWindowInsets = WindowInsets(0),
     ) { padding ->
         val tab = Tab.entries[current]

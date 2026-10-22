@@ -337,7 +337,7 @@ Dart 代码约 1.5 万行，一个 `:app` 模块就够了，用包来分层（§
 | 阶段 | 状态 | 提交 | 备注 |
 |---|---|---|---|
 | K0 工程骨架 | ✅ 完成 | 见 git log | 见下方「K0 备注」 |
-| K1 网络、会话、登录 | 未开始 | | |
+| K1 网络、会话、登录 | 代码和测试完成，等真实会话验收（用户登录 `.dev`、设备测试） | 见 git log | 见下方「K1 备注」 |
 | K2 首页时间线与微博卡片 | 未开始 | | |
 | K3 详情、评论、媒体 | 未开始 | | |
 | K4 用户主页、搜索、通知、网页 | 未开始 | | |
@@ -359,4 +359,20 @@ Dart 代码约 1.5 万行，一个 `:app` 模块就够了，用包来分层（§
 - **版本号**：versionCode 5022，versionName 暂时是 `0.12.0-dev`，发版时再问用户。
 - **测试**：迁移了 `app_settings_test` 的存储、`TextSize` 和 `listPixels` 部分（`viewerVariant` 依赖 `PicInfo`，放到 K2）；`app_info_test` 不迁移（版本号用 `BuildConfig`）。另外加了 `DataStoreSettingsStorageTest`、`HomeShellTest`（页签切换、打开设置页、返回箭头和系统返回）、`MainActivityTest`。共 19 个，全部通过。测试用的 `AppGraph` 由 `support/TestGraph.kt` 的 `testGraph()` 给出。
 - **在 emulator-5554 上核对过**：`.dev` 与 Flutter 的 release、`.debug`、旧的 `app.maxbo` 同时装着；页签切换；长按页签显示名称；从「我」打开设置页；预测性返回（`input motionevent` 注入手势）跟手缩小、滑回边缘松手取消、松手返回「我」页签；深色模式。CI 的 Kotlin job 还没在 GitHub 上跑过（要推送后才知道），本地用同一条命令从 clean 构建通过。
+
+### K1 备注
+
+- **OkHttp 的结构**：`WeiboHttp`（`core/net/WeiboHttp.kt`）包着两个共用连接池的 `OkHttpClient`。Cookie 走 OkHttp 的 `CookieJar` 接口（`WeiboCookieJar` 实现了它），微博的请求头（Referer、X-Requested-With、XSRF、Origin）在网络拦截器里加。这两样每一跳重定向都会执行，所以 weibo.com 的 Cookie 不会跟着重定向发到 login.sina.com.cn，中间每一跳设置的 Cookie 也都会存下来。Dart 版的 dart:io 跟随重定向时会把请求头原样带到下一跳，中间跳的 `Set-Cookie` 也拿不到；Kotlin 版更接近浏览器。UA、Accept 这些对所有请求都一样的头在应用拦截器里加，免得 OkHttp 换成自己的 UA。
+- **限流**：`RequestThrottle` 用协程实现（公平的 `Semaphore` 加 `delay`），在 `WeiboHttp.send()` 里包住每次请求，等待可以随协程取消。Dart 版的三个测试照搬，用 `runTest` 的虚拟时间。
+- **`retryOnConnectionFailure`（§5 要求 K1 决定）**：读请求保持 OkHttp 默认的开启，写请求关掉。开启时 OkHttp 只在连接层重试，比如复用的长连接已经被服务器关掉、或者一个 IP 连不上换下一个，浏览器也是这样做的，不算「自动重试」。但请求已经发出后连接断了，OkHttp 也可能重发，对写请求来说就是可能评论两次，所以写请求（`postForm`、以后的上传）用关掉重试的那个 client。
+- **JSON 判断**：和 Dio 一样，只有 `Content-Type` 是 JSON 时才解析成 JSON，否则按「无法识别的内容」处理。`ok` 只认数字和布尔值，`message` 为 JSON null 时取 `msg`，与 Dart 版的语义一致（有测试）。
+- **登录态存储**：`EncryptedFileSessionStorage` 把会话 JSON 用 Android Keystore 里的 AES-256-GCM 密钥（`KeystoreSessionCipher`）加密后写进 `noBackupFilesDir/session`（`AtomicFile` 写入）。读不出来（文件坏了、密钥没了）就当作没登录并删掉文件。启动时和设置一起在第一帧之前读入。测试用假的 cipher 核对了读写、清除和坏文件。
+- **会话**：`SessionController` 的状态是 `StateFlow<SessionState>`。保存都在一个 `Mutex` 里排队，每次保存的都是当时的会话，退出或过期之后的保存不会把会话写回去。续期共用一次（`Deferred`），续期之后才被拒的请求直接重发，时间用 `System.nanoTime()`。Dart 版的 11 个测试全部照搬。
+- **网络测试**：`test/support/FakeWeibo.kt` 是一个本地的 HTTPS MockWebServer，证书覆盖 weibo.com、weibo.cn、sina.com.cn 等域名，DNS 全部指向它，所以请求走的是完整的 OkHttp（TLS、重定向、Cookie、拦截器），重定向到 passport 这类情况可以直接测。用到它的测试类要跑在 Robolectric 下：Android 版的 OkHttp 5 从应用的 assets 读公共后缀表（子域名设置 `Domain=.weibo.com` 的 Cookie 时要查），需要 `OkHttp.initialize(context)`。正式运行时，OkHttp 自带的 androidx.startup 初始化器会做这一步（已在合并后的 manifest 里核对）。
+- **WebView**：登录页和续期都用 `android.webkit.WebView`，开 JavaScript 和 DOM storage（webview_flutter 在 Android 上默认也开），UA 与 API 请求相同，只放行 http(s)。登录页的内容区加了 `imePadding()`（全面屏下 `adjustResize` 不再缩小窗口）。续期的 WebView 用 Application 的 Context 创建，不挂到界面上，结束后载入 `about:blank` 并 `destroy()`。读 Cookie 直接用 `CookieManager`（`WebViewCookies`），替代了 Flutter 版的平台通道。
+- **提示条**：全应用共用一个 `SnackbarHostState`（`LocalSnackbars`），每个页面的 Scaffold 都显示它，相当于 Flutter 的 ScaffoldMessenger。登录成功后登录页先关掉，「登录成功」显示在下面的页面上。
+- **「我」页**：未登录时是登录提示加设置入口；登录后是账号、设置、（调试版的）开发者诊断和退出登录（确认对话框）。点账号进主页要等 K4。首页、搜索、通知三个页签暂时是占位页，未登录时显示登录提示，与 Dart 版一致。
+- **诊断页**：调试版「我」页的「开发者诊断」进入，K1 只有「模拟登录过期」一个探针（右上角 🔄），做法照 Dart 版：把会话的 `SUB` 换成无效值，再用应用自己的 API 请求一次首页时间线（K2 之前直接请求 `friendstimeline`，只数条数），看续期是否成功、用了多久。日志前缀 `diag:`。
+- **设备测试**：`app/src/androidTest/.../WebViewCookiesTest.kt` 对应 Flutter 的 `integration_test/cookie_bridge_test.dart`：读 `CookieManager` 写入的 Cookie、读本地页面响应设置的 HttpOnly Cookie、清空全部 Cookie。为此调试版加了 `network_security_config.xml`，只允许明文访问 `localhost`（与 Flutter 调试版相同）。它会清空被测应用的 WebView Cookie，只能在没有真实登录的模拟器上跑（§7）。
+- **测试**：迁移了 `cookie_jar_test`、`request_throttle_test`、`weibo_dio_test`（另加了跨域请求不带 XHR 头、重定向每一跳的 Cookie 两项）、`weibo_exception_test`、`session_controller_test`、`session_renewer_test`、`page_config_test`、`account_test`，`cookie_bridge_test` 拆成 `WebCookiesTest`（解析 Cookie 头）和设备测试，`weibo_api_test` 里属于 K1 的部分（表单格式、`ok` 但带 `error`）用 `postForm` 直接测，另加了 `fetchCurrentAccount` 和会话存储、「我」页的测试。共 81 个，全部通过。
 
