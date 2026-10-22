@@ -2,6 +2,8 @@
 
 开源、非商业的第三方微博阅读客户端（Flutter，只做 Android；2026-10-22 起不再支持 iOS，见 PLAN §10）。方案、合规边界、接口实测结论和当前进度都在 [docs/PLAN.md](docs/PLAN.md)；**开工前先读第 2 节（合规边界）、第 8 节（实测结论）和第 11 节（进度与交接）**。
 
+**正在迁移到 Kotlin + Jetpack Compose**（2026-10-22 用户决定）：计划、分阶段做法和进度都在 [docs/KOTLIN_MIGRATION.md](docs/KOTLIN_MIGRATION.md)，做迁移的上下文先读它。迁移期间 Flutter 代码保持可构建、可发版，下面的命令和架构说明仍然是 Flutter 版的，切换（K7）时再改。
+
 ## 常用命令
 
 ```sh
