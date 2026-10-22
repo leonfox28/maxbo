@@ -25,7 +25,7 @@
 | 原则 | 具体落地 |
 |---|---|
 | 纯客户端，无服务器 | 没有后端，不聚合、不缓存到云端、不转发任何微博数据；没有统计、埋点和第三方崩溃上报 |
-| 登录态只在本机 | 用户在**微博官方登录页**中输入密码，应用接触不到密码；Cookie 存在 Keychain/Keystore（`flutter_secure_storage`） |
+| 登录态只在本机 | 用户在**微博官方登录页**中输入密码，应用接触不到密码；Cookie 存在 Android Keystore（`flutter_secure_storage`） |
 | 访问方式与浏览器相同 | 只调用网页端接口（`weibo.com/ajax/*`，必要时 `m.weibo.cn`），使用浏览器 UA；**不破解、不伪装官方 App**（不用其 appkey 或签名） |
 | 不碰广告 | 时间线原样展示接口返回的内容；识别出的广告只用来打"广告"标签，**不提供过滤开关** |
 | 克制的请求量 | API 并发 ≤ 2，相邻请求最小间隔约 500ms；只在用户操作时请求，**不做后台轮询和预取**（长文、评论都是点开后才加载）；遇到 432/418/429 自动退避并提示 |
@@ -46,6 +46,8 @@
 | KMP + Compose Multiplatform | UI 共享，用 Kotlin | iOS 侧的 WebView、视频生态不如 Flutter 成熟 | ❌ |
 | React Native | 生态大 | 长列表和图片密集的流畅度要额外调优，没有明显优势 | ❌ |
 
+2026-10-22 起不再支持 iOS（§10），上表「一套代码覆盖 Android 和 iOS」这条优点已经不成立；框架仍是 Flutter，是否改用 Kotlin 原生还在讨论。表里没写到的一项 Flutter 代价：平台的新交互要等 Flutter 自己实现，实现得不好要自己补，例如预测性返回（§11「预测性返回卡顿」）。
+
 鸿蒙：HarmonyOS 5/6 用户通过卓易通安装 APK。原生鸿蒙（Flutter OHOS 分支）不在 v1 范围内。
 
 ### 3.2 依赖（版本为 2026-10 时 pub.dev 的最新版）
@@ -57,7 +59,7 @@
 | HTTP | `dio` | ^5.11 | 拦截器方便统一处理请求头、Cookie、XSRF、限流和错误映射 |
 | 登录页 / 验证码 / 网页兜底 | `webview_flutter` | ^4.14 | 官方维护，最近一次发版在 2026-10 |
 | 读取 WebView Cookie | **自写平台通道** | — | 官方插件只有 `setCookie`，无法读取 HttpOnly 的 `SUB`；`flutter_inappwebview` 正式版停在 2024-10，不依赖它 |
-| Cookie 持久化 | `flutter_secure_storage` | ^11.2 | 底层是 Keychain / Keystore |
+| Cookie 持久化 | `flutter_secure_storage` | ^11.2 | 底层是 Android Keystore |
 | 设置项 | `shared_preferences` | ^2.5 | |
 | 图片加载、缓存与查看器 | `extended_image` | ^10.1 | 支持自定义请求头（Referer）、自定义缓存 key、手势缩放和翻页；`photo_view` 自 2024-04 起停更 |
 | 视频 | `video_player` | ^2.14 | 官方维护，支持 `httpHeaders`；微博视频主要是 mp4，不需要 `media_kit`（后者包大，且 2025-12 后未更新） |
@@ -88,7 +90,6 @@ lib/
   widgets/
     status_card/  rich_text/  pic_grid/
 android/app/src/main/kotlin/.../CookieBridge.kt   # 平台通道（Android）
-ios/Runner/AppDelegate.swift                       # 平台通道（iOS；Runner 用传统文件分组，放在已有文件里免改 pbxproj）
 test/  (fixtures/ 下只放合成数据)
 ```
 
@@ -169,7 +170,7 @@ test/  (fixtures/ 下只放合成数据)
 
 - **单元测试**：模型解析、富文本解析、视频地址选择、错误映射、限流器。只用手写的合成数据。
 - **Widget 测试**：微博卡片（纯文本、九宫格、转发、视频、广告标识）、富文本点击区域。
-- **手动验证**：Android 模拟器（Pixel_9，API 37）和 iOS 27 模拟器。**登录这一步需要你本人在模拟器里用自己的账号完成**，我无法替你登录。
+- **手动验证**：Android 模拟器（Pixel_9，API 37）。**登录这一步需要你本人在模拟器里用自己的账号完成**，我无法替你登录。
 - **账号安全**：开发期间建议用小号测试，并控制刷新频率。
 
 ## 8. 待验证项（M1 实测结果，2026-10-13）
@@ -279,10 +280,10 @@ test/  (fixtures/ 下只放合成数据)
 ## 9. 分发
 
 - **Android**：GitHub Releases 发布按 ABI 拆分的 APK（`flutter build apk --release --split-per-abi`）。签名密钥不进 git：本地密钥库是 `~/.config/maxbo/release.jks`（别名 `maxbo`），密码在 `android/key.properties`（已 gitignore）；CI 用的副本存在 GitHub 仓库 `release` 环境的 Secrets 里（见下方 CI）。Secrets 写入后读不回来，不能当备份。证书 SHA-256 是 `A1:7A:66:0B:CA:65:D7:BB:89:D6:F3:07:AB:A4:61:06:F3:F8:AF:CB:90:F5:D0:B3:EC:40:EB:28:6D:71:79:E2`。**密钥丢了，已安装的用户就无法覆盖升级**，这两个文件要另外备份。没有 `key.properties` 时 release 包退回调试密钥签名。调试版的包名带 `.debug` 后缀，名称是「maxbo debug」，和 release 版可以同时安装。国行手机通常没有 GMS，暂不受 Google 开发者验证影响；2027 年该政策全球生效后再评估。
-- **iOS**：发布无签名 IPA（`flutter build ios --release --no-codesign`，把 `Runner.app` 放进 `Payload/` 后打 zip，命名为 `maxbo-unsigned.ipa`），用户自己签名安装，步骤见 [ios-sideload.md](ios-sideload.md)（AltStore/SideStore、Sideloadly、Xcode）。不上 App Store。
+- **iOS**：2026-10-22 起不再提供（§10）。v0.2.0 到 v0.11.0 的 Release 附有无签名 IPA，之后的版本没有。
 - **CI**（`.github/workflows/`）：
-  - `ci.yml`：push 到 main 和每个 PR 时运行格式检查、`flutter analyze`、`flutter test`、debug APK 构建，并在 macOS 上构建 iOS 模拟器包。不接触签名密钥。
-  - `release.yml`：推送 `v*` tag 时触发，分三个 job。`android`：先核对 tag 和 `pubspec.yaml` 的版本号一致，再跑 analyze 和 test，然后用 Secrets 里的密钥打按 ABI 拆分的 release APK，核对签名证书指纹必须等于上面的 SHA-256（防止误用调试密钥）。`ios`：在 macOS 上打无签名 IPA，不接触任何密钥。`release`：等前两个完成，下载产物，生成 `SHA256SUMS.txt`，建一个**草稿** Release。只有 `release` 有写仓库的权限。发布说明手写，确认后手动发布。
+  - `ci.yml`：push 到 main 和每个 PR 时运行格式检查、`flutter analyze`、`flutter test`、debug APK 构建。不接触签名密钥。
+  - `release.yml`：推送 `v*` tag 时触发，分两个 job。`android`：先核对 tag 和 `pubspec.yaml` 的版本号一致，再跑 analyze 和 test，然后用 Secrets 里的密钥打按 ABI 拆分的 release APK，核对签名证书指纹必须等于上面的 SHA-256（防止误用调试密钥）。`release`：等 `android` 完成，下载产物，生成 `SHA256SUMS.txt`，建一个**草稿** Release。只有 `release` 有写仓库的权限。发布说明手写，确认后手动发布。
   - Secrets（放在 `release` 环境里，只允许 `v*` tag 使用）：`ANDROID_KEYSTORE_BASE64`（`base64 -i release.jks`）、`ANDROID_STORE_PASSWORD`、`ANDROID_KEY_ALIAS`、`ANDROID_KEY_PASSWORD`。
   - 发版流程：改 `pubspec.yaml` 的 `version`，**同时改 `lib/core/app_info.dart` 的 `appVersion`**（关于页显示它，有测试核对两者一致）→ 提交 → `git tag vX.Y.Z && git push origin vX.Y.Z` → 在 GitHub 上编辑草稿并发布。Release 标题就用 tag 名 `vX.Y.Z`（workflow 默认如此，不要改成别的格式）。
 
@@ -291,10 +292,11 @@ test/  (fixtures/ 下只放合成数据)
 - **License**：GPL-3.0。
 - **Git 提交身份**：仅本仓库配置 `Leon <41661196+leonfox28@users.noreply.github.com>`。
 - **Flutter**：stable 3.47.7（Dart 3.13.5）。
-- **包名**：`io.github.leonfox28.maxbo`（v0.1.0 起不再改；iOS Bundle ID 和平台通道名 `io.github.leonfox28.maxbo/cookies` 同步改过）。
+- **包名**：`io.github.leonfox28.maxbo`（v0.1.0 起不再改；平台通道名 `io.github.leonfox28.maxbo/cookies` 同步改过）。
 - **平板/折叠屏不做列表加详情的双栏**（2026-10-16 用户决定，10-17 调整）：不做左边列表、右边详情的双栏布局。10-17 改为：导航用悬浮胶囊放在右下角（去掉左侧导航栏）；详情页在 expanded 档把正文和评论/转发左右并排；首页时间线不做瀑布流（会打乱时间顺序），改为卡片加宽、媒体放到正文右侧。
+- **不再支持 iOS**（2026-10-22 用户决定）：第三方微博客户端几乎不可能上架 App Store（审核条款 5.2.2 要求第三方服务的授权，国区还要 ICP 备案），只能发无签名 IPA 让用户自签，用免费 Apple ID 签的每 7 天要重签，门槛很高；而且 iOS 一直只验证过能编译和启动。删掉了 `ios/` 工程、CI 和 `release.yml` 的 iOS 构建、侧载文档，以及只对 iOS 有用的代码（Keychain 残留登录态的清理、选图的 `requestFullMetadata`、iOS 的页面转场配置和对应测试）。v0.11.0 是最后一个带 IPA 的版本。框架仍是 Flutter，是否改用 Kotlin 原生还在讨论。
 
-## 11. 进度与交接（更新于 2026-10-22，发布 v0.11.0 后）
+## 11. 进度与交接（更新于 2026-10-22，停止支持 iOS 后）
 
 | 里程碑 | 状态 | 提交 |
 |---|---|---|
@@ -337,6 +339,7 @@ test/  (fixtures/ 下只放合成数据)
 | 评论带图 | ✅ 完成（v0.11.0 发布）：详情页和楼中楼页的评论/回复弹层左下角加了图片按钮，可以带一张图：从系统相册选，弹层里显示缩略图，可以移除；有图时可以不写字。第一次点图片按钮时先请求 `checkAllowCommentWithPic`，不能带图时按钮变灰并提示。图片在点「发送」时才上传，发送失败后再发不会重传；图片和文字一起存在草稿里，关掉弹层不丢。发出后新评论立即显示图片（用 pid 拼地址）。`picturePickerProvider` 移到了 `compose/picture_picker.dart`。Android 真实会话下核对了：带文字和图片的评论、只有图片的回复（显示「图片评论」）都发送成功，刷新后图片正常；修正后发的第三条评论发出后立即显示图片。随后删除了三条测试评论，测试微博恢复为 0 评论。发出后去掉末尾「网页链接」只由单元测试覆盖（第三条评论是在这项修正之前发的）。iOS 没有测过 | 见 git log |
 | 预测性返回卡顿 | ✅ 完成（v0.11.0 发布）：Android 上侧滑返回时页面跟手卡顿。profile 版在 Android 16 模拟器上抓 VM timeline 查到两个原因：① 手指拖动期间只有一半帧率：返回进度每帧一条，刚好在 vsync 之后到达，抢在这一帧开始前处理掉时不会再要下一帧，下一条进度就要多等一帧，于是隔一个 vsync 才出一帧（每帧只要约 6 ms，仍是 30 fps）；② 页面缩小时每帧都按新的缩放比例重新栅格化文字，中文字形多，文字多的页面（关于页、长微博）光这一项每帧 20～35 ms。现在 `lib/core/page_transitions.dart` 包了 Flutter 默认的 `PredictiveBackPageTransitionsBuilder`（经 `ThemeData.pageTransitionsTheme`），手势期间用一个 Ticker 保证每个 vsync 都出帧，并用 `SnapshotWidget` 把被拖走的页面和下面露出的页面各画一次、之后当图片缩放（与 Android 自己缩放窗口的做法一致，手势期间页面上的动图、视频暂停不动）。同一时段对比（模拟器内存紧张，绝对数字只能参考）：文字多的详情页每秒实际呈现的帧从 11～14 升到 28～37，关于页从 9～16 升到 25～40；手势期间文字栅格化降为 0。「是否在手势中」监听 navigator 的 `userGestureInProgressNotifier`，不能在构建时读一次：页面已回到原位时取消手势，路由不会再重建（有测试覆盖）。没在真机上测过 | 见 git log |
 | v0.11.0 | ✅ 2026-10-22 发布（Pre-release，APK + 无签名 IPA）：评论和回复带图、Android 侧滑返回更流畅。评论带图是新功能，所以升 minor 版本。下载后核对过校验值、三个 APK 的签名证书、IPA 的版本号（0.11.0，build 21），arm64 APK 能在模拟器上覆盖安装 0.10.2 并启动（未登录状态），关于页显示 0.11.0，release 包里在关于页侧滑时页面跟手缩小、文字清晰，松手返回设置页 | `5a68e34`，见 `v0.11.0` 标签 |
+| 停止支持 iOS | ✅ 完成（未发布）：用户决定只做 Android（§10）。删掉了 `ios/` 工程（含读 Cookie 的 `AppDelegate.swift`）、CI 的 iOS 模拟器构建、`release.yml` 的无签名 IPA（Release 里只剩 APK 和 `SHA256SUMS.txt`）、`docs/ios-sideload.md`；README、CLAUDE.md 和关于页改成只写 Android（关于页和 README 的隐私说明都改为「Android Keystore」）；去掉了只对 iOS 有用的代码：首次启动清理 Keychain 里残留的登录态（Android 上卸载即清除，又关了备份，这一步本来就不起作用）、选图的 `requestFullMetadata: false`（Android 插件不使用它）、iOS 的页面转场配置和 iOS 右滑返回的 Widget 测试。`integration_test` 以后要在一台没有真实登录的 Android 模拟器上跑，本机还没有这样的 AVD | 见 git log |
 
 ### 已有的基础设施
 
@@ -373,28 +376,28 @@ test/  (fixtures/ 下只放合成数据)
 
 - **发版**：按 §9 的发版流程。v0.2.0 是 `release.yml` 第一次真正运行，暴露了一个问题：runner 上最新的 build-tools 37 的 `apksigner` 输出格式变了（`V2 Signer: certificate SHA-256 digest:`，旧版是 `Signer #1 certificate SHA-256 digest:`），签名核对已改为两种都认。tag 推上去但还没生成 Release 时可以修好后移动 tag 重跑；已发布的 tag 不要再动。
 - **会话续期的已知局限**：
-  - iOS 上没测过不显示的 WebView 能否跑完续期（WKWebView 不在界面上时，脚本可能被限流）。
   - 登录页仍然直接打开 passport 的登录表单，续期失败后（比如 30 天没打开过应用）要完整登录。
   - 写操作遇到过期时，续期后不重发。
   - 真实的第 7 天自然过期还没遇到：模拟器上应用当前的 `SUB` 是 2026-10-21 续期得到的，预计 10-28 左右失效，到时用 logcat 的 `session renewal` 核对。
-- **iOS 真机/真实登录**：iOS 上只验证过能编译、模拟器上未登录能启动。真实登录、Cookie 读取（`AppDelegate.swift`）、视频播放和 WebView 都没在 iOS 上跑过，需要用户本人在 iOS 模拟器或真机上登录一次。
 - **信息流广告**：还没见到信息流里插入的真实广告，判定规则（§8 第 5 项）仍是推测；见到后用诊断页的「时间线结构」核对。
 - **互动的已知局限**：转发数和时间线卡片上的评论数不会因为用户评论而变化（只有详情页本地加减）；从详情页的楼中楼预览里不能直接删回复（要进楼中楼页）；没有表情面板和 @ 补全；评论字数没有在客户端限制，超长时显示服务端的错误信息；评论只能带一张图（网页版在 `pc_comment_pics` 开启时可以带多张），图片不压缩，上传中途不能取消。
 - **搜索的已知局限**：结果只按时间倒序，没有网页版的「综合」排序，也没有用户、视频等分类（这些只在右上角的网页版里有，游客只能看第一页）；没有搜索历史、联想词和筛选（接口支持原创、图片、视频和时间段筛选，见 §8）；宽窗口下是 640 单栏，不像首页那样横排卡片；新发的微博不会加进已打开的结果页，在详情页删除的自己的微博也要刷新后才从结果页消失（在结果页卡片上删除的会立即移除）。
-- **发微博的已知局限**：没有表情面板、@ 补全、话题、定位、视频、投票、定时发布、编辑；不显示字数（超长时显示服务端的错误）；图片不压缩、不带水印，相册里的 HEIC 在 iOS 上由插件转成 JPEG；上传中途不能取消。
+- **发微博的已知局限**：没有表情面板、@ 补全、话题、定位、视频、投票、定时发布、编辑；不显示字数（超长时显示服务端的错误）；图片不压缩、不带水印；上传中途不能取消。
 - **转发的已知局限**：没有「快转」，不能带图（网页版可以）；时间线卡片上的转发数不会因为转发而变化（只有详情页本地 +1）；勾了「同时评论」时，详情页的评论数和评论列表要刷新后才更新；刚转发出的那条里，原微博按接口返回的样子显示（视频变成链接卡片），刷新后正常；不显示字数，超长时显示服务端的错误。
 - **还没做的小项**：`mymblog` 的 `bottom_tips_text` 没有显示（还没见到实例）；验证码的「去验证」还没遇到真实验证码，不知道验证完成后要不要把 WebView 的 Cookie 同步回 API；图片缓存只在启动和调低上限时清理，一次使用中途不会清理。
 - **未在真机上验证的部分**：M3 的双击放大、长图、GIF 和实况照片；「原图」画质下特别大的长图的内存占用。
-- **流畅度**：只在模拟器的调试版上看过，滚动没有明显卡顿；还没在 profile 版或真机上测帧率。
+- **流畅度**：滚动只在模拟器的调试版上看过，没有明显卡顿；预测性返回在模拟器的 profile 版上测过帧率（§11「预测性返回卡顿」，测法见下方「开发环境注意」）；都还没在真机上测过。
 - **通知页**：没见过的格式还有回复我的评论（`reply_comment`，显示为通知下方的引用）、赞的是评论（`comment`）、@我的微博；按网页版的写法处理，见到后用诊断页「通知结构」核对。精简版的微博（赞列表里 22 个字段的那种）目前只在一条已删除的微博上见过。私信没有做。
 - **测试写操作**：测试目标由用户指定。2026-10-13 指定的是测试账号关注的用户大号主页上的第一条微博（2025-08-29 发布），昵称问用户，诊断页里用 `@昵称` 定位。每次真实点赞或评论前仍要先问用户；测试完把它恢复成未赞、无测试评论。2026-10-21 时那条微博已不在主页列表里，只出现在用户 10-15 为测试通知发的一条转发的转发链里。转发测试经用户同意，改用主页当前的第一条，即这条 10-15 的测试转发。
 - **平板/折叠屏**：WebView（登录页、应用内网页）、图片查看器、视频播放仍占满窗口。
-- **应用图标**：图标是代码画的（两段圆弧组成的小写 m，底色是主题色 `#3F51B5`）。Android 的前景是矢量图 `res/drawable/ic_launcher_foreground.xml`；`mipmap-*` 和 iOS 的 PNG 是同一图形的渲染结果，改图形时要一起重新生成。
+- **应用图标**：图标是代码画的（两段圆弧组成的小写 m，底色是主题色 `#3F51B5`）。Android 的前景是矢量图 `res/drawable/ic_launcher_foreground.xml`；`mipmap-*` 的 PNG 是同一图形的渲染结果，改图形时要一起重新生成。
 
 ### 开发环境注意
 
 - **包名变更（v0.1.0）**：emulator-5554 上新的调试版 `io.github.leonfox28.maxbo.debug` 已由用户重新登录（2026-10-14 确认），之后用它做真实会话测试。旧包名 `app.maxbo` 的调试版也还保存着登录态，不再更新，也不要卸载。同一台模拟器上还装着未登录的 release 版 `io.github.leonfox28.maxbo`。
 - 真实登录要过短信验证码和网易易盾人机验证，代价很高。保存着登录态的设备**只能用 `adb install -r` 覆盖安装**；不要在上面运行 `integration_test`（会清空 WebView Cookie），也不要卸载或清除数据。
+- `integration_test`（平台通道读 Cookie）原来在 iOS 模拟器上跑，不再支持 iOS 后要用一台**没有真实登录**的 Android 模拟器；本机的其他 AVD（`Zterm_*`）属于别的项目，不要用，需要时为 maxbo 单独建一台。
+- 测帧率用 profile 版：临时给 `build.gradle.kts` 的 `profile` 构建类型加上 `applicationIdSuffix = ".debug"`（和调试版同一个签名证书，用 `apksigner verify --print-certs` 核对过），`install -r` 覆盖到保存着登录态的调试版上，从 logcat 找到 VM service 地址，`adb forward` 后用 `getVMTimeline` 抓时间线；测完改回 gradle，再 `install -r` 装回调试版。不要用 `flutter run --profile`（理由同上）。模拟器内存紧张，帧率的绝对值会漂，只比较紧挨着测的几组；首页内容每次启动都会变，要可重复就用设置页、关于页这类固定页面。
 - 本机可能同时连着别的模拟器（2026-10-13 先后见过 `emulator-5586`、`emulator-5558`，都不属于本项目），adb 命令要用 `-s emulator-5554` 指定保存着登录态的 Pixel_9；不确定时用 `adb -s <设备> emu avd name` 确认是 `Pixel_9`。adb 偶尔会短暂掉线（`install` 无报错失败、`device offline`），稍等再试即可。
 - 部分 Google 域名（如 `dl.google.com`）可能被本机代理规则判为直连而连不上，表现为 TLS 握手中断；这时调整代理分流规则即可，**不要往仓库里写镜像地址**。
 - `adb shell uiautomator dump` 看不到 Flutter 的界面元素，操作模拟器只能靠截图（`adb exec-out screencap -p`）加坐标点击。截图是 1080×2424，按缩小后的图量出的坐标要乘回原始比例；目测容易偏几十像素，点小目标（如正文里的 @）前先用 `sips -c <高> <宽> --cropOffset <y> <x>` 裁出原图对应区域核对。
