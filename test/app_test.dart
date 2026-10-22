@@ -289,42 +289,74 @@ void main() {
 
   // Both need pages with the platform's transitions, which go_router's
   // `builder:` doesn't give maxbo (see `_page()` in router.dart).
-  testWidgets('pages follow the predictive back gesture', (tester) async {
-    Future<void> backGesture(String method, [Map<String, Object?>? args]) =>
-        tester.binding.defaultBinaryMessenger.handlePlatformMessage(
-          'flutter/backgesture',
-          const StandardMethodCodec().encodeMethodCall(
-            MethodCall(method, args),
-          ),
-          (_) {},
-        );
+  group('predictive back', () {
+    Future<void> backGesture(
+      WidgetTester tester,
+      String method, [
+      Map<String, Object?>? args,
+    ]) => tester.binding.defaultBinaryMessenger.handlePlatformMessage(
+      'flutter/backgesture',
+      const StandardMethodCodec().encodeMethodCall(MethodCall(method, args)),
+      (_) {},
+    );
 
-    await tester.pumpWidget(app());
-    await tester.tap(find.byTooltip('我'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('设置'));
-    await tester.pumpAndSettle();
+    Future<void> drag(WidgetTester tester, double progress) =>
+        backGesture(tester, 'updateBackGestureProgress', {
+          'x': 5.0 + 300 * progress,
+          'y': 300.0,
+          'progress': progress,
+          'swipeEdge': 0,
+        });
 
     final section = find.text('外观');
-    final before = tester.getTopLeft(section);
-    await backGesture('startBackGesture', {
-      'touchOffset': [5.0, 300.0],
-      'progress': 0.0,
-      'swipeEdge': 0,
-    });
-    await backGesture('updateBackGestureProgress', {
-      'x': 100.0,
-      'y': 300.0,
-      'progress': 0.35,
-      'swipeEdge': 0,
-    });
-    await tester.pumpAndSettle();
-    expect(tester.getTopLeft(section), isNot(before));
 
-    await backGesture('commitBackGesture');
-    await tester.pumpAndSettle();
-    expect(section, findsNothing);
-    expect(find.text('设置'), findsOneWidget);
+    Future<Offset> openSettings(WidgetTester tester) async {
+      await tester.pumpWidget(app());
+      await tester.tap(find.byTooltip('我'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('设置'));
+      await tester.pumpAndSettle();
+      final before = tester.getTopLeft(section);
+      await backGesture(tester, 'startBackGesture', {
+        'touchOffset': [5.0, 300.0],
+        'progress': 0.0,
+        'swipeEdge': 0,
+      });
+      return before;
+    }
+
+    testWidgets('pages follow the gesture, at every frame', (tester) async {
+      final before = await openSettings(tester);
+      await drag(tester, 0.35);
+      await tester.pump();
+      expect(tester.getTopLeft(section), isNot(before));
+      // Progress comes in just after a frame starts; the next one is
+      // there for it already (see `page_transitions.dart`). Not just while
+      // something else on the pages is still moving.
+      await tester.pump(const Duration(seconds: 1));
+      expect(tester.binding.hasScheduledFrame, isTrue);
+
+      await backGesture(tester, 'commitBackGesture');
+      await tester.pumpAndSettle();
+      expect(section, findsNothing);
+      expect(find.text('设置'), findsOneWidget);
+    });
+
+    testWidgets('frames stop with a gesture called off where it started', (
+      tester,
+    ) async {
+      final before = await openSettings(tester);
+      await drag(tester, 0.35);
+      await tester.pump();
+      await drag(tester, 0);
+      await tester.pump();
+
+      // Nothing left to animate, so the route doesn't build again.
+      await backGesture(tester, 'cancelBackGesture');
+      await tester.pumpAndSettle();
+      expect(tester.binding.hasScheduledFrame, isFalse);
+      expect(tester.getTopLeft(section), before);
+    });
   });
 
   testWidgets('pages swipe back from the edge', (tester) async {

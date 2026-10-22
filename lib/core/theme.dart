@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'page_transitions.dart';
+
 // Deliberately not Weibo's brand orange: maxbo should not look official.
 const _seedColor = Color(0xFF3F51B5);
 
@@ -9,6 +11,7 @@ ThemeData buildTheme(Brightness brightness) {
       seedColor: _seedColor,
       brightness: brightness,
     ),
+    pageTransitionsTheme: pageTransitionsTheme,
   );
 }
 
