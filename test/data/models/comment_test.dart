@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:maxbo/data/models/comment.dart';
+import 'package:maxbo/data/models/pic_info.dart';
 
 import '../../support/statuses.dart';
 
@@ -63,6 +64,55 @@ void main() {
       'pic_num': 1,
     };
     expect(Comment.tryFromJson(ownToo)!.pics.map((p) => p.id), ['p2']);
+  });
+
+  test('a comment just sent has its pictures by pid, not by link', () {
+    const pid = '0000aaaaay1bbbbbbbbbbj0000000001';
+    final c = Comment.tryFromJson({
+      ...commentJson(
+        text:
+            '看<a href=/n/朋友 usercard="name=朋友">@朋友</a> '
+            '<a target="_blank" href="https://t.cn/xyz">'
+            '<img class="icon-link" src="https://h5.sinaimg.cn/l.png">网页链接</a>',
+      ),
+      'pic_num': 1,
+      'pic_ids': [pid],
+    })!;
+
+    final pic = c.pics.single;
+    expect(pic.id, pid);
+    expect(
+      pic.variantFor(300).url,
+      'https://wx3.sinaimg.cn/thumbnail/$pid.jpg',
+    );
+    expect(pic.viewerVariant.url, 'https://wx3.sinaimg.cn/large/$pid.jpg');
+    expect(pic.largest?.url, 'https://wx3.sinaimg.cn/woriginal/$pid.jpg');
+    // The link to the picture goes; the mention stays.
+    expect(c.text, '看<a href=/n/朋友 usercard="name=朋友">@朋友</a>');
+  });
+
+  test('a pid says whether the picture is a GIF', () {
+    const pid = '0000aaaaay1bbbbbbbbbbg0000000002';
+    final c = Comment.tryFromJson({
+      ...commentJson(),
+      'pic_num': 1,
+      'pic_ids': [pid],
+    })!;
+
+    expect(c.pics.single.type, PicType.gif);
+    expect(
+      c.pics.single.largest?.url,
+      'https://wx4.sinaimg.cn/woriginal/$pid.gif',
+    );
+    // Older pids have another address scheme, not worked out yet.
+    expect(
+      Comment.tryFromJson({
+        ...commentJson(),
+        'pic_num': 1,
+        'pic_ids': ['6a8b1d2fgw1e2abc'],
+      })!.pics,
+      isEmpty,
+    );
   });
 
   test('tolerates missing and mistyped fields', () {

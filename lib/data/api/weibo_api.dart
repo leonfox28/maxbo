@@ -396,20 +396,34 @@ class WeiboApi {
     }
   }
 
+  /// Whether comments on status [id] may carry a picture; its author can
+  /// turn that off. weibo.com asks before it offers one.
+  Future<bool> allowsCommentPicture(String id) async {
+    final json = await getJson(
+      '$_web/ajax/statuses/checkAllowCommentWithPic',
+      query: {'id': id},
+    );
+    return json['result'] != false;
+  }
+
   /// Comments [text] on status [statusId], or with [replyTo] replies to that
-  /// comment (or reply) under it. Returns the new comment as Weibo shows it,
-  /// or null when its answer has none.
+  /// comment (or reply) under it, with the uploaded picture [pid] if any.
+  /// Returns the new comment as Weibo shows it, or null when its answer has
+  /// none.
   Future<Comment?> postComment({
     required String statusId,
     required String text,
     String? replyTo,
+    String? pid,
   }) async {
     final json = await postForm(
       '$_web/ajax/comments/${replyTo == null ? 'create' : 'reply'}',
       {
         'id': statusId,
         'cid': ?replyTo,
+        // Empty with a picture alone, as weibo.com sends it.
         'comment': text,
+        'pic_id': ?pid,
         // Don't also repost it or comment on the retweeted post.
         'is_repost': 0,
         'comment_ori': 0,
@@ -423,8 +437,8 @@ class WeiboApi {
   Future<void> deleteComment(String id) =>
       postForm('$_web/ajax/statuses/destroyComment', {'cid': id});
 
-  /// Uploads a picture for a new post and returns its pid, as weibo.com's
-  /// composer does: the file's bytes as they are, to picupload.
+  /// Uploads a picture for a new post or a comment and returns its pid, as
+  /// weibo.com's composer does: the file's bytes as they are, to picupload.
   Future<String> uploadPicture(List<int> bytes) => _guard(() async {
     final response = await _dio.post<String>(
       'https://picupload.weibo.com/interface/pic_upload.php',

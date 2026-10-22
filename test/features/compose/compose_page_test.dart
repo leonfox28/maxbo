@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:maxbo/core/net/request_throttle.dart';
 import 'package:maxbo/features/compose/compose_draft.dart';
 import 'package:maxbo/features/compose/compose_page.dart';
+import 'package:maxbo/features/compose/picture_picker.dart';
 
 import '../../support/fakes.dart';
 import '../../support/statuses.dart';

@@ -38,7 +38,7 @@ class CommentRepliesPage extends ConsumerStatefulWidget {
 }
 
 class _CommentRepliesPageState extends ConsumerState<CommentRepliesPage> {
-  final _drafts = <String, String>{};
+  final _drafts = <String, CommentDraft>{};
   final _deleting = <String>{};
 
   CommentThread get _thread => widget.thread;
@@ -58,16 +58,18 @@ class _CommentRepliesPageState extends ConsumerState<CommentRepliesPage> {
     final name = target.user?.screenName;
     final sent = await showCommentComposer(
       context,
+      statusId: _thread.statusId,
       hint: name == null ? '回复评论…' : '回复 @$name',
       drafts: _drafts,
       draftKey: target.id,
-      send: (text) async {
+      send: (text, pid) async {
         final reply = await ref
             .read(weiboApiProvider)
             .postComment(
               statusId: _thread.statusId,
               text: text,
               replyTo: target.id,
+              pid: pid,
             );
         if (!mounted) return;
         // Replies list newest first.

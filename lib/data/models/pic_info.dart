@@ -74,6 +74,34 @@ class PicInfo {
     );
   }
 
+  /// A picture known only by its [pid], such as one on a comment just sent,
+  /// in the renditions comment pictures come in, at the address weibo.com
+  /// gives it; null for an older kind of pid.
+  static PicInfo? tryFromPid(String pid) {
+    if (pid.length < 32 || pid[9] != 'y') return null;
+    final host = 'https://wx${(_crc32(pid) & 3) + 1}.sinaimg.cn';
+    final type = pid[21] == 'g' ? PicType.gif : PicType.pic;
+    final file = '$pid.${type == PicType.gif ? 'gif' : 'jpg'}';
+    PicVariant variant(String name) => PicVariant('$host/$name/$file', 0, 0);
+    return PicInfo(
+      id: pid,
+      type: type,
+      variants: [for (final name in _listVariants.take(3)) variant(name)],
+      largest: variant('woriginal'),
+    );
+  }
+
+  static int _crc32(String s) {
+    var crc = 0xFFFFFFFF;
+    for (final byte in s.codeUnits) {
+      crc ^= byte;
+      for (var i = 0; i < 8; i++) {
+        crc = crc & 1 == 1 ? (crc >> 1) ^ 0xEDB88320 : crc >> 1;
+      }
+    }
+    return crc ^ 0xFFFFFFFF;
+  }
+
   /// Width over height of the picture, if known.
   double? get aspectRatio {
     final v = largest ?? variants.last;

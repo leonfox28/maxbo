@@ -12,7 +12,8 @@ import '../timeline/timeline_controller.dart';
 /// How many pictures a post can have.
 const maxDraftPictures = 9;
 
-/// A picture picked for a new post, by its file; [pid] once uploaded.
+/// A picture picked for a new post or comment, by its file; [pid] once
+/// uploaded.
 class DraftPicture {
   const DraftPicture(this.path, {this.pid});
 

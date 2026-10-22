@@ -63,7 +63,7 @@ class _StatusDetailPageState extends ConsumerState<StatusDetailPage> {
   /// reposts, since the status they were counted on loaded: newer data
   /// already has them.
   ({Status on, int comments, int reposts})? _added;
-  final _drafts = <String, String>{};
+  final _drafts = <String, CommentDraft>{};
   final _bars = BarsOnScroll();
   final _deleting = <String>{};
 
@@ -124,13 +124,14 @@ class _StatusDetailPageState extends ConsumerState<StatusDetailPage> {
   Future<void> _comment(Status status) async {
     final sent = await showCommentComposer(
       context,
+      statusId: status.id,
       hint: '写评论…',
       drafts: _drafts,
       draftKey: 'status',
-      send: (text) async {
+      send: (text, pid) async {
         final comment = await ref
             .read(weiboApiProvider)
-            .postComment(statusId: status.id, text: text);
+            .postComment(statusId: status.id, text: text, pid: pid);
         if (!mounted) return;
         _count(status, comments: 1);
         setState(() => _tab = _Tab.comments);
@@ -144,13 +145,19 @@ class _StatusDetailPageState extends ConsumerState<StatusDetailPage> {
     final name = target.user?.screenName;
     final sent = await showCommentComposer(
       context,
+      statusId: status.id,
       hint: name == null ? '回复评论…' : '回复 @$name',
       drafts: _drafts,
       draftKey: target.id,
-      send: (text) async {
+      send: (text, pid) async {
         final reply = await ref
             .read(weiboApiProvider)
-            .postComment(statusId: status.id, text: text, replyTo: target.id);
+            .postComment(
+              statusId: status.id,
+              text: text,
+              replyTo: target.id,
+              pid: pid,
+            );
         if (!mounted) return;
         // Weibo counts replies among a status's comments.
         _count(status, comments: 1);

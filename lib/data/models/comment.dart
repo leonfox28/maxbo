@@ -70,14 +70,24 @@ class Comment {
     final id = readString(map['idstr']) ?? readString(map['id']);
     if (id == null) return null;
     final urlStruct = readMaps(map['url_struct']);
+    final pics = _ownPics(map, urlStruct);
+    var text = readString(map['text']) ?? '';
+    // A comment just sent names its pictures only in pic_ids, and its text
+    // ends with a short link to each, which url_struct would otherwise
+    // have hidden.
+    if (pics.isNotEmpty && !urlStruct.any((u) => u['pic_infos'] != null)) {
+      for (var i = 0; i < pics.length; i++) {
+        text = text.replaceFirst(_trailingShortLink, '');
+      }
+    }
     return Comment(
       id: id,
       user: WeiboUser.tryFromJson(map['user']),
       createdAt: parseWeiboDate(readString(map['created_at'])),
       source: readString(map['source'])?.trim(),
-      text: readString(map['text']) ?? '',
+      text: text,
       urls: [for (final u in urlStruct) ?UrlEntity.tryFromJson(u)],
-      pics: _ownPics(map, urlStruct),
+      pics: pics,
       likesCount: readInt(map['like_counts']) ?? 0,
       liked: map['liked'] == true,
       replyCount: readInt(map['total_number']) ?? 0,
@@ -88,9 +98,15 @@ class Comment {
     );
   }
 
+  static final _trailingShortLink = RegExp(
+    r'\s*<a\s[^>]*href="?https?://t\.cn/[^>]*>(?:(?!</a>).)*</a>\s*$',
+    dotAll: true,
+  );
+
   // Pictures come as url_struct entries, each with its own pic_infos. A
   // reply also carries the entry of a picture on the comment it answers, but
   // has pic_num 0 then; its own pictures are linked from its text_raw.
+  // A comment just sent has no url_struct, only the pids in pic_ids.
   static List<PicInfo> _ownPics(
     Map<String, Object?> map,
     List<Map<String, Object?>> urlStruct,
@@ -98,6 +114,13 @@ class Comment {
     final count = readInt(map['pic_num']);
     if (count == 0) return const [];
     final entries = urlStruct.where((u) => u['pic_infos'] != null).toList();
+    if (entries.isEmpty) {
+      final pids = map['pic_ids'] is List ? map['pic_ids']! as List : const [];
+      return [
+        for (final pid in pids.map(readString).nonNulls)
+          ?PicInfo.tryFromPid(pid),
+      ];
+    }
     final raw = readString(map['text_raw']);
     final linked = [
       for (final u in entries)

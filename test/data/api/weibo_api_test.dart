@@ -443,6 +443,38 @@ void main() {
       expect(form()['comment'], '同意');
     });
 
+    test('postComment with a picture sends its pid, text or not', () async {
+      respond = (_) => jsonBody({'ok': 1, 'data': commentJson(id: 10)});
+
+      await fakeApi(adapter)
+          .postComment(statusId: '42', text: '', pid: '0067abc');
+
+      expect(form(), {
+        'id': '42',
+        'comment': '',
+        'pic_id': '0067abc',
+        'is_repost': '0',
+        'comment_ori': '0',
+        'is_comment': '0',
+      });
+    });
+
+    test('allowsCommentPicture reads the answer\'s result', () async {
+      var result = true;
+      respond = (_) => jsonBody({'ok': 1, 'result': result});
+      final api = fakeApi(adapter);
+
+      expect(await api.allowsCommentPicture('42'), isTrue);
+      expect(
+        adapter.requests.single.uri.path,
+        '/ajax/statuses/checkAllowCommentWithPic',
+      );
+      expect(query(), {'id': '42'});
+
+      result = false;
+      expect(await api.allowsCommentPicture('42'), isFalse);
+    });
+
     test('deleteComment', () async {
       respond = (_) => jsonBody({'ok': 1, 'data': commentJson(id: 9)});
 
