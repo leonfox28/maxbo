@@ -3,15 +3,23 @@ package io.github.leonfox28.maxbo.data.api
 import io.github.leonfox28.maxbo.core.net.SessionExpiredException
 import io.github.leonfox28.maxbo.core.net.WeiboApiException
 import io.github.leonfox28.maxbo.data.model.Account
+import io.github.leonfox28.maxbo.data.model.CommentOrder
 import io.github.leonfox28.maxbo.support.FakeWeibo
+import io.github.leonfox28.maxbo.support.commentJson
+import io.github.leonfox28.maxbo.support.commentsPageJson
 import io.github.leonfox28.maxbo.support.form
 import io.github.leonfox28.maxbo.support.homePage
 import io.github.leonfox28.maxbo.support.html
 import io.github.leonfox28.maxbo.support.json
+import io.github.leonfox28.maxbo.support.obj
+import io.github.leonfox28.maxbo.support.plus
 import io.github.leonfox28.maxbo.support.redirect
+import io.github.leonfox28.maxbo.support.repostsPageJson
+import io.github.leonfox28.maxbo.support.statusJson
 import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -102,5 +110,92 @@ class WeiboApiTest {
         val e = failure<WeiboApiException> { web.api().fetchCurrentAccount() }
 
         assertEquals("无法识别当前登录的账号", e.message)
+    }
+
+    private fun query() = web.requests.last().url
+
+    @Test
+    fun `fetchStatus asks for the full text of long posts`() = runTest {
+        web.respond = { json((obj("ok" to 1) + statusJson(id = 42, text = "完整的长文")).toString()) }
+
+        val status = web.api().fetchStatus("42")
+
+        assertEquals("完整的长文", status.text)
+        assertEquals("/ajax/statuses/show", query().encodedPath)
+        assertEquals("42", query().queryParameter("id"))
+        assertEquals("true", query().queryParameter("isGetLongText"))
+        assertEquals(setOf("id", "isGetLongText"), query().queryParameterNames)
+    }
+
+    @Test
+    fun `fetchStatus reports a response without a status`() = runTest {
+        web.respond = { json("""{"ok":1}""") }
+
+        failure<WeiboApiException> { web.api().fetchStatus("42") }
+    }
+
+    @Test
+    fun `fetchComments sends the order and author, and continues from max_id`() = runTest {
+        web.respond = {
+            json(commentsPageJson(listOf(commentJson(id = 1)), maxId = 777, total = 99).toString())
+        }
+        val api = web.api()
+
+        val first = api.fetchComments(statusId = "42", authorId = "1001", order = CommentOrder.Hot)
+        assertEquals("/ajax/statuses/buildComments", query().encodedPath)
+        assertEquals("42", query().queryParameter("id"))
+        assertEquals("1001", query().queryParameter("uid"))
+        assertEquals("0", query().queryParameter("flow"))
+        assertEquals("0", query().queryParameter("fetch_level"))
+        assertNull(query().queryParameter("max_id"))
+        assertEquals("1", first.items.single().id)
+        assertEquals("777", first.nextCursor)
+        assertEquals(99, first.total)
+
+        web.respond = { json(commentsPageJson(listOf(commentJson(id = 2))).toString()) }
+        val last = api.fetchComments("42", "1001", CommentOrder.Time, maxId = first.nextCursor)
+        assertEquals("1", query().queryParameter("flow"))
+        assertEquals("777", query().queryParameter("max_id"))
+        assertNull(last.nextCursor)
+    }
+
+    @Test
+    fun `fetchComments - an empty page ends the list whatever max_id says`() = runTest {
+        web.respond = { json(commentsPageJson(emptyList(), maxId = 5).toString()) }
+
+        assertNull(web.api().fetchComments("42", "1001", CommentOrder.Hot).nextCursor)
+    }
+
+    @Test
+    fun `fetchReplies lists the thread of a comment`() = runTest {
+        web.respond = { json(commentsPageJson(listOf(commentJson(id = 3))).toString()) }
+
+        val page = web.api().fetchReplies(commentId = "600", authorId = "1001")
+
+        assertEquals("600", query().queryParameter("id"))
+        assertEquals("1", query().queryParameter("fetch_level"))
+        assertEquals("0", query().queryParameter("max_id"))
+        assertEquals("3", page.items.single().id)
+        assertNull(page.nextCursor)
+    }
+
+    @Test
+    fun `fetchReposts pages until max_page`() = runTest {
+        web.respond = {
+            json(repostsPageJson(listOf(statusJson(id = 8)), maxPage = 2, total = 30).toString())
+        }
+        val api = web.api()
+
+        val first = api.fetchReposts(statusId = "42")
+        assertEquals("/ajax/statuses/repostTimeline", query().encodedPath)
+        assertEquals("42", query().queryParameter("id"))
+        assertEquals("1", query().queryParameter("page"))
+        assertEquals("8", first.items.single().id)
+        assertEquals("2", first.nextCursor)
+        assertEquals(30, first.total)
+
+        val second = api.fetchReposts(statusId = "42", page = 2)
+        assertEquals("2", query().queryParameter("page"))
+        assertNull(second.nextCursor)
     }
 }

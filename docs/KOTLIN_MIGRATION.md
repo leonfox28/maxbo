@@ -339,7 +339,7 @@ Dart 代码约 1.5 万行，一个 `:app` 模块就够了，用包来分层（§
 | K0 工程骨架 | ✅ 完成 | 见 git log | 见下方「K0 备注」 |
 | K1 网络、会话、登录 | 代码和测试完成，等真实会话验收（用户登录 `.dev`、设备测试） | 见 git log | 见下方「K1 备注」 |
 | K2 首页时间线与微博卡片 | 代码和测试完成，等真实会话验收（时间线、翻页、图片、GIF、深色、release 包滚动） | 见 git log | 见下方「K2 备注」 |
-| K3 详情、评论、媒体 | 未开始 | | |
+| K3 详情、评论、媒体 | 代码和测试完成，等真实会话验收（PLAN §11「M3 详情与媒体」一行） | 见 git log | 见下方「K3 备注」 |
 | K4 用户主页、搜索、通知、网页 | 未开始 | | |
 | K5 互动与发布 | 未开始 | | |
 | K6 设置、关于、宽屏、诊断 | 未开始 | | |
@@ -389,4 +389,13 @@ Dart 代码约 1.5 万行，一个 `:app` 模块就够了，用包来分层（§
 - **宽屏**：`readingPadding()` 对应 `ReadingList` 的限宽居中，首页按 `feedColumnWidth`（≥840dp 时 1000），在 K6 宽卡片之前宽窗口下会是加宽的窄卡片。
 - **测试**：迁移了 `status_test`、`format_test`、`weibo_image_test`、`status_text_parser_test`、`status_card_test`（宽卡片的几项留到 K6，ink 一项见上）、`load_state_test`、`tab_reselect_test`（在 `TimelinePageTest` 里对真实的首页做）、`timeline_controller_test`，以及 `test/support/statuses.dart` 的全部构造函数（`support/Statuses.kt`，配一个小的 JSON 写法 `support/Json.kt`）。`timeline_page_test` 测的是下拉刷新时检查未读，等 K4 做未读时再迁。`app_settings_test` 剩下的 `viewerVariant` 部分也补上了。共 161 个，全部通过。Robolectric 里按坐标点文字不可靠（文字排版只是近似），测试里点链接用 `performFirstLinkClick`，点转发框用它的 test tag。
 - **测试不联网**：`testGraph()` 不传 `FakeWeibo` 时，请求一律失败（离线的 OkHttp 客户端），避免测试碰到真实的微博。
+
+### K3 备注
+
+- **详情页**：`StatusDetailViewModel` 挂在详情页的导航条目上（Navigation 3 的 ViewModel 装饰器），页面开着时，打开过的评论列表（按热度、按时间各一个）和转发列表都留着，再切回去不重新请求（有测试）。转发列表在第一次切到转发页签时才加载。下拉刷新同时刷新微博和当前列表。页签栏是 `LazyColumn` 的 `stickyHeader`，顶栏（`HidingAppBar`）和底部的评论栏随滚动收起。卡片自己的「展开」不跳转。评论栏、转发和赞的按钮在 K5 之前只占位、点了没反应；页签上的计数在 K5 之前不含本地增减；宽窗口的左右并排在 K6。
+- **翻页列表**：`pagedItems()`（`ui/widget/PagedItems.kt`）对应 Dart 的 `PagedSliverList`。开发中发现切换列表时，一帧里会用这个列表的内容函数去画另一个列表的数据（Compose 的 `collectAsState` 换了 Flow 后第一帧仍是旧值），导致类型转换崩溃；现在评论和转发各自收集、各自带类型，并按列表 `key`，测试覆盖了来回切换。
+- **评论**：`CommentTile` 照 Dart（作者、博主标签、正文隐藏下面已显示图片的「查看图片」链接、96dp 的图片、时间和来源、楼中楼预览）。评论的赞在 K5 之前只显示，按下没有水波纹，也吞掉点击。楼中楼页（`Route.Comments`）显示根评论、「N 条回复」和分页的回复；回复、删除在 K5。
+- **看图**：Telephoto 的 `ZoomableAsyncImage`（缩放、双击放大、长图）加 `FlickToDismiss`（上下甩动关闭），放在 `HorizontalPager` 里。查看器是一个全屏的对话框场景（`DialogSceneStrategy`，去掉了遮罩），所以甩动时背景变透明，能看到下面的页面，与 Flutter 版的透明路由一样。点一下关闭。和 Dart 版的差别：长图是否「铺满宽度、从顶部开始」按 `PicInfo` 的宽高判断（Dart 版按加载出的图片判断），没有宽高的评论图片按完整显示；加载中只显示不定进度的圈（Coil 不给下载字节进度）；双击放大用 Telephoto 默认的倍数。
+- **视频**：Media3 ExoPlayer，请求带 Referer 和与登录相同的 UA；画面用 `ContentFrame` 的 TextureView，这样预测性返回缩小页面时视频跟着缩（SurfaceView 不会）。选地址、过期判断、播放出错时换一次新地址并从原位置接着播，都照 Dart 版（`core/media/VideoSource.kt`）。应用退到后台时暂停。控件：中间的播放/暂停/重播、底部的时间和进度条，播放中 3 秒后隐藏，点画面切换。
+- **测试**：迁移了 `comment_test`、`comments_controller_test`、`comment_tile_test`（ink 一项同 K2 的说明）、`video_source_test`、`weibo_api_test` 里 `fetchStatus`/`fetchComments`/`fetchReplies`/`fetchReposts` 四组，`status_detail_page_test` 里不涉及写操作和宽窗口的两项，另加了「点楼中楼进入楼中楼页」。`status_detail_page_test` 的其余各项（发评论、回复、删除、点赞、转发、计数）和 `comment_replies_page_test` 全部是写操作，到 K5 迁移。共 194 个，全部通过。详情页的测试用 `@Config(qualifiers = "w411dp-h891dp")`，Robolectric 默认的屏幕太小，评论在首屏之外不会被组合。
 

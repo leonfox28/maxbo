@@ -12,14 +12,20 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.navigation3.rememberViewModelStoreNavEntryDecorator
 import androidx.navigation3.runtime.entryProvider
 import androidx.navigation3.runtime.rememberSaveableStateHolderNavEntryDecorator
+import androidx.navigation3.scene.DialogSceneStrategy
+import androidx.navigation3.scene.SinglePaneSceneStrategy
 import androidx.navigation3.ui.NavDisplay
 import io.github.leonfox28.maxbo.core.media.LocalImageLoader
 import io.github.leonfox28.maxbo.ui.auth.LoginPage
+import io.github.leonfox28.maxbo.ui.comments.CommentRepliesPage
 import io.github.leonfox28.maxbo.ui.debug.DiagnosticsPage
+import io.github.leonfox28.maxbo.ui.media.ImageViewerPage
+import io.github.leonfox28.maxbo.ui.media.VideoPlayerPage
 import io.github.leonfox28.maxbo.ui.navigation.LocalNavigator
 import io.github.leonfox28.maxbo.ui.navigation.Navigator
 import io.github.leonfox28.maxbo.ui.navigation.Route
@@ -28,6 +34,7 @@ import io.github.leonfox28.maxbo.ui.navigation.predictivePopTransition
 import io.github.leonfox28.maxbo.ui.navigation.pushTransition
 import io.github.leonfox28.maxbo.ui.settings.SettingsPage
 import io.github.leonfox28.maxbo.ui.shell.HomeShell
+import io.github.leonfox28.maxbo.ui.status.StatusDetailPage
 import io.github.leonfox28.maxbo.ui.theme.MaxboTheme
 import io.github.leonfox28.maxbo.ui.theme.isDark
 import io.github.leonfox28.maxbo.ui.widget.LocalSnackbars
@@ -57,6 +64,8 @@ fun MaxboApp(graph: AppGraph, navigator: Navigator = remember { Navigator() }) {
                         rememberSaveableStateHolderNavEntryDecorator(),
                         rememberViewModelStoreNavEntryDecorator(),
                     ),
+                // The image viewer is a dialog over the page it opened from.
+                sceneStrategies = listOf(DialogSceneStrategy(), SinglePaneSceneStrategy()),
                 transitionSpec = pushTransition(),
                 popTransitionSpec = popTransition(),
                 predictivePopTransitionSpec = predictivePopTransition(),
@@ -64,9 +73,14 @@ fun MaxboApp(graph: AppGraph, navigator: Navigator = remember { Navigator() }) {
                     entryProvider {
                         entry<Route.Home> { HomeShell() }
                         entry<Route.Login> { LoginPage() }
-                        entry<Route.StatusDetail> { MigrationPlaceholder("微博正文", "详情页（K3）") }
-                        entry<Route.Viewer> { MigrationPlaceholder("图片", "图片查看器（K3）") }
-                        entry<Route.Video> { MigrationPlaceholder("视频", "视频播放（K3）") }
+                        entry<Route.StatusDetail> { StatusDetailPage(it.id, it.initial) }
+                        entry<Route.Comments> { CommentRepliesPage(it.thread) }
+                        entry<Route.Viewer>(
+                            metadata = DialogSceneStrategy.dialog(FullScreenDialog)
+                        ) {
+                            ImageViewerPage(it.pics, it.index)
+                        }
+                        entry<Route.Video> { VideoPlayerPage(it.id, it.index, it.initial) }
                         entry<Route.Profile> { MigrationPlaceholder("主页", "用户主页（K4）") }
                         entry<Route.ProfileByName> { MigrationPlaceholder(it.name, "用户主页（K4）") }
                         entry<Route.SearchResults> { MigrationPlaceholder(it.query, "搜索结果（K4）") }
@@ -78,6 +92,9 @@ fun MaxboApp(graph: AppGraph, navigator: Navigator = remember { Navigator() }) {
         }
     }
 }
+
+private val FullScreenDialog =
+    DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)
 
 /**
  * Edge to edge, with status bar icons to suit the theme where no app bar sets them, as on the tabs

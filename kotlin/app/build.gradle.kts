@@ -91,6 +91,10 @@ dependencies {
     implementation(libs.coil.compose)
     implementation(libs.coil.network.okhttp)
     implementation(libs.coil.gif)
+    implementation(libs.telephoto.zoomable.image.coil3)
+    implementation(libs.telephoto.flick)
+    implementation(libs.androidx.media3.exoplayer)
+    implementation(libs.androidx.media3.ui.compose)
 
     implementation(platform(libs.compose.bom))
     implementation(libs.compose.ui)

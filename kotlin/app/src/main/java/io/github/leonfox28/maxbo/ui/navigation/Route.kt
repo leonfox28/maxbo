@@ -3,6 +3,7 @@ package io.github.leonfox28.maxbo.ui.navigation
 import io.github.leonfox28.maxbo.data.model.PicInfo
 import io.github.leonfox28.maxbo.data.model.Status
 import io.github.leonfox28.maxbo.data.model.WeiboUser
+import io.github.leonfox28.maxbo.ui.comments.CommentThread
 
 /**
  * A page of the app. The tabs share one, [Home]; every other page goes on top of it. Like
@@ -17,6 +18,9 @@ sealed interface Route {
 
     /** A status and its comments; [initial] shows until the full status loads. */
     data class StatusDetail(val id: String, val initial: Status? = null) : Route
+
+    /** A comment and its replies ("楼中楼"). */
+    data class Comments(val thread: CommentThread) : Route
 
     /** The pictures [pics], opened at [index]. */
     data class Viewer(val pics: List<PicInfo>, val index: Int) : Route

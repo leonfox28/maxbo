@@ -10,8 +10,15 @@ import io.github.leonfox28.maxbo.core.net.isRateLimitStatus
 import io.github.leonfox28.maxbo.core.net.unwrapResponse
 import io.github.leonfox28.maxbo.core.util.describeShape
 import io.github.leonfox28.maxbo.core.util.devLog
+import io.github.leonfox28.maxbo.core.util.readInt
+import io.github.leonfox28.maxbo.core.util.readMaps
+import io.github.leonfox28.maxbo.core.util.readString
 import io.github.leonfox28.maxbo.data.model.Account
+import io.github.leonfox28.maxbo.data.model.Comment
+import io.github.leonfox28.maxbo.data.model.CommentOrder
 import io.github.leonfox28.maxbo.data.model.FeedPage
+import io.github.leonfox28.maxbo.data.model.Paged
+import io.github.leonfox28.maxbo.data.model.Status
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import okhttp3.FormBody
@@ -68,6 +75,97 @@ class WeiboApi(
         val page = FeedPage.fromJson(json)
         devLog("timeline: ${page.statuses.size} statuses, more=${page.nextCursor != null}")
         return page
+    }
+
+    /**
+     * Status [id] with its full text (timelines truncate long posts), current counts and freshly
+     * signed video URLs.
+     */
+    suspend fun fetchStatus(id: String): Status {
+        // With this flag `text` holds the whole post as HTML; the longtext
+        // endpoint only has it as plain text (PLAN §8).
+        val json = getJson("$WEB/ajax/statuses/show", mapOf("id" to id, "isGetLongText" to "true"))
+        return Status.tryFromJson(json) ?: throw WeiboApiException("微博不存在或已被删除")
+    }
+
+    /**
+     * A page of the comments on status [statusId] by [authorId], continuing after [maxId] (a
+     * previous page's [Paged.nextCursor]).
+     */
+    suspend fun fetchComments(
+        statusId: String,
+        authorId: String,
+        order: CommentOrder,
+        maxId: String? = null,
+    ): Paged<Comment> =
+        commentPage(
+            getJson(
+                "$WEB/ajax/statuses/buildComments",
+                mapOf(
+                    "is_reload" to 1,
+                    "id" to statusId,
+                    "is_show_bulletin" to 2,
+                    "is_mix" to 0,
+                    "count" to 20,
+                    "uid" to authorId,
+                    "fetch_level" to 0,
+                    "flow" to if (order == CommentOrder.Hot) 0 else 1,
+                    "locale" to "zh-CN",
+                    "max_id" to maxId,
+                ),
+            )
+        )
+
+    /** A page of the replies in the thread of comment [commentId], on a status by [authorId]. */
+    suspend fun fetchReplies(
+        commentId: String,
+        authorId: String,
+        maxId: String? = null,
+    ): Paged<Comment> =
+        commentPage(
+            getJson(
+                "$WEB/ajax/statuses/buildComments",
+                mapOf(
+                    "is_reload" to 1,
+                    "id" to commentId,
+                    "is_show_bulletin" to 2,
+                    "is_mix" to 1,
+                    "fetch_level" to 1,
+                    "max_id" to (maxId ?: 0),
+                    "count" to 20,
+                    "uid" to authorId,
+                    "locale" to "zh-CN",
+                ),
+            )
+        )
+
+    // Comment lists continue from `max_id`, which is 0 on the last page.
+    private fun commentPage(json: JsonObject): Paged<Comment> {
+        val comments = readMaps(json["data"]).mapNotNull { Comment.tryFromJson(it) }
+        val maxId = readString(json["max_id"])
+        devLog("comments: ${comments.size}, more=${maxId != "0"}")
+        return Paged(
+            comments,
+            nextCursor = if (comments.isEmpty() || maxId == null || maxId == "0") null else maxId,
+            total = readInt(json["total_number"])?.toInt(),
+        )
+    }
+
+    /** Page [page] (from 1) of the reposts of status [statusId], newest first. */
+    suspend fun fetchReposts(statusId: String, page: Int = 1): Paged<Status> {
+        val json =
+            getJson(
+                "$WEB/ajax/statuses/repostTimeline",
+                // Weibo sends 20 a page whatever `count` asks for.
+                mapOf("id" to statusId, "page" to page, "moduleID" to "feed", "count" to 20),
+            )
+        val reposts = readMaps(json["data"]).mapNotNull { Status.tryFromJson(it) }
+        val maxPage = readInt(json["max_page"])?.toInt() ?: page
+        return Paged(
+            reposts,
+            nextCursor = if (reposts.isEmpty() || page >= maxPage) null else "${page + 1}",
+            total = readInt(json["total_number"])?.toInt(),
+        )
     }
 
     /** Reads a JSON endpoint; [query] values that are null are left out. */
