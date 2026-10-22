@@ -36,3 +36,19 @@ jobs:
       - run: flutter test
       # Debug build only: this workflow never sees the release key.
       - run: flutter build apk --debug
+
+  # The Kotlin rewrite in kotlin/ (docs/KOTLIN_MIGRATION.md). Runs beside the
+  # Flutter job until the switch.
+  kotlin:
+    name: Kotlin app — format, lint, test and build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: gradle/actions/setup-gradle@v6
+      # Debug build only: this workflow never sees the release key.
+      - run: ./gradlew spotlessCheck lint testDebugUnitTest assembleDebug
+        working-directory: kotlin

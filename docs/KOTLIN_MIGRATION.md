@@ -60,7 +60,7 @@
 - **versionCode**：Flutter 版按 ABI 拆分，versionCode = ABI 序号 × 1000 + build 号。v0.11.0 的三个包分别是 armeabi-v7a 1021、arm64-v8a 2021、x86_64 4021。Kotlin 版必须比它们都大才能覆盖安装，所以从 **5022** 开始，每发一版加 1。
 - **versionName**：接着往上排。第一个 Kotlin 版的版本号发版时问用户，建议 0.12.0。
 - **APK 数量**：Kotlin 版大概率没有原生库（`.so`），这样只出一个通用 APK 就行。K7 时用 `unzip -l` 检查 APK 里有没有 `lib/` 目录。
-- **SDK 版本**：minSdk 24，和 Flutter 版一样，不丢用户；compileSdk 和 targetSdk 都是 36，与 Flutter 版相同。本机的 SDK 平台有 35、36、37.0。
+- **SDK 版本**：minSdk 24，和 Flutter 版一样，不丢用户；targetSdk 36，与 Flutter 版相同。compileSdk 是 37（K0 时改的，原计划 36）：当前的 AndroidX（Compose 1.12、lifecycle 2.11、Navigation 3 1.2、core 1.19）都要求用 37 编译。compileSdk 只决定能调用哪些 API，运行时的行为由 targetSdk 决定。本机的 SDK 平台有 35、36、37.0。
 - **Manifest 要照搬的**：
   - `INTERNET` 权限；
   - `android:allowBackup="false"`；
@@ -77,14 +77,14 @@ Dart 代码约 1.5 万行，一个 `:app` 模块就够了，用包来分层（§
 
 ## 3. 技术选型
 
-版本号在 K0 时去 Google Maven 和 Maven Central 查最新稳定版，统一写进 `gradle/libs.versions.toml`。本机现有的 AGP 9.1.0、Kotlin 2.4.0、Gradle 9.3.1（Flutter 宿主工程在用）和 JDK 17（Temurin）都确认能用，优先沿用。依赖下载失败时，先看 PLAN「开发环境注意」里关于代理分流的说明。
+版本号在 K0 时去 Google Maven 和 Maven Central 查最新稳定版，统一写进 `kotlin/gradle/libs.versions.toml`。原计划沿用本机的 AGP 9.1.0、Kotlin 2.4.0、Gradle 9.3.1（Flutter 宿主工程在用），K0 时发现当前的 AndroidX 要求 compileSdk 37，AGP 9.1 不支持，于是改用 AGP 9.4.1，它又要求 Gradle 9.6 以上，所以是 Gradle 9.8.2（wrapper 在 `kotlin/` 里），Kotlin 也顺带用了最新的 2.4.21。JDK 仍是本机的 17（Temurin）。依赖下载失败时，先看 PLAN「开发环境注意」里关于代理分流的说明。
 
 | 用途 | Flutter 版 | Kotlin 版 | 说明 |
 |---|---|---|---|
 | 界面 | Flutter Material | Jetpack Compose + Material 3（用 Compose BOM 管理版本） | |
 | 配色 | `ColorScheme.fromSeed(#3F51B5)` | 把 Flutter 版生成的配色抄成固定值 | K0 时写一个临时 Dart 测试，打印 `buildTheme(Brightness.light/dark).colorScheme` 的每个颜色，抄进 `Color.kt`，这样两版颜色完全一致，不用引入取色库。未读红色 `#F5222D` 照搬 |
 | 窗口分档 | `adaptive_layout.dart` | `material3-adaptive` 的 `currentWindowAdaptiveInfo()` | 分界同样是 600 和 840。限宽、宽卡片这些行为照搬 Dart 版 |
-| 导航 | go_router + StatefulShellRoute | 首选 Navigation 3（`androidx.navigation3`）；不合适就用 Navigation Compose | K0 时定下来并记录理由。结构是：四个页签（各自只有根页面），上面是一个页面栈。预测性返回用框架自带的 |
+| 导航 | go_router + StatefulShellRoute | Navigation 3（`androidx.navigation3`），K0 定的 | 页面栈就是我们自己持有的一个列表（`Navigator.backStack`），四个页签放在栈底的 `Route.Home` 里（`HomeShell` 用 `SaveableStateHolder` 保留各页签的状态），推入、返回、预测性返回的动画都可以自己给。理由见 §11 的 K0 备注 |
 | 状态和依赖注入 | Riverpod 3（不用代码生成） | ViewModel + StateFlow；依赖容器手写（`AppGraph`），不用 Hilt / Koin | 全局状态（会话、点赞、未读、设置、草稿）放在容器里的单例，测试时换成假实现，相当于现在的 provider override |
 | 网络 | Dio + 拦截器 | OkHttp 5 + 拦截器 | 不用 Retrofit：端点不多、形态各异，照 `WeiboApi` 手写方法 |
 | JSON | 手写容错解析（`json_read.dart`） | kotlinx-serialization-json 的 `JsonElement` 树，加上手写的读取函数 | 模型不加 `@Serializable`。不用 `org.json`，它在 JVM 单元测试里是空实现 |
@@ -98,9 +98,9 @@ Dart 代码约 1.5 万行，一个 `:app` 模块就够了，用包来分层（§
 | 选图 | image_picker（系统照片选择器） | `ActivityResultContracts.PickVisualMedia` / `PickMultipleVisualMedia` | |
 | 外部链接 | url_launcher | Intent | |
 | 开源许可页 | Flutter 的 `showLicensePage` | AboutLibraries | |
-| 界面语言 | `locale: zh_CN` | 系统组件（返回按钮说明、日期等）也要固定显示中文 | 用 `AppCompatDelegate.setApplicationLocales` 或在 Activity 里覆盖 Configuration，K0 时选一种。文案像 Dart 版一样直接写在代码里，只有中文，不做多语言 |
+| 界面语言 | `locale: zh_CN` | 系统组件（返回按钮说明、日期等）也要固定显示中文 | K0 定的：`MainActivity.attachBaseContext` 里 `applyOverrideConfiguration` 只覆盖语言，不引入 AppCompat。文案像 Dart 版一样直接写在代码里，只有中文，不做多语言 |
 | 测试 | flutter_test | JUnit 4、kotlinx-coroutines-test、Turbine、OkHttp MockWebServer、Robolectric + Compose UI Test；设备测试用 AndroidX Test | §7 |
-| 格式与检查 | `dart format`、`flutter analyze` | Spotless + ktlint（或 ktfmt，K0 时定），Android Lint | `./gradlew spotlessCheck lint testDebugUnitTest` 必须全部通过 |
+| 格式与检查 | `dart format`、`flutter analyze` | Spotless + ktfmt（kotlinlang 风格，K0 定的），Android Lint | `./gradlew spotlessCheck lint testDebugUnitTest` 必须全部通过 |
 
 ## 4. 代码结构
 
@@ -193,6 +193,14 @@ Dart 代码约 1.5 万行，一个 `:app` 模块就够了，用包来分层（§
 
 ## 6. 开发与验证的规则
 
+- **常用命令**（在 `kotlin/` 目录下）：
+  ```sh
+  ./gradlew spotlessApply                                        # 格式化
+  ./gradlew spotlessCheck lint testDebugUnitTest assembleDebug   # 与 CI 相同
+  adb -s emulator-5554 install -r app/build/outputs/apk/debug/app-debug.apk
+  ./gradlew assembleBenchmark   # 测流畅度用，见下面「测流畅度」
+  ```
+
 - **两个应用的分工**：`.dev`（Kotlin）做开发和真实会话验证；Flutter 的 `.debug` 是对照组和退路，K7 之前不要动它。adb 命令一律带 `-s emulator-5554`。
 - **真实写操作**：只在用户指定的测试微博上做，每次先问，测完恢复原状。发微博用「仅自己可见」，测完删掉。规则同 CLAUDE.md。
 - **测流畅度**：不看调试版。
@@ -211,7 +219,8 @@ Dart 代码约 1.5 万行，一个 `:app` 模块就够了，用包来分层（§
   - Robolectric + Compose UI Test：页面层面的测试（对应现在的 Widget 测试）；
   - 设备测试（`androidTest`）：对应 `integration_test/cookie_bridge_test.dart`，验证 `CookieManager` 能读到页面响应写入的 HttpOnly Cookie。
 - **设备测试在哪台机器上跑**：必须是一台**没有真实登录**的模拟器。本机现有的 AVD 里，`Pixel_9` 有真实登录，其余的 `Zterm_*` 属于别的项目，都不能用。需要时建一台 `maxbo_test`（本机已有 android-36 和 37.0 的系统镜像），建之前先告诉用户。
-- **CI**：K0 起在 `ci.yml` 里加一个 Kotlin 的 job：`./gradlew -p kotlin spotlessCheck lint testDebugUnitTest assembleDebug`。Flutter 的 job 保留到 K7。
+- **CI**：K0 起 `ci.yml` 里有一个 Kotlin 的 job，在 `kotlin/` 目录下运行 `./gradlew spotlessCheck lint testDebugUnitTest assembleDebug`（wrapper 在 `kotlin/` 里，所以不是 `-p kotlin`）。Flutter 的 job 保留到 K7。
+- **Robolectric 的 SDK**：`app/src/test/resources/robolectric.properties` 设为 34。Robolectric 跑 SDK 35 及以上要 Java 21，本机是 17。个别测试可以用 `@Config(sdk = [...])` 指定别的版本，例如 `MainActivityTest` 同时在 24 和 34 上跑。
 
 ## 8. 风险
 
@@ -327,7 +336,7 @@ Dart 代码约 1.5 万行，一个 `:app` 模块就够了，用包来分层（§
 
 | 阶段 | 状态 | 提交 | 备注 |
 |---|---|---|---|
-| K0 工程骨架 | 未开始 | | |
+| K0 工程骨架 | ✅ 完成 | 见 git log | 见下方「K0 备注」 |
 | K1 网络、会话、登录 | 未开始 | | |
 | K2 首页时间线与微博卡片 | 未开始 | | |
 | K3 详情、评论、媒体 | 未开始 | | |
@@ -335,3 +344,19 @@ Dart 代码约 1.5 万行，一个 `:app` 模块就够了，用包来分层（§
 | K5 互动与发布 | 未开始 | | |
 | K6 设置、关于、宽屏、诊断 | 未开始 | | |
 | K7 对齐、切换、发版 | 未开始 | | |
+
+### K0 备注
+
+- **导航选了 Navigation 3**：页面栈是普通的 `SnapshotStateList`（`ui/navigation/Navigator.kt`），由我们自己推入和弹出，`Route` 里可以直接带上一页已有的数据（相当于 go_router 的 `extra`），不用序列化。四个页签不是导航目的地，而是栈底 `Route.Home` 里的状态，再点页签、滚动收起这些都留在 `HomeShell` 里做。Navigation 3 默认的转场是 700 ms 的淡入淡出，不像 Android，所以 `ui/navigation/Transitions.kt` 照 Flutter 的 `FadeForwardsPageTransitionsBuilder`（450 ms，新页从右边 25% 处滑入并淡入，旧页左移 25% 并在前 25% 的时间里淡出）和 `PredictiveBackPageTransitionsBuilder`（跟手缩到 0.9，向滑动方向偏移屏宽的 1/20，松手后淡出）重写了三种转场。和 Flutter 相比少了两点：手指上下移动时页面不跟着上下偏移，缩小时没有圆角。
+- **格式化选了 ktfmt**（kotlinlang 风格）：和 `dart format` 一样只管格式、没有配置项；ktlint 还要另外配置才能接受 Compose 的大写函数名。ktfmt 会删掉没用到的 import。
+- **界面语言**：`MainActivity.attachBaseContext` 里用 `applyOverrideConfiguration` 只覆盖语言，其余配置（深色模式、字体大小等）照常跟随系统变化。Android 8 以前 `Configuration()` 会把字体缩放设成 1，所以要把 `fontScale` 置回 0（未设定）；`MainActivityTest` 在 API 24 和 34 上核对了语言是中文、系统字体大小保留，去掉这一行 API 24 的测试就会失败。
+- **字体大小**：`TextSize.applyTo()` 返回一个包装过的 `Density`，在根部经 `LocalDensity` 提供：文字先按系统的方式换算（保留 Android 14 起的非线性缩放），再乘倍数，非文字的尺寸不变。与 Dart 版的 `_ScaledTextScaler` 相同。设置页还没有，K6 时在真机上核对。
+- **设置**：`SettingsController`（`StateFlow`）的 `update()` 立即生效，保存在 `AppGraph.appScope` 里排队执行（离开页面不会中断），每次保存的都是最新的设置。`AppGraph.create()` 在 `Application.onCreate` 里读入设置（DataStore，在第一帧之前）。
+- **配色**：用临时的 Dart 测试打印了 Flutter 3.47 的 `ColorScheme.fromSeed(#3F51B5)`，抄进 `ui/theme/Color.kt`（Flutter 已去掉的 `background`、`surfaceVariant` 分别取 `surface`、`surfaceContainerHighest`）。字体层级不用改：Flutter 给中文用的 `dense2021` 与 Compose 默认的 M3 字号、行高、字距完全一样（也打印核对过）。导航胶囊与 Flutter 版截图对比，像素级一致。
+- **Manifest**：照搬了 Flutter 版的 `configChanges`，旋转、折叠、切换深色模式都不重建 Activity，页签和页面状态保留（模拟器上切深色模式核对过）。**顺手修的 Flutter 版问题**：Android 12 起 `allowBackup="false"` 不再阻止设备间迁移（换手机时的数据传输），WebView 的 Cookie（也就是登录态）会被带到新手机上，违反「登录态只在本机」。Kotlin 版加了 `data_extraction_rules.xml`，云备份和设备间迁移都排除所有数据。Flutter 版没有改（K7 后就不存在了）。
+- **无障碍**：Compose 不把已选中的 `Role.Tab` 标为可点击，读屏用户就没法「再点一次当前页签」。K2 做回到顶部/刷新时，要给选中的页签加一个自定义无障碍操作。页签的提示（长按显示名称）是自己触发的 `TooltipBox`，读屏不会多停一个空节点（`HomeShellTest` 核对）。
+- **构建类型**：release 开了 R8（minify + shrinkResources），签名还没接（K7）。`benchmark` 构建类型（§6「测流畅度」）K0 就加上了，R8 后约 1.3 MB，在模拟器上启动、打开设置页、返回都正常。APK 里有两个 AndroidX 的小原生库（`libandroidx.graphics.path.so`、`libdatastore_shared_counter.so`，每个约 10 KB，四种 ABI 都有），K7 出通用 APK 不受影响。
+- **版本号**：versionCode 5022，versionName 暂时是 `0.12.0-dev`，发版时再问用户。
+- **测试**：迁移了 `app_settings_test` 的存储、`TextSize` 和 `listPixels` 部分（`viewerVariant` 依赖 `PicInfo`，放到 K2）；`app_info_test` 不迁移（版本号用 `BuildConfig`）。另外加了 `DataStoreSettingsStorageTest`、`HomeShellTest`（页签切换、打开设置页、返回箭头和系统返回）、`MainActivityTest`。共 19 个，全部通过。测试用的 `AppGraph` 由 `support/TestGraph.kt` 的 `testGraph()` 给出。
+- **在 emulator-5554 上核对过**：`.dev` 与 Flutter 的 release、`.debug`、旧的 `app.maxbo` 同时装着；页签切换；长按页签显示名称；从「我」打开设置页；预测性返回（`input motionevent` 注入手势）跟手缩小、滑回边缘松手取消、松手返回「我」页签；深色模式。CI 的 Kotlin job 还没在 GitHub 上跑过（要推送后才知道），本地用同一条命令从 clean 构建通过。
+
