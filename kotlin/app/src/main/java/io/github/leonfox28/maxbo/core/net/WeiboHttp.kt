@@ -62,15 +62,23 @@ class WeiboHttp
 private constructor(
     private val reads: OkHttpClient,
     private val writes: OkHttpClient,
+    private val uploads: OkHttpClient,
     private val throttle: RequestThrottle,
 ) {
     /**
      * Sends [request] once the throttle lets it, and reads the whole reply.
      *
+     * @param upload whether it carries a file, which gets minutes rather than seconds to go up and
+     *   be answered.
      * @throws NetworkException if the request couldn't be sent or the reply not read.
      */
-    suspend fun send(request: Request): HttpReply {
-        val client = if (request.method == "GET") reads else writes
+    suspend fun send(request: Request, upload: Boolean = false): HttpReply {
+        val client =
+            when {
+                upload -> uploads
+                request.method == "GET" -> reads
+                else -> writes
+            }
         throttle.acquire()
         try {
             val response =
@@ -116,7 +124,13 @@ private constructor(
                     .addNetworkInterceptor(WeiboHeaders(jar))
                     .build()
             val writes = reads.newBuilder().retryOnConnectionFailure(false).build()
-            return WeiboHttp(reads, writes, throttle)
+            val uploads =
+                writes
+                    .newBuilder()
+                    .writeTimeout(2, TimeUnit.MINUTES)
+                    .readTimeout(2, TimeUnit.MINUTES)
+                    .build()
+            return WeiboHttp(reads, writes, uploads, throttle)
         }
     }
 }

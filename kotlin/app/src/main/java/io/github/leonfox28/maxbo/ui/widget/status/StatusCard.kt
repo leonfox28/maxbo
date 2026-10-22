@@ -54,6 +54,10 @@ import io.github.leonfox28.maxbo.data.model.Status
 import io.github.leonfox28.maxbo.data.model.StatusVisibility
 import io.github.leonfox28.maxbo.data.model.VideoInfo
 import io.github.leonfox28.maxbo.data.model.WeiboUser
+import io.github.leonfox28.maxbo.ui.interactions.LikeKind
+import io.github.leonfox28.maxbo.ui.interactions.LikeTarget
+import io.github.leonfox28.maxbo.ui.interactions.like
+import io.github.leonfox28.maxbo.ui.interactions.rememberLike
 import io.github.leonfox28.maxbo.ui.widget.MediaBadge
 import io.github.leonfox28.maxbo.ui.widget.PicGrid
 import io.github.leonfox28.maxbo.ui.widget.PlayIcon
@@ -366,7 +370,7 @@ private fun PageCardView(card: PageCard) {
 
 /**
  * Repost, comment and like counts; the repost count is a repost button and the like count a like
- * button (K5).
+ * button.
  */
 @Composable
 private fun Counts(status: Status, actions: StatusCardActions) {
@@ -387,14 +391,16 @@ private fun Counts(status: Status, actions: StatusCardActions) {
             "评论",
             onClick = onOpen?.let { { it(status) } },
         )
-        // Taking no taps until liking comes over (K5), but swallowing them,
-        // so they don't open the status.
+        val shown = rememberLike(LikeTarget(LikeKind.Status, status.id), status.like)
+        val like = shown.like
         CountItem(
-            if (status.liked) Icons.Filled.ThumbUp else Icons.Outlined.ThumbUp,
-            status.likesCount,
+            if (like.liked) Icons.Filled.ThumbUp else Icons.Outlined.ThumbUp,
+            like.count,
             "赞",
-            color = if (status.liked) colors.primary else null,
-            onClick = {},
+            color = if (like.liked) colors.primary else null,
+            // While a like is on its way, the button takes no taps but still
+            // swallows them, so they don't open the status.
+            onClick = shown.onToggle ?: {},
         )
     }
 }

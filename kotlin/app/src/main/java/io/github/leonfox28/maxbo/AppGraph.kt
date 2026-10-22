@@ -18,6 +18,12 @@ import io.github.leonfox28.maxbo.core.session.WebViewSessionRenewer
 import io.github.leonfox28.maxbo.core.settings.DataStoreSettingsStorage
 import io.github.leonfox28.maxbo.core.settings.SettingsController
 import io.github.leonfox28.maxbo.data.api.WeiboApi
+import io.github.leonfox28.maxbo.ui.compose.ComposeDraftController
+import io.github.leonfox28.maxbo.ui.compose.ContentPictureReader
+import io.github.leonfox28.maxbo.ui.compose.PictureReader
+import io.github.leonfox28.maxbo.ui.interactions.LikesController
+import io.github.leonfox28.maxbo.ui.interactions.OpenLists
+import io.github.leonfox28.maxbo.ui.interactions.RepostDrafts
 import io.github.leonfox28.maxbo.ui.notifications.UnreadNoticesController
 import io.github.leonfox28.maxbo.ui.timeline.TimelineController
 import java.io.File
@@ -41,10 +47,17 @@ class AppGraph(
     val webCookies: WebCookies,
     val timeline: TimelineController,
     val unread: UnreadNoticesController,
+    /** Reads the pictures the user picks, to upload them. */
+    val pictures: PictureReader,
     imageLoader: () -> ImageLoader,
 ) {
     /** Loads Weibo's pictures; made on first use. */
     val imageLoader: ImageLoader by lazy(imageLoader)
+
+    val openLists = OpenLists(timeline)
+    val likes = LikesController(api, session, appScope)
+    val composeDraft = ComposeDraftController(api, pictures, openLists, session, appScope)
+    val repostDrafts = RepostDrafts(session, appScope)
 
     companion object {
         /** The real thing, reading the saved settings and session before the first frame. */
@@ -89,6 +102,7 @@ class AppGraph(
                 webCookies = webCookies,
                 timeline = TimelineController(api, session, scope),
                 unread = UnreadNoticesController(api, session, scope),
+                pictures = ContentPictureReader(context.applicationContext),
                 imageLoader = {
                     weiboImageLoader(
                         context.applicationContext,

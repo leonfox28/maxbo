@@ -42,6 +42,10 @@ import io.github.leonfox28.maxbo.core.util.formatCount
 import io.github.leonfox28.maxbo.core.util.formatPostTime
 import io.github.leonfox28.maxbo.data.model.Comment
 import io.github.leonfox28.maxbo.data.model.PicInfo
+import io.github.leonfox28.maxbo.ui.interactions.LikeKind
+import io.github.leonfox28.maxbo.ui.interactions.LikeState
+import io.github.leonfox28.maxbo.ui.interactions.LikeTarget
+import io.github.leonfox28.maxbo.ui.interactions.rememberLike
 import io.github.leonfox28.maxbo.ui.widget.UserAvatar
 import io.github.leonfox28.maxbo.ui.widget.status.StatusCardActions
 import io.github.leonfox28.maxbo.ui.widget.text.StatusText
@@ -146,28 +150,38 @@ fun CommentTile(
 }
 
 /**
- * The comment's likes. No ink, as on a card's counts; it takes taps all the same, so they don't
- * reply to the comment. Liking comes over in K5.
+ * The comment's like button. No ink, as on a card's counts; while a like is on its way it takes
+ * taps all the same, so they don't reply to the comment.
  */
 @Composable
 private fun LikeButton(comment: Comment) {
+    val shown =
+        rememberLike(
+            LikeTarget(LikeKind.Comment, comment.id),
+            LikeState(comment.liked, comment.likesCount),
+        )
+    val like = shown.like
     val color =
-        if (comment.liked) MaterialTheme.colorScheme.primary
+        if (like.liked) MaterialTheme.colorScheme.primary
         else MaterialTheme.colorScheme.onSurfaceVariant
     Row(
-        Modifier.clickable(remember { MutableInteractionSource() }, indication = null) {}
+        Modifier.clickable(
+                remember { MutableInteractionSource() },
+                indication = null,
+                onClick = shown.onToggle ?: {},
+            )
             .padding(horizontal = 6.dp, vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Icon(
-            if (comment.liked) Icons.Filled.ThumbUp else Icons.Outlined.ThumbUp,
+            if (like.liked) Icons.Filled.ThumbUp else Icons.Outlined.ThumbUp,
             contentDescription = null,
             modifier = Modifier.size(14.dp),
             tint = color,
         )
         Spacer(Modifier.width(3.dp))
         Text(
-            if (comment.likesCount > 0) formatCount(comment.likesCount) else "赞",
+            if (like.count > 0) formatCount(like.count) else "赞",
             style = MaterialTheme.typography.bodySmall,
             color = color,
         )

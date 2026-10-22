@@ -25,11 +25,13 @@ import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.Notifications
 import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.PlainTooltip
@@ -72,6 +74,8 @@ import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.leonfox28.maxbo.LocalAppGraph
 import io.github.leonfox28.maxbo.core.session.SessionState
+import io.github.leonfox28.maxbo.ui.navigation.LocalNavigator
+import io.github.leonfox28.maxbo.ui.navigation.Route
 import io.github.leonfox28.maxbo.ui.notifications.NotificationsPage
 import io.github.leonfox28.maxbo.ui.notifications.UNREAD_RECHECK_MS
 import io.github.leonfox28.maxbo.ui.profile.MePage
@@ -107,10 +111,23 @@ fun HomeShell() {
     val hidden by
         animateFloatAsState(if (bars.visible) 0f else 1f, BarsOnScroll.spec(), label = "pill")
     val graph = LocalAppGraph.current
+    val navigator = LocalNavigator.current
     val unread by graph.unread.state.collectAsStateWithLifecycle()
+    val session by graph.session.state.collectAsStateWithLifecycle()
     UnreadChecks()
     Scaffold(
         Modifier.nestedScroll(bars.connection),
+        // Over the pill's end.
+        floatingActionButton = {
+            if (current == Tab.Home.ordinal && session is SessionState.SignedIn) {
+                FloatingActionButton(
+                    onClick = { navigator.push(Route.Compose) },
+                    modifier = Modifier.graphicsLayer { translationY = hidden * 3f * size.height },
+                ) {
+                    Icon(Icons.Outlined.Edit, contentDescription = "发微博")
+                }
+            }
+        },
         // Lists scroll on behind the pill; the padding below makes room for it.
         bottomBar = {
             FloatingNavBar(

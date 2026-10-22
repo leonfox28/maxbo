@@ -37,6 +37,8 @@ class HomeShellTest {
     fun `opens on the home tab`() {
         tab("首页").assertIsSelected()
         compose.onNodeWithText("设置").assertDoesNotExist()
+        // Signed out, there is nobody to post as.
+        tab("发微博").assertDoesNotExist()
     }
 
     @Test

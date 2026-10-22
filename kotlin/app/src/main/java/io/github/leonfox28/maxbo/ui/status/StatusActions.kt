@@ -9,6 +9,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.core.net.toUri
 import io.github.leonfox28.maxbo.data.model.PicInfo
 import io.github.leonfox28.maxbo.data.model.Status
+import io.github.leonfox28.maxbo.ui.interactions.rememberStatusWrites
 import io.github.leonfox28.maxbo.ui.navigation.LocalNavigator
 import io.github.leonfox28.maxbo.ui.navigation.Navigator
 import io.github.leonfox28.maxbo.ui.navigation.Route
@@ -24,7 +25,8 @@ fun rememberStatusCardActions(): StatusCardActions {
     val context = LocalContext.current
     val snackbars = LocalSnackbars.current
     val scope = rememberCoroutineScope()
-    return remember(navigator, context) {
+    val writes = rememberStatusWrites()
+    return remember(navigator, context, writes) {
         fun openExternally(url: String) {
             try {
                 context.startActivity(Intent(Intent.ACTION_VIEW, url.toUri()))
@@ -62,6 +64,8 @@ fun rememberStatusCardActions(): StatusCardActions {
             onExpand = ::openStatus,
             onPicture = ::viewPictures,
             onVideo = { status, index -> navigator.push(Route.Video(status.id, index, status)) },
+            onRepost = { writes.repost(it) },
+            onDelete = { writes.delete(it) },
         )
     }
 }

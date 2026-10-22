@@ -10,9 +10,12 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -48,6 +51,10 @@ class SessionController(
             restored?.let { SessionState.SignedIn(it.account) } ?: SessionState.SignedOut()
         )
     val state: StateFlow<SessionState> = _state.asStateFlow()
+
+    /** The signed-in account's uid, or null when signed out, each time it changes. */
+    val uid: Flow<String?>
+        get() = state.map { (it as? SessionState.SignedIn)?.account?.uid }.distinctUntilChanged()
 
     // One storage operation at a time, each saving the session as it is
     // then, so an older one can never overwrite a newer one.

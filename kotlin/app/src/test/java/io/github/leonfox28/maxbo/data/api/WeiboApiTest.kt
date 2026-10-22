@@ -6,6 +6,7 @@ import io.github.leonfox28.maxbo.core.net.WeiboCookieJar
 import io.github.leonfox28.maxbo.data.model.Account
 import io.github.leonfox28.maxbo.data.model.CommentOrder
 import io.github.leonfox28.maxbo.data.model.NoticeKind
+import io.github.leonfox28.maxbo.data.model.StatusVisibility
 import io.github.leonfox28.maxbo.support.FakeWeibo
 import io.github.leonfox28.maxbo.support.commentJson
 import io.github.leonfox28.maxbo.support.commentNoticeJson
@@ -38,8 +39,6 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 
-// The endpoints themselves come over with their features (K2–K5); these are
-// the requests every one of them is made of.
 @RunWith(RobolectricTestRunner::class)
 class WeiboApiTest {
     private val web = FakeWeibo()
@@ -438,5 +437,310 @@ class WeiboApiTest {
         val likes = api.fetchLikeNotices()
         assertEquals("/ajax/message/attitudes", query().encodedPath)
         assertEquals("5", likes.items.single().id)
+    }
+
+    @Test
+    fun `like and take back likes of statuses and comments`() = runTest {
+        web.respond = { json("""{"ok":1,"result":true}""") }
+        val api = web.api()
+
+        api.likeStatus("42", liked = false)
+        assertEquals("/ajax/statuses/cancelLike", query().encodedPath)
+        assertEquals(mapOf("id" to "42"), web.requests.last().form)
+
+        api.likeStatus("42")
+        assertEquals("/ajax/statuses/setLike", query().encodedPath)
+
+        api.likeComment("7")
+        assertEquals("/ajax/statuses/updateLike", query().encodedPath)
+        assertEquals(
+            mapOf("object_id" to "7", "object_type" to "comment"),
+            web.requests.last().form,
+        )
+
+        api.likeComment("7", liked = false)
+        assertEquals("/ajax/statuses/destroyLike", query().encodedPath)
+    }
+
+    @Test
+    fun `a like answered ok but without result failed`() = runTest {
+        // What taking a like back right after giving it gets.
+        web.respond = { json("""{"ok":1,"result":false}""") }
+
+        failure<WeiboApiException> { web.api().likeStatus("42", liked = false) }
+    }
+
+    @Test
+    fun `a refused write carries its message`() = runTest {
+        web.respond = {
+            json(
+                """{"ok":0,"message":"微博不存在","msg":"微博不存在","error_code":20101,""" +
+                    """"error_type":"toast"}"""
+            )
+        }
+
+        assertEquals("微博不存在", failure<WeiboApiException> { web.api().likeStatus("42") }.message)
+    }
+
+    @Test
+    fun `postComment comments, and returns the new comment`() = runTest {
+        web.respond = {
+            json(
+                obj("ok" to 1, "msg" to "评论成功", "data" to commentJson(id = 9, text = "好的"))
+                    .toString()
+            )
+        }
+
+        val comment = web.api().postComment(statusId = "42", text = "好的 & 再见")
+
+        assertEquals("/ajax/comments/create", query().encodedPath)
+        assertEquals(
+            mapOf(
+                "id" to "42",
+                "comment" to "好的 & 再见",
+                "is_repost" to "0",
+                "comment_ori" to "0",
+                "is_comment" to "0",
+            ),
+            web.requests.single().form,
+        )
+        assertEquals("9", comment?.id)
+        assertEquals("好的", comment?.text)
+    }
+
+    @Test
+    fun `postComment with replyTo replies`() = runTest {
+        web.respond = { json(obj("ok" to 1, "data" to commentJson(id = 10)).toString()) }
+
+        web.api().postComment(statusId = "42", text = "同意", replyTo = "9")
+
+        assertEquals("/ajax/comments/reply", query().encodedPath)
+        val form = web.requests.single().form
+        assertEquals("42", form["id"])
+        assertEquals("9", form["cid"])
+        assertEquals("同意", form["comment"])
+    }
+
+    @Test
+    fun `postComment with a picture sends its pid, text or not`() = runTest {
+        web.respond = { json(obj("ok" to 1, "data" to commentJson(id = 10)).toString()) }
+
+        web.api().postComment(statusId = "42", text = "", pid = "0067abc")
+
+        assertEquals(
+            mapOf(
+                "id" to "42",
+                "comment" to "",
+                "pic_id" to "0067abc",
+                "is_repost" to "0",
+                "comment_ori" to "0",
+                "is_comment" to "0",
+            ),
+            web.requests.single().form,
+        )
+    }
+
+    @Test
+    fun `allowsCommentPicture reads the answer's result`() = runTest {
+        var result = true
+        web.respond = { json("""{"ok":1,"result":$result}""") }
+        val api = web.api()
+
+        assertTrue(api.allowsCommentPicture("42"))
+        assertEquals("/ajax/statuses/checkAllowCommentWithPic", query().encodedPath)
+        assertEquals("42", query().queryParameter("id"))
+
+        result = false
+        assertFalse(api.allowsCommentPicture("42"))
+    }
+
+    @Test
+    fun deleteComment() = runTest {
+        web.respond = { json(obj("ok" to 1, "data" to commentJson(id = 9)).toString()) }
+
+        web.api().deleteComment("9")
+
+        assertEquals("/ajax/statuses/destroyComment", query().encodedPath)
+        assertEquals(mapOf("cid" to "9"), web.requests.single().form)
+    }
+
+    @Test
+    fun `postStatus posts text and pictures for an audience`() = runTest {
+        web.respond = {
+            json(
+                obj(
+                        "ok" to 1,
+                        "msg" to "发布成功",
+                        "data" to
+                            statusJson(
+                                id = 77,
+                                text = "你好",
+                                extra = mapOf("visible" to obj("type" to 1, "list_id" to 0)),
+                            ),
+                    )
+                    .toString()
+            )
+        }
+
+        val status =
+            web.api()
+                .postStatus(
+                    text = "你好 & #话题#",
+                    pids = listOf("p1", "p2"),
+                    visibility = StatusVisibility.OnlyMe,
+                )
+
+        assertEquals("/ajax/statuses/update", query().encodedPath)
+        assertEquals(
+            mapOf(
+                "content" to "你好 & #话题#",
+                "pic_id" to """[{"type":"pic","pid":"p1"},{"type":"pic","pid":"p2"}]""",
+                "visible" to "1",
+            ),
+            web.requests.single().form,
+        )
+        assertEquals("77", status?.id)
+        assertEquals(StatusVisibility.OnlyMe, status?.visibility)
+    }
+
+    @Test
+    fun `postStatus without pictures sends no pic_id`() = runTest {
+        web.respond = { json(obj("ok" to 1, "data" to statusJson()).toString()) }
+
+        web.api().postStatus(text = "只有字")
+
+        assertEquals(mapOf("content" to "只有字", "visible" to "0"), web.requests.single().form)
+    }
+
+    @Test
+    fun `repostStatus reposts with the text, for an audience`() = runTest {
+        web.respond = {
+            json(
+                obj(
+                        "ok" to 1,
+                        "msg" to "转发成功",
+                        "data" to
+                            obj(
+                                "statuses" to
+                                    statusJson(
+                                        id = 78,
+                                        text = "说两句",
+                                        retweeted = statusJson(id = 1),
+                                    )
+                            ),
+                    )
+                    .toString()
+            )
+        }
+
+        val repost =
+            web.api()
+                .repostStatus(
+                    id = "1",
+                    text = "说两句 & //@某人:原话",
+                    alsoComment = true,
+                    visibility = StatusVisibility.OnlyMe,
+                )
+
+        assertEquals("/ajax/statuses/normal_repost", query().encodedPath)
+        assertEquals(
+            mapOf(
+                "id" to "1",
+                "comment" to "说两句 & //@某人:原话",
+                "is_comment" to "1",
+                "comment_ori" to "0",
+                "is_repost" to "0",
+                "visible" to "1",
+            ),
+            web.requests.single().form,
+        )
+        assertEquals("78", repost?.id)
+        assertEquals("1", repost?.retweeted?.id)
+    }
+
+    @Test
+    fun `repostStatus without text sends no comment`() = runTest {
+        web.respond = { json(obj("ok" to 1, "data" to statusJson(id = 78)).toString()) }
+
+        val repost = web.api().repostStatus(id = "1")
+
+        assertEquals(
+            mapOf(
+                "id" to "1",
+                "is_comment" to "0",
+                "comment_ori" to "0",
+                "is_repost" to "0",
+                "visible" to "0",
+            ),
+            web.requests.single().form,
+        )
+        assertEquals("78", repost?.id)
+    }
+
+    @Test
+    fun deleteStatus() = runTest {
+        web.respond = { json(obj("ok" to 1, "data" to statusJson(id = 77)).toString()) }
+
+        web.api().deleteStatus("77")
+
+        assertEquals("/ajax/statuses/destroy", query().encodedPath)
+        assertEquals(mapOf("id" to "77"), web.requests.single().form)
+    }
+
+    @Test
+    fun `uploadPicture sends the bytes to picupload, without XHR headers, and returns the pid`() =
+        runTest {
+            web.respond = {
+                html(
+                    """{"code":"A00006","data":{"count":1,""" +
+                        """"pics":{"pic_1":{"width":10,"pid":"0067abc","ret":1}}}}"""
+                )
+            }
+            val api = web.api(mapOf("weibo.com" to mapOf("SUB" to "x", "XSRF-TOKEN" to "tok")))
+
+            val pid = api.uploadPicture("GIF89a".toByteArray())
+
+            val request = web.requests.single()
+            assertEquals("POST", request.method)
+            assertEquals("picupload.weibo.com", request.url.host)
+            assertEquals("/interface/pic_upload.php", request.url.encodedPath)
+            assertEquals(
+                mapOf("app" to "miniblog", "s" to "json", "p" to "1", "data" to "1"),
+                request.url.queryParameterNames.associateWith { request.url.queryParameter(it) },
+            )
+            assertEquals("GIF89a", request.body?.utf8())
+            assertEquals("multipart/form-data", request.headers["Content-Type"])
+            assertTrue(request.headers["Cookie"].orEmpty().contains("SUB=x"))
+            assertEquals("https://weibo.com", request.headers["Origin"])
+            assertNull(request.headers["X-Requested-With"])
+            assertNull(request.headers["X-XSRF-TOKEN"])
+            assertEquals("0067abc", pid)
+        }
+
+    @Test
+    fun `uploadPicture fails on an answer without a pid`() = runTest {
+        web.respond = { html("""{"code":"A20001","data":{"count":-10}}""") }
+
+        failure<WeiboApiException> { web.api().uploadPicture(byteArrayOf(1, 2, 3)) }
+    }
+
+    @Test
+    fun `parseUploadedPid reads either upload answer, after a script prelude`() {
+        assertEquals(
+            "a1",
+            parseUploadedPid(
+                """<script>document.domain="sina.com.cn";</script>""" +
+                    """{"code":"A00006","data":{"pics":{"pic_1":{"pid":"a1"}}}}"""
+            ),
+        )
+        assertEquals("b2", parseUploadedPid("""{"ret":true,"pic":{"pid":"b2"}}"""))
+    }
+
+    @Test
+    fun `parseUploadedPid is null for failures and junk`() {
+        assertNull(parseUploadedPid("""{"ret":false,"errno":-10}"""))
+        assertNull(parseUploadedPid("""{"code":"A20001"}"""))
+        assertNull(parseUploadedPid("<html>"))
+        assertNull(parseUploadedPid("{oops"))
     }
 }

@@ -23,6 +23,10 @@ import androidx.navigation3.ui.NavDisplay
 import io.github.leonfox28.maxbo.core.media.LocalImageLoader
 import io.github.leonfox28.maxbo.ui.auth.LoginPage
 import io.github.leonfox28.maxbo.ui.comments.CommentRepliesPage
+import io.github.leonfox28.maxbo.ui.compose.ComposePage
+import io.github.leonfox28.maxbo.ui.compose.LocalPicturePicker
+import io.github.leonfox28.maxbo.ui.compose.PicturePicker
+import io.github.leonfox28.maxbo.ui.compose.rememberGalleryPicker
 import io.github.leonfox28.maxbo.ui.debug.DiagnosticsPage
 import io.github.leonfox28.maxbo.ui.media.ImageViewerPage
 import io.github.leonfox28.maxbo.ui.media.VideoPlayerPage
@@ -40,18 +44,32 @@ import io.github.leonfox28.maxbo.ui.status.StatusDetailPage
 import io.github.leonfox28.maxbo.ui.theme.MaxboTheme
 import io.github.leonfox28.maxbo.ui.theme.isDark
 import io.github.leonfox28.maxbo.ui.webview.WebPage
+import io.github.leonfox28.maxbo.ui.widget.LocalOverlays
 import io.github.leonfox28.maxbo.ui.widget.LocalSnackbars
+import io.github.leonfox28.maxbo.ui.widget.OverlayHost
+import io.github.leonfox28.maxbo.ui.widget.Overlays
 
-/** The whole app, in the theme and text size the user has chosen. */
+/**
+ * The whole app, in the theme and text size the user has chosen.
+ *
+ * @param picturePicker tests swap in their own.
+ */
 @Composable
-fun MaxboApp(graph: AppGraph, navigator: Navigator = remember { Navigator() }) {
+fun MaxboApp(
+    graph: AppGraph,
+    navigator: Navigator = remember { Navigator() },
+    picturePicker: PicturePicker = rememberGalleryPicker(),
+) {
     val settings by graph.settings.settings.collectAsStateWithLifecycle()
     val dark = settings.themeMode.isDark()
+    val overlays = remember { Overlays() }
     SystemBarsFor(dark)
     CompositionLocalProvider(
         LocalAppGraph provides graph,
         LocalNavigator provides navigator,
         LocalSnackbars provides remember { SnackbarHostState() },
+        LocalOverlays provides overlays,
+        LocalPicturePicker provides picturePicker,
         LocalImageLoader provides graph.imageLoader,
         // On top of the system's font size, for every page, dialog and
         // snackbar alike.
@@ -88,9 +106,11 @@ fun MaxboApp(graph: AppGraph, navigator: Navigator = remember { Navigator() }) {
                         entry<Route.SearchResults> { SearchResultsPage(it.query) }
                         entry<Route.Web> { WebPage(it.url) }
                         entry<Route.Settings> { SettingsPage() }
+                        entry<Route.Compose> { ComposePage() }
                         entry<Route.Diagnostics> { if (BuildConfig.DEBUG) DiagnosticsPage() }
                     },
             )
+            OverlayHost(overlays)
         }
     }
 }

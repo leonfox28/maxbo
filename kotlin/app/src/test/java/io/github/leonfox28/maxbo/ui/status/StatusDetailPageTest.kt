@@ -30,8 +30,9 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 
-// Writing (commenting, replying, deleting, liking, reposting) comes over
-// with K5, the side-by-side layout of wide windows with K6.
+// Writing (commenting, replying, deleting, liking, reposting) is in
+// StatusDetailWritesTest; the side-by-side layout of wide windows comes
+// over with K6.
 @RunWith(RobolectricTestRunner::class)
 @Config(qualifiers = "w411dp-h891dp")
 class StatusDetailPageTest {

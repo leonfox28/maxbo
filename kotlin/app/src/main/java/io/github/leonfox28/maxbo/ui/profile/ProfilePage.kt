@@ -83,8 +83,8 @@ import kotlinx.coroutines.launch
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ProfilePage(uid: String? = null, screenName: String? = null, initial: WeiboUser? = null) {
-    val api = LocalAppGraph.current.api
-    val model = viewModel { ProfileViewModel(uid, screenName, api) }
+    val graph = LocalAppGraph.current
+    val model = viewModel { ProfileViewModel(uid, screenName, graph.api, graph.openLists) }
     val load by model.profile.collectAsStateWithLifecycle()
     val user = load.profile?.user ?: initial
     val statuses = model.statuses

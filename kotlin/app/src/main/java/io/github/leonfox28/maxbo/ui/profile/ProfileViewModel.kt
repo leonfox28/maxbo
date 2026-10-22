@@ -11,6 +11,7 @@ import io.github.leonfox28.maxbo.data.api.WeiboApi
 import io.github.leonfox28.maxbo.data.model.Paged
 import io.github.leonfox28.maxbo.data.model.Status
 import io.github.leonfox28.maxbo.data.model.UserProfile
+import io.github.leonfox28.maxbo.ui.interactions.OpenLists
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -41,6 +42,7 @@ class ProfileViewModel(
     private val uid: String?,
     private val screenName: String?,
     private val api: WeiboApi,
+    private val openLists: OpenLists,
 ) : ViewModel() {
     private val _profile = MutableStateFlow(ProfileLoad())
     val profile: StateFlow<ProfileLoad> = _profile.asStateFlow()
@@ -67,7 +69,10 @@ class ProfileViewModel(
     }
 
     private fun startStatuses(uid: String) {
-        statuses = UserStatusesController(api, uid, viewModelScope).also { it.start() }
+        val list = UserStatusesController(api, uid, viewModelScope)
+        // So the user's own posts and reposts show, and deleted ones go.
+        addCloseable(openLists.userStatuses.add(uid, list))
+        statuses = list.also { it.start() }
     }
 
     /**

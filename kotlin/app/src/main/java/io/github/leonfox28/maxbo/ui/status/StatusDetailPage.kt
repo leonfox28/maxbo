@@ -64,12 +64,23 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import io.github.leonfox28.maxbo.LocalAppGraph
 import io.github.leonfox28.maxbo.core.net.WeiboException
 import io.github.leonfox28.maxbo.core.paging.ListLoad
+import io.github.leonfox28.maxbo.core.session.SessionState
 import io.github.leonfox28.maxbo.core.util.formatCount
 import io.github.leonfox28.maxbo.core.util.formatPostTime
+import io.github.leonfox28.maxbo.data.model.Comment
 import io.github.leonfox28.maxbo.data.model.CommentOrder
 import io.github.leonfox28.maxbo.data.model.Status
+import io.github.leonfox28.maxbo.data.model.withReply
 import io.github.leonfox28.maxbo.ui.comments.CommentThread
 import io.github.leonfox28.maxbo.ui.comments.CommentTile
+import io.github.leonfox28.maxbo.ui.comments.CommentsController
+import io.github.leonfox28.maxbo.ui.interactions.LikeKind
+import io.github.leonfox28.maxbo.ui.interactions.LikeTarget
+import io.github.leonfox28.maxbo.ui.interactions.confirmDelete
+import io.github.leonfox28.maxbo.ui.interactions.like
+import io.github.leonfox28.maxbo.ui.interactions.rememberLike
+import io.github.leonfox28.maxbo.ui.interactions.rememberStatusWrites
+import io.github.leonfox28.maxbo.ui.interactions.showCommentComposer
 import io.github.leonfox28.maxbo.ui.navigation.LocalNavigator
 import io.github.leonfox28.maxbo.ui.navigation.Route
 import io.github.leonfox28.maxbo.ui.widget.AppSnackbarHost
@@ -79,12 +90,14 @@ import io.github.leonfox28.maxbo.ui.widget.CommentBar
 import io.github.leonfox28.maxbo.ui.widget.ErrorRetry
 import io.github.leonfox28.maxbo.ui.widget.HidingAppBar
 import io.github.leonfox28.maxbo.ui.widget.LoadMoreTrigger
+import io.github.leonfox28.maxbo.ui.widget.LocalOverlays
 import io.github.leonfox28.maxbo.ui.widget.LocalSnackbars
 import io.github.leonfox28.maxbo.ui.widget.UserAvatar
 import io.github.leonfox28.maxbo.ui.widget.loadErrorMessage
 import io.github.leonfox28.maxbo.ui.widget.pagedItems
 import io.github.leonfox28.maxbo.ui.widget.readingPadding
 import io.github.leonfox28.maxbo.ui.widget.showError
+import io.github.leonfox28.maxbo.ui.widget.showMessage
 import io.github.leonfox28.maxbo.ui.widget.status.StatusCard
 import io.github.leonfox28.maxbo.ui.widget.status.StatusCardActions
 import io.github.leonfox28.maxbo.ui.widget.text.StatusText
@@ -99,8 +112,8 @@ private const val TITLE = "微博正文"
  */
 @Composable
 fun StatusDetailPage(id: String, initial: Status?) {
-    val api = LocalAppGraph.current.api
-    val model = viewModel { StatusDetailViewModel(id, api) }
+    val graph = LocalAppGraph.current
+    val model = viewModel { StatusDetailViewModel(id, graph.api, graph.openLists) }
     val load by model.load.collectAsStateWithLifecycle()
     val status = load.status ?: initial
     if (status == null) {
@@ -129,20 +142,80 @@ private fun Detail(
     loadFailed: Boolean,
     error: WeiboException?,
 ) {
+    val graph = LocalAppGraph.current
     val navigator = LocalNavigator.current
     val snackbars = LocalSnackbars.current
+    val overlays = LocalOverlays.current
+    val writes = rememberStatusWrites()
     val scope = rememberCoroutineScope()
+    val session by graph.session.state.collectAsStateWithLifecycle()
+    val me = (session as? SessionState.SignedIn)?.account?.uid
     val threshold = with(LocalDensity.current) { BarsOnScroll.Threshold.toPx() }
     val bars = remember(threshold) { BarsOnScroll(threshold) }
     val hidden by
         animateFloatAsState(if (bars.visible) 0f else 1f, BarsOnScroll.spec(), label = "bars")
     val base = rememberStatusCardActions()
-    // Its own "展开" stays inert: the full text is shown or on its way.
     val cardActions =
         remember(base, status.id) {
-            base.copy(onExpand = { if (it.id != status.id) base.onExpand?.invoke(it) })
+            base.copy(
+                // Its own "展开" stays inert: the full text is shown or on its way.
+                onExpand = { if (it.id != status.id) base.onExpand?.invoke(it) },
+                // The page has nothing left to show.
+                onDelete = { deleted ->
+                    writes.delete(deleted) {
+                        if (
+                            (navigator.backStack.lastOrNull() as? Route.StatusDetail)?.id ==
+                                model.id
+                        ) {
+                            navigator.pop()
+                        }
+                    }
+                },
+            )
         }
     val authorId = status.user?.id
+
+    fun editComments(edit: (CommentsController) -> Unit) {
+        if (authorId != null) graph.openLists.editComments(status.id, authorId, edit)
+    }
+
+    fun comment() = scope.launch {
+        val sent =
+            overlays.showCommentComposer(status.id, "写评论…", model.drafts, "status") { text, pid ->
+                val comment = graph.api.postComment(status.id, text, pid = pid)
+                model.count(status, comments = 1)
+                model.tab = DetailTab.Comments
+                comment?.let { new -> editComments { it.prepend(new) } }
+            }
+        if (sent) snackbars.showMessage("评论成功", graph.appScope)
+    }
+
+    fun reply(target: Comment) = scope.launch {
+        val name = target.user?.screenName
+        val hint = if (name == null) "回复评论…" else "回复 @$name"
+        val sent =
+            overlays.showCommentComposer(status.id, hint, model.drafts, target.id) { text, pid ->
+                val reply = graph.api.postComment(status.id, text, replyTo = target.id, pid = pid)
+                // Weibo counts replies among a status's comments.
+                model.count(status, comments = 1)
+                editComments { list -> list.replace(target.id) { it.withReply(reply) } }
+            }
+        if (sent) snackbars.showMessage("回复成功", graph.appScope)
+    }
+
+    fun delete(comment: Comment) = scope.launch {
+        if (!overlays.confirmDelete() || !model.deleting.add(comment.id)) return@launch
+        try {
+            graph.api.deleteComment(comment.id)
+            model.count(status, comments = -1)
+            editComments { it.remove(comment.id) }
+            snackbars.showMessage("已删除", graph.appScope)
+        } catch (e: WeiboException) {
+            launch { snackbars.showError(e, navigator) }
+        } finally {
+            model.deleting -= comment.id
+        }
+    }
     var refreshing by remember { mutableStateOf(false) }
     val listState = rememberLazyListState()
 
@@ -173,7 +246,11 @@ private fun Detail(
             if (status.user != null) {
                 BottomBar(
                     status,
-                    Modifier.graphicsLayer { translationY = hidden * 1.5f * size.height },
+                    onComment = ::comment,
+                    // The list of reposts, if open, gets the new one from the repost itself.
+                    onRepost = { writes.repost(status) { model.count(status, reposts = 1) } },
+                    modifier =
+                        Modifier.graphicsLayer { translationY = hidden * 1.5f * size.height },
                 )
             }
         },
@@ -226,6 +303,8 @@ private fun Detail(
                         stickyHeader(key = "tabs") {
                             Tabs(
                                 status,
+                                repostsCount = model.repostsCount(status),
+                                commentsCount = model.commentsCount(status),
                                 tab = model.tab,
                                 onTab = { model.tab = it },
                             )
@@ -263,6 +342,12 @@ private fun Detail(
                                                 )
                                             )
                                         },
+                                        onClick =
+                                            if (comment.canReply) ({ reply(comment) }) else null,
+                                        onLongClick =
+                                            if (me != null && comment.user?.id == me) {
+                                                { delete(comment) }
+                                            } else null,
                                     )
                                 }
                             }
@@ -283,23 +368,27 @@ private fun Detail(
     }
 }
 
-/**
- * The comment bar, with repost and like buttons: the counts are on the tabs above. Writing comes
- * over in K5.
- */
+/** The comment bar, with repost and like buttons: the counts are on the tabs above. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun BottomBar(status: Status, modifier: Modifier) {
+private fun BottomBar(
+    status: Status,
+    onComment: () -> Unit,
+    onRepost: () -> Unit,
+    modifier: Modifier,
+) {
     val colors = MaterialTheme.colorScheme
+    val shown = rememberLike(LikeTarget(LikeKind.Status, status.id), status.like)
+    val like = shown.like
     CommentBar(
         hint = "写评论…",
-        onClick = {},
+        onClick = onComment,
         modifier = modifier,
         trailing = {
             // No ink, as on a card's counts.
             CompositionLocalProvider(LocalRippleConfiguration provides null) {
                 Row {
-                    TextButton(onClick = {}) {
+                    TextButton(onClick = onRepost) {
                         Icon(
                             Icons.Filled.Repeat,
                             contentDescription = null,
@@ -308,18 +397,15 @@ private fun BottomBar(status: Status, modifier: Modifier) {
                         Spacer(Modifier.width(8.dp))
                         Text("转发", color = colors.onSurfaceVariant)
                     }
-                    val color = if (status.liked) colors.primary else colors.onSurfaceVariant
-                    TextButton(onClick = {}) {
+                    val color = if (like.liked) colors.primary else colors.onSurfaceVariant
+                    TextButton(onClick = shown.onToggle ?: {}, enabled = shown.onToggle != null) {
                         Icon(
-                            if (status.liked) Icons.Filled.ThumbUp else Icons.Outlined.ThumbUp,
+                            if (like.liked) Icons.Filled.ThumbUp else Icons.Outlined.ThumbUp,
                             contentDescription = null,
                             tint = color,
                         )
                         Spacer(Modifier.width(8.dp))
-                        Text(
-                            if (status.likesCount > 0) formatCount(status.likesCount) else "赞",
-                            color = color,
-                        )
+                        Text(if (like.count > 0) formatCount(like.count) else "赞", color = color)
                     }
                 }
             }
@@ -346,21 +432,31 @@ private fun LoadFailedBar(message: String, onRetry: () -> Unit) {
     }
 }
 
-/** The repost and comment tabs with their counts, and the like count. */
+/**
+ * The repost and comment tabs with their counts (with what the user added or deleted here), and the
+ * like count (the like button is in the bottom bar).
+ */
 @Composable
-private fun Tabs(status: Status, tab: DetailTab, onTab: (DetailTab) -> Unit) {
+private fun Tabs(
+    status: Status,
+    repostsCount: Int,
+    commentsCount: Int,
+    tab: DetailTab,
+    onTab: (DetailTab) -> Unit,
+) {
     val colors = MaterialTheme.colorScheme
+    val like = rememberLike(LikeTarget(LikeKind.Status, status.id), status.like).like
     Column(Modifier.fillMaxWidth().background(colors.surface)) {
         Row(Modifier.height(43.dp), verticalAlignment = Alignment.CenterVertically) {
-            TabButton("转发 ${formatCount(status.repostsCount)}", tab == DetailTab.Reposts) {
+            TabButton("转发 ${formatCount(repostsCount)}", tab == DetailTab.Reposts) {
                 onTab(DetailTab.Reposts)
             }
-            TabButton("评论 ${formatCount(status.commentsCount)}", tab == DetailTab.Comments) {
+            TabButton("评论 ${formatCount(commentsCount)}", tab == DetailTab.Comments) {
                 onTab(DetailTab.Comments)
             }
             Spacer(Modifier.weight(1f))
             Text(
-                "赞 ${formatCount(status.likesCount)}",
+                "赞 ${formatCount(like.count)}",
                 modifier = Modifier.padding(end = 16.dp),
                 style = MaterialTheme.typography.bodyMedium,
                 color = colors.onSurfaceVariant,

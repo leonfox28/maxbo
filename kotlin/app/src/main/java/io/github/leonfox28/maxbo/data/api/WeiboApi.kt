@@ -1,6 +1,7 @@
 package io.github.leonfox28.maxbo.data.api
 
 import io.github.leonfox28.maxbo.core.net.HttpReply
+import io.github.leonfox28.maxbo.core.net.PlainCrossOrigin
 import io.github.leonfox28.maxbo.core.net.RateLimitedException
 import io.github.leonfox28.maxbo.core.net.SessionExpiredException
 import io.github.leonfox28.maxbo.core.net.WeiboApiException
@@ -10,6 +11,7 @@ import io.github.leonfox28.maxbo.core.net.isRateLimitStatus
 import io.github.leonfox28.maxbo.core.net.unwrapResponse
 import io.github.leonfox28.maxbo.core.util.describeShape
 import io.github.leonfox28.maxbo.core.util.devLog
+import io.github.leonfox28.maxbo.core.util.readBool
 import io.github.leonfox28.maxbo.core.util.readInt
 import io.github.leonfox28.maxbo.core.util.readMap
 import io.github.leonfox28.maxbo.core.util.readMaps
@@ -23,18 +25,47 @@ import io.github.leonfox28.maxbo.data.model.HotSearch
 import io.github.leonfox28.maxbo.data.model.LikeNotice
 import io.github.leonfox28.maxbo.data.model.Paged
 import io.github.leonfox28.maxbo.data.model.Status
+import io.github.leonfox28.maxbo.data.model.StatusVisibility
 import io.github.leonfox28.maxbo.data.model.Topic
 import io.github.leonfox28.maxbo.data.model.UnreadNotices
 import io.github.leonfox28.maxbo.data.model.UserProfile
+import kotlinx.serialization.SerializationException
+import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.addJsonObject
+import kotlinx.serialization.json.buildJsonArray
+import kotlinx.serialization.json.put
 import okhttp3.FormBody
 import okhttp3.HttpUrl.Companion.toHttpUrl
+import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
 
 /** A page of search results, with the topic if one was searched for. */
 data class SearchResults(val statuses: Paged<Status>, val topic: Topic?)
+
+/**
+ * The pid in picupload's answer [body], or null if the upload failed.
+ *
+ * It answers `{"code":"A00006","data":{"pics":{"pic_1":{"pid":…}}}}`, the newer upload
+ * `{"ret":true,"pic":{"pid":…}}`; either may follow a script prelude.
+ */
+fun parseUploadedPid(body: String): String? {
+    val start = body.indexOf('{')
+    if (start < 0) return null
+    val json =
+        try {
+            readMap(Json.parseToJsonElement(body.substring(start)))
+        } catch (_: SerializationException) {
+            null
+        } ?: return null
+    if (readBool(json["ret"]) == true) return readString(readMap(json["pic"])?.get("pid"))
+    if (readString(json["code"]) != "A00006") return null
+    val pics = readMap(readMap(json["data"])?.get("pics"))
+    return readString(readMap(pics?.get("pic_1"))?.get("pid"))
+}
 
 /**
  * Weibo's web endpoints, as used by weibo.com in a browser.
@@ -317,6 +348,173 @@ class WeiboApi(
             nextCursor = if (more) next else null,
             total = readInt(data?.get("total_number"))?.toInt(),
         )
+    }
+
+    /** Likes status [id], or takes the like back when [liked] is false. */
+    suspend fun likeStatus(id: String, liked: Boolean = true) =
+        checkLike(
+            postForm(
+                "$WEB/ajax/statuses/${if (liked) "setLike" else "cancelLike"}",
+                mapOf("id" to id),
+            ),
+            liked,
+        )
+
+    /** Likes comment [id], or takes the like back when [liked] is false. */
+    suspend fun likeComment(id: String, liked: Boolean = true) =
+        checkLike(
+            postForm(
+                "$WEB/ajax/statuses/${if (liked) "updateLike" else "destroyLike"}",
+                mapOf("object_id" to id, "object_type" to "comment"),
+            ),
+            liked,
+        )
+
+    // Some answers carry a `result`, and say ok even when it is false: taking
+    // a like back right after giving it does nothing, for one (PLAN §8).
+    private fun checkLike(json: JsonObject, liked: Boolean) {
+        if (readBool(json["result"]) == false) {
+            throw WeiboApiException(if (liked) "点赞没有成功，请稍后再试" else "取消赞没有成功，请稍后再试")
+        }
+    }
+
+    /**
+     * Whether comments on status [id] may carry a picture; its author can turn that off. weibo.com
+     * asks before it offers one.
+     */
+    suspend fun allowsCommentPicture(id: String): Boolean {
+        val json = getJson("$WEB/ajax/statuses/checkAllowCommentWithPic", mapOf("id" to id))
+        return readBool(json["result"]) != false
+    }
+
+    /**
+     * Comments [text] on status [statusId], or with [replyTo] replies to that comment (or reply)
+     * under it, with the uploaded picture [pid] if any. Returns the new comment as Weibo shows it,
+     * or null when its answer has none.
+     */
+    suspend fun postComment(
+        statusId: String,
+        text: String,
+        replyTo: String? = null,
+        pid: String? = null,
+    ): Comment? {
+        val json =
+            postForm(
+                "$WEB/ajax/comments/${if (replyTo == null) "create" else "reply"}",
+                mapOf(
+                    "id" to statusId,
+                    "cid" to replyTo,
+                    // Empty with a picture alone, as weibo.com sends it.
+                    "comment" to text,
+                    "pic_id" to pid,
+                    // Don't also repost it or comment on the retweeted post.
+                    "is_repost" to 0,
+                    "comment_ori" to 0,
+                    "is_comment" to 0,
+                ),
+            )
+        return Comment.tryFromJson(json["data"])
+    }
+
+    /** Deletes comment (or reply) [id], which the user wrote. */
+    suspend fun deleteComment(id: String) {
+        postForm("$WEB/ajax/statuses/destroyComment", mapOf("cid" to id))
+    }
+
+    /**
+     * Uploads a picture for a new post or a comment and returns its pid, as weibo.com's composer
+     * does: the file's bytes as they are, to picupload.
+     */
+    suspend fun uploadPicture(bytes: ByteArray): String = guard {
+        val request =
+            Request.Builder()
+                .url(
+                    withQuery(
+                        "https://picupload.weibo.com/interface/pic_upload.php",
+                        mapOf("app" to "miniblog", "s" to "json", "p" to 1, "data" to 1),
+                    )
+                )
+                // What the web sends, without a boundary: the body is the file.
+                .post(bytes.toRequestBody("multipart/form-data".toMediaType()))
+                .tag(PlainCrossOrigin::class.java, PlainCrossOrigin)
+                .build()
+        val reply = http.send(request, upload = true)
+        log(request, reply, "${reply.body.length} chars")
+        if (isLoginHost(reply.url.host)) throw SessionExpiredException()
+        if (isRateLimitStatus(reply.status)) throw RateLimitedException(reply.status)
+        parseUploadedPid(reply.body)
+            ?: run {
+                val shape = runCatching {
+                    describeShape(Json.parseToJsonElement(reply.body))
+                }
+                    .getOrDefault("not JSON")
+                devLog("pic_upload: ${reply.status} $shape")
+                throw WeiboApiException("图片上传失败（${reply.status}）", statusCode = reply.status)
+            }
+    }
+
+    /**
+     * Posts [text] with the uploaded pictures [pids], for [visibility]. Returns the new status as
+     * Weibo shows it, or null when its answer has none.
+     */
+    suspend fun postStatus(
+        text: String,
+        pids: List<String> = emptyList(),
+        visibility: StatusVisibility = StatusVisibility.Public,
+    ): Status? {
+        val pictures =
+            if (pids.isEmpty()) null
+            else
+                buildJsonArray {
+                    for (pid in pids) {
+                        addJsonObject {
+                            put("type", "pic")
+                            put("pid", pid)
+                        }
+                    }
+                }
+                    .toString()
+        val json =
+            postForm(
+                "$WEB/ajax/statuses/update",
+                mapOf("content" to text, "pic_id" to pictures, "visible" to visibility.code),
+            )
+        return Status.tryFromJson(json["data"])
+    }
+
+    /**
+     * Reposts status [id] with [text], for [visibility]; Weibo puts in 转发微博 when [text] is empty.
+     * With [alsoComment] the text also goes as a comment on it. Returns the new status as Weibo
+     * shows it, or null when its answer has none.
+     */
+    suspend fun repostStatus(
+        id: String,
+        text: String = "",
+        alsoComment: Boolean = false,
+        visibility: StatusVisibility = StatusVisibility.Public,
+    ): Status? {
+        val json =
+            postForm(
+                "$WEB/ajax/statuses/normal_repost",
+                mapOf(
+                    "id" to id,
+                    // weibo.com leaves it out when empty.
+                    "comment" to text.ifEmpty { null },
+                    "is_comment" to if (alsoComment) 1 else 0,
+                    // Don't also comment on the retweeted post.
+                    "comment_ori" to 0,
+                    "is_repost" to 0,
+                    "visible" to visibility.code,
+                ),
+            )
+        // weibo.com reads it from `data.statuses`.
+        val data = json["data"]
+        return Status.tryFromJson(readMap(data)?.get("statuses")) ?: Status.tryFromJson(data)
+    }
+
+    /** Deletes status [id], which the user posted. */
+    suspend fun deleteStatus(id: String) {
+        postForm("$WEB/ajax/statuses/destroy", mapOf("id" to id))
     }
 
     /** Reads a JSON endpoint; [query] values that are null are left out. */

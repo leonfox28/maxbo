@@ -8,6 +8,7 @@ import coil3.annotation.ExperimentalCoilApi
 import coil3.test.FakeImageLoaderEngine
 import io.github.leonfox28.maxbo.AppGraph
 import io.github.leonfox28.maxbo.core.net.RequestThrottle
+import io.github.leonfox28.maxbo.core.net.WeiboApiException
 import io.github.leonfox28.maxbo.core.net.WeiboCookieJar
 import io.github.leonfox28.maxbo.core.net.WeiboHttp
 import io.github.leonfox28.maxbo.core.session.SessionController
@@ -16,9 +17,12 @@ import io.github.leonfox28.maxbo.core.settings.AppSettings
 import io.github.leonfox28.maxbo.core.settings.SettingsController
 import io.github.leonfox28.maxbo.data.api.WeiboApi
 import io.github.leonfox28.maxbo.data.model.Account
+import io.github.leonfox28.maxbo.ui.compose.PictureReader
 import io.github.leonfox28.maxbo.ui.notifications.UnreadNoticesController
 import io.github.leonfox28.maxbo.ui.timeline.TimelineController
+import java.io.File
 import java.io.IOException
+import java.net.URI
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -41,6 +45,7 @@ fun testGraph(
     renewer: FakeSessionRenewer = FakeSessionRenewer(),
     web: FakeWeibo? = null,
     scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined),
+    pictures: PictureReader = FilePictureReader,
 ): AppGraph {
     val base = web?.client ?: offlineClient
     val throttle = RequestThrottle(minIntervalMs = 0)
@@ -55,8 +60,16 @@ fun testGraph(
         webCookies = webCookies,
         timeline = TimelineController(api, session, scope),
         unread = UnreadNoticesController(api, session, scope),
+        pictures = pictures,
         imageLoader = { fakeImageLoader() },
     )
+}
+
+/** Reads `file:` URIs, as the tests' pictures are; anything else fails as unreadable. */
+val FilePictureReader = PictureReader { uri ->
+    val file = URI(uri).takeIf { it.scheme == "file" }?.let(::File)
+    if (file == null || !file.isFile) throw WeiboApiException("图片读取失败")
+    file.readBytes()
 }
 
 /** A client that never reaches the network: every request fails as if offline. */

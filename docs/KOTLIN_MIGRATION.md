@@ -341,7 +341,7 @@ Dart 代码约 1.5 万行，一个 `:app` 模块就够了，用包来分层（§
 | K2 首页时间线与微博卡片 | 代码和测试完成，等真实会话验收（时间线、翻页、图片、GIF、深色、release 包滚动） | 见 git log | 见下方「K2 备注」 |
 | K3 详情、评论、媒体 | 代码和测试完成，等真实会话验收（PLAN §11「M3 详情与媒体」一行） | 见 git log | 见下方「K3 备注」 |
 | K4 用户主页、搜索、通知、网页 | 代码和测试完成，等真实会话验收（PLAN §11「M4 主页与热搜」「通知页」「搜索页签」「原生搜索结果」几行） | 见 git log | 见下方「K4 备注」 |
-| K5 互动与发布 | 未开始 | | |
+| K5 互动与发布 | 代码和测试完成，等真实会话验收（PLAN §11「M5 轻互动」「发微博」「转发」「评论带图」几行；每项真实写操作先问用户） | 见 git log | 见下方「K5 备注」 |
 | K6 设置、关于、宽屏、诊断 | 未开始 | | |
 | K7 对齐、切换、发版 | 未开始 | | |
 
@@ -409,3 +409,14 @@ Dart 代码约 1.5 万行，一个 `:app` 模块就够了，用包来分层（§
 - **应用内网页**：`WebPage` 用 `android.webkit.WebView`，UA 和 Cookie 与登录页相同。系统返回和顶栏的返回箭头都先在网页里后退，网页能后退时顶栏另有「关闭」；菜单里有「刷新」「在浏览器中打开」。主框架的 http 改成 https 再加载，非 http(s) 的链接（`sinaweibo://` 等）不打开。「去验证」打开它，页面关闭后自动重试一次（`Route.Web.onClose`）。
 - **测试**：迁移了 `user_profile_test`、`hot_search_test`、`topic_test`、`notice_test`（合在 `K4ModelsTest` 里）、`weibo_api_test` 的主页、搜索、热搜、未读、通知列表各组、`profile_page_test`、`search_page_test`、`search_results_page_test`、`notifications_page_test`，以及 K2 留下的 `timeline_page_test`（下拉刷新时检查未读，一分钟一次）。「顶栏随滚动收起」的两项没有单独翻译：收起逻辑在 `BarsOnScroll` 里，首页的测试已经覆盖了滚动。共 248 个，全部通过。`FakeWeibo` 的证书加上了 `*.api.weibo.com`（通配符只匹配一级子域名，`rm.api.weibo.com` 原来对不上）。
 
+### K5 备注
+
+- **写接口**：`WeiboApi` 加了点赞、评论、回复、删评论、转发、发微博、删微博、`allowsCommentPicture` 和 `uploadPicture`，都照 Dart 的表单字段（有测试逐项核对）。上传走 `WeiboHttp.send(upload = true)`：写请求的客户端（不自动重连）加上两分钟的读写超时；`PlainCrossOrigin` 标记去掉 XHR 和 XSRF 头，Cookie 和 Origin 照常带。
+- **弹层**：Compose 没有 Flutter 那样挂在导航栈上的弹层，新加了 `Overlays`（`ui/widget/Overlays.kt`）：`show()` 把弹层或对话框放到整个应用上方，挂起到关闭，返回关闭时的结果，和 `showModalBottomSheet` 的用法一样。`MaxboApp` 和测试的 `TestHost` 都提供它。两处与 Flutter 不同：发送中的弹层不能被拖走、点外面或按返回关掉（Flutter 可以关，请求在后台继续；Kotlin 关掉会取消请求，写请求半途取消不知道发没发出去）；弹层里的「去验证」先关掉弹层再打开网页（弹层是窗口，会盖在新页面上面），草稿保留，验证完重新打开即可。
+- **点赞**：`LikesController` 放在 `AppGraph` 里，规则照 Dart（改动只套用在改动时的那份数据上，新加载的数据优先；进行中不重复发；被拒绝时撤回并提示）。点赞在 `appScope` 上进行，离开页面也会完成或撤回。换账号（uid 变化）时清空；Dart 是任何会话变化都清空，续期也算，Kotlin 只看账号。
+- **打开的列表**：Riverpod 的 `ref.exists()` 换成了 `OpenLists`（`AppGraph.openLists`）：详情页的评论和转发列表、用户主页的微博列表在 ViewModel 存在期间登记，ViewModel 清除时注销；首页时间线直接用 `AppGraph.timeline`（还没加载过的列表不会被改动）。发微博、转发、删除自己的微博、在楼中楼里回复或删除，都经它改动已打开的列表，不为此发请求（PLAN §2）。同一条微博开着两个详情页时两个都会更新。
+- **评论弹层**：`showCommentComposer()` 照 Dart：第一次点图片按钮时才请求 `checkAllowCommentWithPic`，点「发送」才上传，上传成功的 pid 留在草稿里，重发不再上传。草稿按回复对象存在页面的 ViewModel 里。选图用系统照片选择器（`PickVisualMedia`/`PickMultipleVisualMedia`，Android 13 以下没有时退回打开文档的界面，可能多选，所以保留「多选的 N 张没有加上」的提示），图片是 content URI，经 `ContentPictureReader` 读出；读不出来时显示「图片读取失败」（Dart 的读文件失败没有处理）。测试通过 `MaxboApp(picturePicker = …)` 和 `testGraph(pictures = …)` 换掉选图和读图。
+- **转发、删除**：`StatusWrites`（`rememberStatusWrites()`）提供转发和删除自己的微博，卡片的转发数和 ⋯ 菜单都接到它；转发草稿 `RepostDrafts` 放在 `AppGraph`，换账号清空。详情页删除自己的微博后，只在这个详情页仍在最上面时才关闭它。
+- **详情页和楼中楼**：评论栏、页签上的计数（含本页的增减，新加载的数据到达后以它为准，判断方式同 Dart，比较的是 `Status` 对象本身）、底部栏的转发和赞、点评论回复、长按自己的评论删除，全部照 Dart。楼中楼页的评论栏和点回复都能回复，长按自己的回复删除，改动同时套用到下面详情页里那条评论的预览上。
+- **发微博**：`Route.Compose`，入口是首页页签右下角的「发微博」按钮（只在登录时、首页页签上显示，随导航胶囊收起）。草稿在 `AppGraph.composeDraft`，关页面不丢，换账号清空。Flutter 版从下往上弹出（`fullscreenDialog`），Kotlin 版和其他页面一样的进入动画。
+- **测试**：迁移了 `likes_test`（另加了「退出后清空」）、`comment_composer_test`、`repost_test`、`compose_draft_test`（另加了「换账号清空」）、`compose_page_test`、`comment_replies_page_test`、`weibo_api_test` 的写接口和 `parseUploadedPid`、`status_detail_page_test` 的写操作各项（放在 `StatusDetailWritesTest`），另加了首页「发微博」按钮的测试。`status_actions_test` 只测跳转，K2 已经覆盖；`status_detail_page_test` 的「按钮没有水波纹」同 K2 的说明，没有翻译。关弹层用遮罩的无障碍点击（`support/Sheets.kt` 的 `closeSheet()`），因为点遮罩中心会点到弹层上。共 305 个，全部通过。

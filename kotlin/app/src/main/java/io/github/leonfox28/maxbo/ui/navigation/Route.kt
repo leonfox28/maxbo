@@ -38,6 +38,9 @@ sealed interface Route {
     /** A web page in the in-app browser; [onClose] runs once the user leaves it. */
     data class Web(val url: String, val onClose: (() -> Unit)? = null) : Route
 
+    /** Writing a new post. */
+    data object Compose : Route
+
     data object Settings : Route
 
     /** Debug builds only. */
