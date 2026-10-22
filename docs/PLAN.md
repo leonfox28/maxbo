@@ -242,6 +242,14 @@ test/  (fixtures/ 下只放合成数据)
 - **返回**：`{ok:1, msg, data}`，网页版从 `data.statuses` 读出新微博；maxbo 两种位置都认，实测解析出了完整的转发（作者、正文、「仅自己可见」标签）。返回里被转发的原微博与时间线里的不一样：视频变成了一张「某某的微博」链接卡片，正文里少了「微博正文」链接，外层也没有 `region_name`。刷新时间线后，同一条转发就显示正常了。
 - **计数**：转发后，`statuses/show` 立即显示 `reposts_count` +1；勾了「同时评论」时 `comments_count` 也 +1。`repostTimeline` 立即包含这条「仅自己可见」的转发（自己看得到）。同时评论产生的评论，正文与转发理由相同，可以照常用 `destroyComment` 删除。用 `statuses/destroy` 删除转发后，计数恢复为 0。
 
+**评论带图实测结论（2026-10-22，用户同意后在测试微博上发了一条带文字和图片的评论、一条只有图片的回复，修正显示后又发了一条带图评论核对，测完三条都已删除；图片是本地生成的纯色块）：**
+
+- **接口来源**：weibo.com 前端脚本（`index-*.js`，以游客身份用无头 Chrome 取得，只看接口形态）里的评论框。评论和回复仍是 `comments/create`、`comments/reply`，多一个表单字段 `pic_id`，值是图片的 pid，多张时用逗号连接（不是发微博那样的 JSON 数组）。网页版默认只能带一张，`$CONFIG.flags.pc_comment_pics` 为 `"true"` 时才能多选（最多 18 张），maxbo 只做一张。有图时正文可以为空（网页版照发 `comment=`），微博把正文显示为「图片评论」。
+- **能否带图**：网页版打开评论框时（转发框除外）请求 `GET /ajax/statuses/checkAllowCommentWithPic?id=<微博 id>`，返回 `{ok:1, result:bool}`；`false` 时图片按钮不可用（作者可以关掉评论配图），请求失败时当作可以。maxbo 等用户第一次点图片按钮时才请求，每次打开弹层最多一次。测试微博返回的是可以，`false` 的情况还没见到。
+- **上传**：网页版评论框用较新的 `upload.php`（`file_source=3`）。maxbo 沿用发微博用的经典 `pic_upload.php`（见发微博实测结论），得到的 pid 评论和回复都能用，刷新后图片正常显示。
+- **返回**：`data` 仍是一条评论，但**没有 `url_struct`**，图片只体现在 `pic_ids:[pid]` 和 `pic_num:1` 上（另有 `mix_media_ids`）。带文字的评论，`text` 末尾多一个指向图片的 `t.cn` 短链（`<a>` 只有 `target`、`href` 两个属性，没有 `data-pid`）；因为没有 `url_struct`，这个短链显示成「网页链接」。网页版发完也是用自己的 pid 拼出图片（`pidToImgs(pic_ids)`）。maxbo 的 `Comment` 在 `url_struct` 里没有图片时，就从 `pic_ids` 拼出图片（`PicInfo.tryFromPid()`）。pid 第 10 位是 `y` 时，地址为 `https://wx{n}.sinaimg.cn/{thumbnail|bmiddle|large|woriginal}/{pid}.{jpg|gif}`，其中 `n = (crc32(pid) & 3) + 1`；第 22 位是 `g` 时是 GIF。这和 `buildComments` 里两条测试评论的地址一致，wx1–wx4 都能取到同一张图。其他老式 pid 不处理。同时去掉 `text` 末尾的 `t.cn` 链接，每张图去掉一个。
+- **列表里的样子**：刷新后，带图评论的 `text` 里没有这个链接，图片在 `url_struct` 里（与 M3 实测结论一致）。只有图片的回复，正文是「图片评论」，后面跟一个「查看图片」链接。
+
 **搜索实测结论（2026-10-20，诊断页「搜索结构」，只读）：**
 
 - **weibo.com 没有现成的搜索结果接口**：前端脚本里「搜索结果」页用的 `GET /ajax/search/all?containerid=…` 已经下线，带登录态请求也返回 404「你访问的地址不存在」；网页版顶部搜索栏直接打开 `s.weibo.com`。
@@ -326,6 +334,7 @@ test/  (fixtures/ 下只放合成数据)
 | v0.10.1 | ✅ 2026-10-21 发布（Pre-release，APK + 无签名 IPA）：登录过期后自动续期（不再约每 7 天重新登录）；用户主页里他人赞过、评论过的微博带上「他10-17赞过的微博」这类说明；用户主页和搜索结果的顶栏随滚动收起；主页头部加载时用灰色占位条；主页头部、话题头下面改为细线；卡片计数、评论点赞、详情页底部条去掉按压色块。没有新功能，所以升 patch 版本。下载后核对过校验值、三个 APK 的签名证书、IPA 的版本号（0.10.1，build 19），arm64 APK 能在模拟器上覆盖安装 0.10.0 并启动（未登录状态）。续期还没经历过一次真正的 7 天到期（应用里的 `SUB` 是 10-21 续期的，约 10-28 失效，到时看 logcat 的 `session renewal`） | `cf0acf3`，见 `v0.10.1` 标签 |
 | 页面转场与预测性返回 | ✅ 完成（v0.10.2 发布）：go_router 18 改用 material_ui 后，只认 material_ui 的 `MaterialApp`，maxbo 用的是 Flutter 自带的那个，于是 `builder:` 路由一直拿到的是 `NoTransitionPage`：打开页面没有转场，Android 的预测性返回和 iOS 的边缘右滑返回都不起作用（M0 起就是这样）。现在页签之上的页面都经 `_page()` 用 Flutter 的 `MaterialPage`，并在 manifest 里加了 `android:enableOnBackInvokedCallback="true"`（Android 16 模拟器上实测，targetSdk 36 并不会默认开启）。Android 16 模拟器上（adb 注入的手势）核对了：设置页侧滑时页面缩小、跟手，松手返回「我」页，慢慢滑回边缘再松手则取消；在页签根页面侧滑时，系统预览退出应用后的界面。新增页面时也要用 `pageBuilder: (_, state) => _page(state, ...)`，不要用 `builder:`。iOS 的右滑返回只由 Widget 测试覆盖，没在模拟器上试过 | 见 git log |
 | v0.10.2 | ✅ 2026-10-21 发布（Pre-release，APK + 无签名 IPA）：页面转场、Android 预测性返回、iOS 右滑返回。属于修复，没有新功能，所以升 patch 版本。下载后核对过校验值、三个 APK 的签名证书、IPA 的版本号（0.10.2，build 20），arm64 APK 的 manifest 带 `enableOnBackInvokedCallback`，能在模拟器上覆盖安装 0.10.1 并启动（未登录状态），release 包里在设置页侧滑时页面跟手缩小、松手返回 | `687dbe5`，见 `v0.10.2` 标签 |
+| 评论带图 | ✅ 完成（未发布）：详情页和楼中楼页的评论/回复弹层左下角加了图片按钮，可以带一张图：从系统相册选，弹层里显示缩略图，可以移除；有图时可以不写字。第一次点图片按钮时先请求 `checkAllowCommentWithPic`，不能带图时按钮变灰并提示。图片在点「发送」时才上传，发送失败后再发不会重传；图片和文字一起存在草稿里，关掉弹层不丢。发出后新评论立即显示图片（用 pid 拼地址）。`picturePickerProvider` 移到了 `compose/picture_picker.dart`。Android 真实会话下核对了：带文字和图片的评论、只有图片的回复（显示「图片评论」）都发送成功，刷新后图片正常；修正后发的第三条评论发出后立即显示图片。随后删除了三条测试评论，测试微博恢复为 0 评论。发出后去掉末尾「网页链接」只由单元测试覆盖（第三条评论是在这项修正之前发的）。iOS 没有测过 | 见 git log |
 
 ### 已有的基础设施
 
@@ -350,7 +359,7 @@ test/  (fixtures/ 下只放合成数据)
 - **测试**：`test/support/fakes.dart` 的 `signedInOverrides(adapter)` 一次性给出"已登录（uid 7）+ 假网络"所需的覆盖；`test/support/routes.dart` 的 `stubRouter(home)` 把 `/u`、`/n`、`/status`、`/web` 换成只显示参数的占位页，用来测"点了会跳到哪里"。合成数据的构造函数都在 `test/support/statuses.dart`。
 - **互动**（`lib/features/interactions/`）：
   - `likesProvider`（`likes.dart`）按 `(kind, id)` 保存用户在应用里改过的点赞，所有列表和页面共用，所以同一条微博或评论在时间线、主页、详情页、楼中楼页显示一致。每条改动记着改动时页面数据的样子（`base`），**只有页面数据还是那个样子时才套用改动**；之后加载的数据已经包含这次改动，以新数据为准。界面用 `LikeBuilder`：点了立即显示，请求期间不能再点，失败时回滚并用 `showErrorSnackBar()` 提示（验证码时给「去验证」，验证后由用户自己再点一次）。
-  - `showCommentComposer()`（`comment_composer.dart`）是写评论/回复的底部弹层：发送中禁用、失败时在弹层里显示原因、关掉弹层不丢草稿（草稿存在页面的 `Map` 里）。`CommentBar` 是详情页和楼中楼页底部的输入条，`confirmDeleteComment()` 是删除前的菜单加二次确认。
+  - `showCommentComposer()`（`comment_composer.dart`）是写评论/回复的底部弹层：发送中禁用、失败时在弹层里显示原因、关掉弹层不丢草稿（`CommentDraft` 存文字和图片，放在页面的 `Map` 里）。可以带一张图，选图前先问能否带图，发送时才上传，`send` 回调收到文字和 pid。`CommentBar` 是详情页和楼中楼页底部的输入条，`confirmDeleteComment()` 是删除前的菜单加二次确认。
   - `repostStatus()`（`repost.dart`）打开转发弹层，发出后把新转发加到已打开的首页、自己主页和转发列表顶部，再调 `onReposted`（详情页用它给转发数本地 +1）。卡片上的转发数经 `StatusCardActions.onRepost` 调用它。
   - 详情页：底部条写评论、转发和点赞，点评论回复它，长按自己的评论删除。楼中楼页：底部条回复根评论，点任一条回复它，长按自己的回复删除。楼中楼页的改动通过 `editOpenCommentLists()` 同步到详情页里已打开的评论列表（只改已加载的列表，不会因此发请求）。评论数在详情页本地加减，刷新后以服务端为准。
 - **设置**（`lib/core/settings/app_settings.dart`）：`settingsProvider` 是 `AppSettings`（主题、`TextSize`、`ImageQuality`、图片缓存上限），存在 `shared_preferences` 里，`main()` 在第一帧前读入（`initialSettingsProvider`），避免主题闪一下。改设置用 `settingsProvider.notifier.update((s) => s.copyWith(...))`，会立即生效并保存。列表里的图片尺寸用 `quality.listPixels(逻辑尺寸, dpr)` 再交给 `PicInfo.variantFor()`，查看器用 `quality.viewerVariant(pic)`。测试用 `test/support/fakes.dart` 的 `InMemorySettingsStorage`。
@@ -368,7 +377,7 @@ test/  (fixtures/ 下只放合成数据)
   - 真实的第 7 天自然过期还没遇到：模拟器上应用当前的 `SUB` 是 2026-10-21 续期得到的，预计 10-28 左右失效，到时用 logcat 的 `session renewal` 核对。
 - **iOS 真机/真实登录**：iOS 上只验证过能编译、模拟器上未登录能启动。真实登录、Cookie 读取（`AppDelegate.swift`）、视频播放和 WebView 都没在 iOS 上跑过，需要用户本人在 iOS 模拟器或真机上登录一次。
 - **信息流广告**：还没见到信息流里插入的真实广告，判定规则（§8 第 5 项）仍是推测；见到后用诊断页的「时间线结构」核对。
-- **互动的已知局限**：转发数和时间线卡片上的评论数不会因为用户评论而变化（只有详情页本地加减）；从详情页的楼中楼预览里不能直接删回复（要进楼中楼页）；没有表情面板和 @ 补全；评论字数没有在客户端限制，超长时显示服务端的错误信息。
+- **互动的已知局限**：转发数和时间线卡片上的评论数不会因为用户评论而变化（只有详情页本地加减）；从详情页的楼中楼预览里不能直接删回复（要进楼中楼页）；没有表情面板和 @ 补全；评论字数没有在客户端限制，超长时显示服务端的错误信息；评论只能带一张图（网页版在 `pc_comment_pics` 开启时可以带多张），图片不压缩，上传中途不能取消。
 - **搜索的已知局限**：结果只按时间倒序，没有网页版的「综合」排序，也没有用户、视频等分类（这些只在右上角的网页版里有，游客只能看第一页）；没有搜索历史、联想词和筛选（接口支持原创、图片、视频和时间段筛选，见 §8）；宽窗口下是 640 单栏，不像首页那样横排卡片；新发的微博不会加进已打开的结果页，在详情页删除的自己的微博也要刷新后才从结果页消失（在结果页卡片上删除的会立即移除）。
 - **发微博的已知局限**：没有表情面板、@ 补全、话题、定位、视频、投票、定时发布、编辑；不显示字数（超长时显示服务端的错误）；图片不压缩、不带水印，相册里的 HEIC 在 iOS 上由插件转成 JPEG；上传中途不能取消。
 - **转发的已知局限**：没有「快转」，不能带图（网页版可以）；时间线卡片上的转发数不会因为转发而变化（只有详情页本地 +1）；勾了「同时评论」时，详情页的评论数和评论列表要刷新后才更新；刚转发出的那条里，原微博按接口返回的样子显示（视频变成链接卡片），刷新后正常；不显示字数，超长时显示服务端的错误。
