@@ -113,7 +113,13 @@ class StatusDetailPageTest {
         waitFor("最热的评论")
         compose.onNodeWithText("评论 1.2万", useUnmergedTree = true).assertExists()
         compose.onNodeWithText("转发 3", useUnmergedTree = true).assertExists()
-        assertEquals("true", web.requests.first().url.queryParameter("isGetLongText"))
+        assertEquals(
+            "true",
+            web.requests
+                .first { it.url.encodedPath == "/ajax/statuses/show" }
+                .url
+                .queryParameter("isGetLongText"),
+        )
         // Reposts wait until their tab is opened.
         assertEquals(0, requestsTo("/ajax/statuses/repostTimeline"))
     }

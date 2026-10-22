@@ -47,6 +47,7 @@ class FakeWeibo : Closeable {
         HeldCertificate.Builder()
             .addSubjectAlternativeName("weibo.com")
             .addSubjectAlternativeName("*.weibo.com")
+            .addSubjectAlternativeName("*.api.weibo.com")
             .addSubjectAlternativeName("weibo.cn")
             .addSubjectAlternativeName("*.weibo.cn")
             .addSubjectAlternativeName("*.sina.com.cn")

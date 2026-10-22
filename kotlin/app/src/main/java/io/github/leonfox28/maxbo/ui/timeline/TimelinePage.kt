@@ -37,6 +37,7 @@ import io.github.leonfox28.maxbo.core.paging.PagedState
 import io.github.leonfox28.maxbo.core.session.SessionState
 import io.github.leonfox28.maxbo.data.model.Status
 import io.github.leonfox28.maxbo.ui.auth.LoginPrompt
+import io.github.leonfox28.maxbo.ui.notifications.UNREAD_RECHECK_MS
 import io.github.leonfox28.maxbo.ui.shell.LocalTabReselect
 import io.github.leonfox28.maxbo.ui.status.rememberStatusCardActions
 import io.github.leonfox28.maxbo.ui.widget.ErrorRetry
@@ -85,8 +86,11 @@ private fun StatusList(timeline: PagedState<Status>, padding: PaddingValues, mod
     val listState = rememberLazyListState()
     val actions = rememberStatusCardActions()
     var refreshing by remember { mutableStateOf(false) }
+    val unread = LocalAppGraph.current.unread
     fun refresh() {
         if (refreshing) return
+        // The user asked for what's new; that includes notifications.
+        unread.requestCheck(UNREAD_RECHECK_MS)
         refreshing = true
         scope.launch {
             try {

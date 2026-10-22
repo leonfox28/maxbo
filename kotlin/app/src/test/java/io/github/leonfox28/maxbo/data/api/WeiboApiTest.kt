@@ -2,23 +2,36 @@ package io.github.leonfox28.maxbo.data.api
 
 import io.github.leonfox28.maxbo.core.net.SessionExpiredException
 import io.github.leonfox28.maxbo.core.net.WeiboApiException
+import io.github.leonfox28.maxbo.core.net.WeiboCookieJar
 import io.github.leonfox28.maxbo.data.model.Account
 import io.github.leonfox28.maxbo.data.model.CommentOrder
+import io.github.leonfox28.maxbo.data.model.NoticeKind
 import io.github.leonfox28.maxbo.support.FakeWeibo
 import io.github.leonfox28.maxbo.support.commentJson
+import io.github.leonfox28.maxbo.support.commentNoticeJson
 import io.github.leonfox28.maxbo.support.commentsPageJson
 import io.github.leonfox28.maxbo.support.form
 import io.github.leonfox28.maxbo.support.homePage
+import io.github.leonfox28.maxbo.support.hotItemJson
+import io.github.leonfox28.maxbo.support.hotSearchJson
 import io.github.leonfox28.maxbo.support.html
 import io.github.leonfox28.maxbo.support.json
+import io.github.leonfox28.maxbo.support.likeNoticeJson
+import io.github.leonfox28.maxbo.support.noticePageJson
 import io.github.leonfox28.maxbo.support.obj
 import io.github.leonfox28.maxbo.support.plus
+import io.github.leonfox28.maxbo.support.profileDataJson
 import io.github.leonfox28.maxbo.support.redirect
 import io.github.leonfox28.maxbo.support.repostsPageJson
+import io.github.leonfox28.maxbo.support.searchJson
 import io.github.leonfox28.maxbo.support.statusJson
+import io.github.leonfox28.maxbo.support.topicHeadsJson
+import io.github.leonfox28.maxbo.support.userJson
+import io.github.leonfox28.maxbo.support.userStatusesJson
 import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -197,5 +210,233 @@ class WeiboApiTest {
         val second = api.fetchReposts(statusId = "42", page = 2)
         assertEquals("2", query().queryParameter("page"))
         assertNull(second.nextCursor)
+    }
+
+    @Test
+    fun `fetchProfile looks a user up by uid`() = runTest {
+        web.respond = {
+            json(obj("ok" to 1, "data" to profileDataJson(user = userJson(id = 1001))).toString())
+        }
+
+        val profile = web.api().fetchProfile(uid = "1001")
+
+        assertEquals("/ajax/profile/info", query().encodedPath)
+        assertEquals(setOf("uid"), query().queryParameterNames)
+        assertEquals("1001", query().queryParameter("uid"))
+        assertEquals("1001", profile.user.id)
+    }
+
+    @Test
+    fun `fetchProfile looks a user up by name, for mentions`() = runTest {
+        web.respond = {
+            json(
+                obj("ok" to 1, "data" to profileDataJson(user = userJson(id = 1001, name = "示例用户")))
+                    .toString()
+            )
+        }
+
+        val profile = web.api().fetchProfile(screenName = "示例用户")
+
+        assertEquals("示例用户", query().queryParameter("screen_name"))
+        assertEquals(setOf("screen_name"), query().queryParameterNames)
+        assertEquals("1001", profile.user.id)
+    }
+
+    @Test
+    fun `fetchProfile reports an unknown name, which Weibo answers with ok=1`() = runTest {
+        web.respond = { json("""{"ok":1,"user":{},"message":"用户不存在","abnormal":false}""") }
+
+        val e = failure<WeiboApiException> { web.api().fetchProfile(screenName = "没有这个人") }
+        assertEquals("找不到这个用户", e.message)
+    }
+
+    @Test
+    fun `fetchUserStatuses pages by number until since_id runs out`() = runTest {
+        web.respond = {
+            json(
+                userStatusesJson(
+                        listOf(statusJson(id = 1, extra = mapOf("isTop" to 1)), statusJson(id = 2)),
+                        total = 30,
+                    )
+                    .toString()
+            )
+        }
+        val api = web.api()
+
+        val first = api.fetchUserStatuses(uid = "1001")
+        assertEquals("/ajax/statuses/mymblog", query().encodedPath)
+        assertEquals(
+            listOf("1001", "1", "0"),
+            listOf("uid", "page", "feature").map { query().queryParameter(it) },
+        )
+        assertEquals(listOf("1", "2"), first.items.map { it.id })
+        assertTrue(first.items.first().pinned)
+        assertEquals("2", first.nextCursor)
+        assertEquals(30, first.total)
+
+        web.respond = {
+            json(userStatusesJson(listOf(statusJson(id = 3)), sinceId = "").toString())
+        }
+        val last = api.fetchUserStatuses(uid = "1001", page = 2)
+        assertEquals("2", query().queryParameter("page"))
+        assertEquals("3", last.items.single().id)
+        assertNull(last.nextCursor)
+    }
+
+    @Test
+    fun `fetchUserStatuses - an empty page ends the list`() = runTest {
+        web.respond = { json(userStatusesJson(emptyList()).toString()) }
+
+        assertNull(web.api().fetchUserStatuses(uid = "1001").nextCursor)
+    }
+
+    @Test
+    fun `searchStatuses searches everyone, a page by number at a time`() = runTest {
+        web.respond = {
+            json(searchJson(listOf(statusJson(id = 1), statusJson(id = 2)), total = 735).toString())
+        }
+        val api = web.api()
+
+        val first = api.searchStatuses("某个词")
+        assertEquals("/ajax/statuses/search", query().encodedPath)
+        // No atten=1: that keeps to followed users.
+        assertEquals(setOf("q", "count", "page"), query().queryParameterNames)
+        assertEquals(
+            listOf("某个词", "20", "1"),
+            listOf("q", "count", "page").map { query().queryParameter(it) },
+        )
+        assertEquals(listOf("1", "2"), first.statuses.items.map { it.id })
+        assertEquals("2", first.statuses.nextCursor)
+        assertEquals(735, first.statuses.total)
+        assertNull(first.topic)
+
+        api.searchStatuses("某个词", page = 2)
+        assertEquals("2", query().queryParameter("page"))
+    }
+
+    @Test
+    fun `searchStatuses - a topic comes with its lead and counts`() = runTest {
+        web.respond = {
+            json(
+                searchJson(
+                        listOf(statusJson(id = 1)),
+                        topicHeads = topicHeadsJson(name = "某个话题", summary = "话题导语"),
+                    )
+                    .toString()
+            )
+        }
+
+        val results = web.api().searchStatuses("#某个话题#")
+        assertEquals("#某个话题#", query().queryParameter("q"))
+        assertEquals("某个话题", results.topic?.name)
+        assertEquals("话题导语", results.topic?.summary)
+    }
+
+    @Test
+    fun `searchStatuses - only an empty page ends the results`() = runTest {
+        web.respond = { json(searchJson(emptyList(), total = 735).toString()) }
+
+        assertNull(web.api().searchStatuses("某个词", page = 37).statuses.nextCursor)
+    }
+
+    @Test
+    fun `fetchHotSearch reads the list`() = runTest {
+        web.respond = {
+            json(hotSearchJson(realtime = listOf(hotItemJson("第一条", realpos = 1))).toString())
+        }
+
+        val hot = web.api().fetchHotSearch()
+
+        assertEquals("/ajax/side/hotSearch", query().encodedPath)
+        assertEquals("第一条", hot.items.single().word)
+    }
+
+    @Test
+    fun `fetchUnreadNotices reads which kinds have counts, zero ones left out`() = runTest {
+        web.respond = { json("""{"cmt":2,"mention_cmt":0,"attitude":1,"messages":3}""") }
+
+        val unread = web.api().fetchUnreadNotices()
+
+        val request = web.requests.single()
+        assertEquals("rm.api.weibo.com", request.url.host)
+        assertEquals("/2/remind/push_count.json", request.url.encodedPath)
+        assertEquals("0", request.url.queryParameter("exclude_attitude"))
+        assertNull(request.url.queryParameter("callback"))
+        // The session's cookies go along, as they do from weibo.com.
+        assertTrue(request.headers["Cookie"].orEmpty().contains("SUB=x"))
+        assertEquals(setOf(NoticeKind.Comments, NoticeKind.Likes), unread.kinds)
+    }
+
+    @Test
+    fun `fetchUnreadNotices - a refusal is an error, but never ends the session`() = runTest {
+        web.respond = { json("""{"error":"auth faild!","error_code":21301}""", status = 403) }
+        var expired = false
+        val api =
+            WeiboApi(
+                web.http(WeiboCookieJar(mapOf("weibo.com" to mapOf("SUB" to "x")))),
+                onSessionExpired = {
+                    expired = true
+                    false
+                },
+            )
+
+        failure<WeiboApiException> { api.fetchUnreadNotices() }
+        assertFalse(expired)
+    }
+
+    @Test
+    fun `notice lists page from next_cursor until it is 0`() = runTest {
+        web.respond = {
+            json(
+                noticePageJson("comments", listOf(commentNoticeJson(id = 9)), nextCursor = 8)
+                    .toString()
+            )
+        }
+        val api = web.api()
+
+        val first = api.fetchCommentNotices()
+        assertEquals("/ajax/message/cmt", query().encodedPath)
+        assertEquals("0", query().queryParameter("max_id"))
+        assertEquals("9", first.items.single().id)
+        assertEquals("被评论的微博", first.items.single().status?.text)
+        assertEquals("8", first.nextCursor)
+
+        web.respond = {
+            json(noticePageJson("comments", listOf(commentNoticeJson(id = 7))).toString())
+        }
+        val last = api.fetchCommentNotices(maxId = "8")
+        assertEquals("8", query().queryParameter("max_id"))
+        assertNull(last.nextCursor)
+    }
+
+    @Test
+    fun `notice lists - an empty page ends the list whatever next_cursor says`() = runTest {
+        web.respond = { json(noticePageJson("statuses", emptyList(), nextCursor = 8).toString()) }
+
+        val page = web.api().fetchMentionStatuses()
+
+        assertEquals("/ajax/statuses/mentions", query().encodedPath)
+        assertNull(page.nextCursor)
+    }
+
+    @Test
+    fun `mentioning comments and likes come from their own lists`() = runTest {
+        web.respond = {
+            json(
+                (if (it.url.encodedPath.endsWith("attitudes"))
+                        noticePageJson("attitudes", listOf(likeNoticeJson(id = 5)))
+                    else noticePageJson("comments", listOf(commentNoticeJson(id = 4))))
+                    .toString()
+            )
+        }
+        val api = web.api()
+
+        val mentions = api.fetchMentionComments()
+        assertEquals("/ajax/comments/mentions", query().encodedPath)
+        assertEquals("4", mentions.items.single().id)
+
+        val likes = api.fetchLikeNotices()
+        assertEquals("/ajax/message/attitudes", query().encodedPath)
+        assertEquals("5", likes.items.single().id)
     }
 }

@@ -32,13 +32,15 @@ import io.github.leonfox28.maxbo.ui.navigation.Route
 import io.github.leonfox28.maxbo.ui.navigation.popTransition
 import io.github.leonfox28.maxbo.ui.navigation.predictivePopTransition
 import io.github.leonfox28.maxbo.ui.navigation.pushTransition
+import io.github.leonfox28.maxbo.ui.profile.ProfilePage
+import io.github.leonfox28.maxbo.ui.search.SearchResultsPage
 import io.github.leonfox28.maxbo.ui.settings.SettingsPage
 import io.github.leonfox28.maxbo.ui.shell.HomeShell
 import io.github.leonfox28.maxbo.ui.status.StatusDetailPage
 import io.github.leonfox28.maxbo.ui.theme.MaxboTheme
 import io.github.leonfox28.maxbo.ui.theme.isDark
+import io.github.leonfox28.maxbo.ui.webview.WebPage
 import io.github.leonfox28.maxbo.ui.widget.LocalSnackbars
-import io.github.leonfox28.maxbo.ui.widget.MigrationPlaceholder
 
 /** The whole app, in the theme and text size the user has chosen. */
 @Composable
@@ -81,10 +83,10 @@ fun MaxboApp(graph: AppGraph, navigator: Navigator = remember { Navigator() }) {
                             ImageViewerPage(it.pics, it.index)
                         }
                         entry<Route.Video> { VideoPlayerPage(it.id, it.index, it.initial) }
-                        entry<Route.Profile> { MigrationPlaceholder("主页", "用户主页（K4）") }
-                        entry<Route.ProfileByName> { MigrationPlaceholder(it.name, "用户主页（K4）") }
-                        entry<Route.SearchResults> { MigrationPlaceholder(it.query, "搜索结果（K4）") }
-                        entry<Route.Web> { MigrationPlaceholder("网页", "应用内浏览器（K4）") }
+                        entry<Route.Profile> { ProfilePage(uid = it.uid, initial = it.initial) }
+                        entry<Route.ProfileByName> { ProfilePage(screenName = it.name) }
+                        entry<Route.SearchResults> { SearchResultsPage(it.query) }
+                        entry<Route.Web> { WebPage(it.url) }
                         entry<Route.Settings> { SettingsPage() }
                         entry<Route.Diagnostics> { if (BuildConfig.DEBUG) DiagnosticsPage() }
                     },

@@ -16,6 +16,7 @@ import io.github.leonfox28.maxbo.core.settings.AppSettings
 import io.github.leonfox28.maxbo.core.settings.SettingsController
 import io.github.leonfox28.maxbo.data.api.WeiboApi
 import io.github.leonfox28.maxbo.data.model.Account
+import io.github.leonfox28.maxbo.ui.notifications.UnreadNoticesController
 import io.github.leonfox28.maxbo.ui.timeline.TimelineController
 import java.io.IOException
 import kotlinx.coroutines.CoroutineScope
@@ -53,6 +54,7 @@ fun testGraph(
         api = api,
         webCookies = webCookies,
         timeline = TimelineController(api, session, scope),
+        unread = UnreadNoticesController(api, session, scope),
         imageLoader = { fakeImageLoader() },
     )
 }

@@ -41,8 +41,10 @@ import androidx.compose.material3.TooltipDefaults
 import androidx.compose.material3.rememberTooltipState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -65,7 +67,15 @@ import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import io.github.leonfox28.maxbo.LocalAppGraph
+import io.github.leonfox28.maxbo.core.session.SessionState
+import io.github.leonfox28.maxbo.ui.notifications.NotificationsPage
+import io.github.leonfox28.maxbo.ui.notifications.UNREAD_RECHECK_MS
 import io.github.leonfox28.maxbo.ui.profile.MePage
+import io.github.leonfox28.maxbo.ui.search.SearchPage
 import io.github.leonfox28.maxbo.ui.theme.UnreadColor
 import io.github.leonfox28.maxbo.ui.timeline.TimelinePage
 import io.github.leonfox28.maxbo.ui.widget.AppSnackbarHost
@@ -96,13 +106,16 @@ fun HomeShell() {
     }
     val hidden by
         animateFloatAsState(if (bars.visible) 0f else 1f, BarsOnScroll.spec(), label = "pill")
+    val graph = LocalAppGraph.current
+    val unread by graph.unread.state.collectAsStateWithLifecycle()
+    UnreadChecks()
     Scaffold(
         Modifier.nestedScroll(bars.connection),
         // Lists scroll on behind the pill; the padding below makes room for it.
         bottomBar = {
             FloatingNavBar(
                 selected = Tab.entries[current],
-                alerts = emptySet(),
+                alerts = if (unread.any) setOf(Tab.Notifications) else emptySet(),
                 onSelected = {
                     bars.show()
                     if (it.ordinal == current) reselects[current].tryEmit(Unit)
@@ -121,12 +134,31 @@ fun HomeShell() {
     }
 }
 
+/**
+ * Checks for unread notifications when the user signs in or opens the app, and when they come back
+ * to it (at most once a minute), never in between (PLAN §2).
+ */
+@Composable
+private fun UnreadChecks() {
+    val graph = LocalAppGraph.current
+    val session by graph.session.state.collectAsStateWithLifecycle()
+    val uid = (session as? SessionState.SignedIn)?.account?.uid
+    LaunchedEffect(uid) { if (uid != null) graph.unread.check() }
+    // Coming back to the app, not opening it: that is the check above.
+    var away by remember { mutableStateOf(false) }
+    LifecycleEventEffect(Lifecycle.Event.ON_STOP) { away = true }
+    LifecycleEventEffect(Lifecycle.Event.ON_START) {
+        if (away) graph.unread.requestCheck(UNREAD_RECHECK_MS)
+        away = false
+    }
+}
+
 @Composable
 private fun TabPage(tab: Tab, padding: PaddingValues) {
     when (tab) {
         Tab.Home -> TimelinePage(padding)
-        Tab.Search -> PlaceholderTab(tab.label, padding)
-        Tab.Notifications -> PlaceholderTab(tab.label, padding)
+        Tab.Search -> SearchPage(padding)
+        Tab.Notifications -> NotificationsPage(padding)
         Tab.Me -> MePage(padding)
     }
 }

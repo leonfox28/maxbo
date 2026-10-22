@@ -18,6 +18,7 @@ import io.github.leonfox28.maxbo.core.session.WebViewSessionRenewer
 import io.github.leonfox28.maxbo.core.settings.DataStoreSettingsStorage
 import io.github.leonfox28.maxbo.core.settings.SettingsController
 import io.github.leonfox28.maxbo.data.api.WeiboApi
+import io.github.leonfox28.maxbo.ui.notifications.UnreadNoticesController
 import io.github.leonfox28.maxbo.ui.timeline.TimelineController
 import java.io.File
 import kotlinx.coroutines.CoroutineScope
@@ -39,6 +40,7 @@ class AppGraph(
     val api: WeiboApi,
     val webCookies: WebCookies,
     val timeline: TimelineController,
+    val unread: UnreadNoticesController,
     imageLoader: () -> ImageLoader,
 ) {
     /** Loads Weibo's pictures; made on first use. */
@@ -86,6 +88,7 @@ class AppGraph(
                 api = api,
                 webCookies = webCookies,
                 timeline = TimelineController(api, session, scope),
+                unread = UnreadNoticesController(api, session, scope),
                 imageLoader = {
                     weiboImageLoader(
                         context.applicationContext,

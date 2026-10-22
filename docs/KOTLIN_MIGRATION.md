@@ -340,7 +340,7 @@ Dart 代码约 1.5 万行，一个 `:app` 模块就够了，用包来分层（§
 | K1 网络、会话、登录 | 代码和测试完成，等真实会话验收（用户登录 `.dev`、设备测试） | 见 git log | 见下方「K1 备注」 |
 | K2 首页时间线与微博卡片 | 代码和测试完成，等真实会话验收（时间线、翻页、图片、GIF、深色、release 包滚动） | 见 git log | 见下方「K2 备注」 |
 | K3 详情、评论、媒体 | 代码和测试完成，等真实会话验收（PLAN §11「M3 详情与媒体」一行） | 见 git log | 见下方「K3 备注」 |
-| K4 用户主页、搜索、通知、网页 | 未开始 | | |
+| K4 用户主页、搜索、通知、网页 | 代码和测试完成，等真实会话验收（PLAN §11「M4 主页与热搜」「通知页」「搜索页签」「原生搜索结果」几行） | 见 git log | 见下方「K4 备注」 |
 | K5 互动与发布 | 未开始 | | |
 | K6 设置、关于、宽屏、诊断 | 未开始 | | |
 | K7 对齐、切换、发版 | 未开始 | | |
@@ -398,4 +398,14 @@ Dart 代码约 1.5 万行，一个 `:app` 模块就够了，用包来分层（§
 - **看图**：Telephoto 的 `ZoomableAsyncImage`（缩放、双击放大、长图）加 `FlickToDismiss`（上下甩动关闭），放在 `HorizontalPager` 里。查看器是一个全屏的对话框场景（`DialogSceneStrategy`，去掉了遮罩），所以甩动时背景变透明，能看到下面的页面，与 Flutter 版的透明路由一样。点一下关闭。和 Dart 版的差别：长图是否「铺满宽度、从顶部开始」按 `PicInfo` 的宽高判断（Dart 版按加载出的图片判断），没有宽高的评论图片按完整显示；加载中只显示不定进度的圈（Coil 不给下载字节进度）；双击放大用 Telephoto 默认的倍数。
 - **视频**：Media3 ExoPlayer，请求带 Referer 和与登录相同的 UA；画面用 `ContentFrame` 的 TextureView，这样预测性返回缩小页面时视频跟着缩（SurfaceView 不会）。选地址、过期判断、播放出错时换一次新地址并从原位置接着播，都照 Dart 版（`core/media/VideoSource.kt`）。应用退到后台时暂停。控件：中间的播放/暂停/重播、底部的时间和进度条，播放中 3 秒后隐藏，点画面切换。
 - **测试**：迁移了 `comment_test`、`comments_controller_test`、`comment_tile_test`（ink 一项同 K2 的说明）、`video_source_test`、`weibo_api_test` 里 `fetchStatus`/`fetchComments`/`fetchReplies`/`fetchReposts` 四组，`status_detail_page_test` 里不涉及写操作和宽窗口的两项，另加了「点楼中楼进入楼中楼页」。`status_detail_page_test` 的其余各项（发评论、回复、删除、点赞、转发、计数）和 `comment_replies_page_test` 全部是写操作，到 K5 迁移。共 194 个，全部通过。详情页的测试用 `@Config(qualifiers = "w411dp-h891dp")`，Robolectric 默认的屏幕太小，评论在首屏之外不会被组合。
+
+### K4 备注
+
+- **用户主页**：`ProfileViewModel` 挂在主页的导航条目上：按 uid 打开时资料和微博同时加载；按昵称（@）打开时先查资料，拿到 uid 再加载微博。头部在资料到达前显示占位条，资料加载失败时微博照常显示，头部给出原因和「重试」。顶栏随滚动收起（`HidingAppBarBody`）。主页里点这个用户自己的头像不再跳转。「我」页的账号一行现在进入自己的主页。
+- **搜索页签**：顶部的搜索栏是自己画的胶囊（`BasicTextField`，样式照 Material 3 的 SearchBar），输入的内容存在页签的状态里，从结果页返回或切换页签后还在。热搜榜在第一次打开页签时加载（ViewModel 挂在首页条目上，切换页签不重新请求），之后只在下拉刷新或再点一次页签（在顶部时）时刷新。收起键盘的时机：搜索、点热搜条目、拖动列表；离开页签时输入框不在界面上，键盘也随之收起。Flutter 版点输入框以外的地方也会收起，Kotlin 版没有单独处理这一项。
+- **搜索结果页**：`SearchResultsController` 在加载第一页时记下话题，有话题时列表上方显示话题头。右上角的地球图标打开网页版结果（`weiboSearchUrl()`，应用内 WebView）。正文里点的话题如果就是正在搜的这个，不再打开新页面。
+- **通知页**：四个列表各一个分页控制器，放在挂在首页条目上的 `NotificationsViewModel` 里，第一次显示时才加载，之后切换页签、切换首页页签都保留。页签栏下面是 `HorizontalPager`，和 Flutter 的 `TabBarView` 一样可以左右滑。打开一个带红点的页签时清掉红点，如果列表之前加载过就重新加载（保留旧内容直到新内容到达，与 Dart 版一致）。再点一次首页的「通知」页签只作用于当前显示的列表。
+- **未读提醒**：`UnreadNoticesController` 放在 `AppGraph` 里，只在三个时机检查：登录或打开应用时、从后台回到应用时（`ON_STOP` 之后的 `ON_START`，一分钟内最多一次）、下拉刷新首页时（一分钟内最多一次）；加载更多不检查，不轮询。有未读时导航胶囊的通知图标变红（选中时不变）。换账号时清空。
+- **应用内网页**：`WebPage` 用 `android.webkit.WebView`，UA 和 Cookie 与登录页相同。系统返回和顶栏的返回箭头都先在网页里后退，网页能后退时顶栏另有「关闭」；菜单里有「刷新」「在浏览器中打开」。主框架的 http 改成 https 再加载，非 http(s) 的链接（`sinaweibo://` 等）不打开。「去验证」打开它，页面关闭后自动重试一次（`Route.Web.onClose`）。
+- **测试**：迁移了 `user_profile_test`、`hot_search_test`、`topic_test`、`notice_test`（合在 `K4ModelsTest` 里）、`weibo_api_test` 的主页、搜索、热搜、未读、通知列表各组、`profile_page_test`、`search_page_test`、`search_results_page_test`、`notifications_page_test`，以及 K2 留下的 `timeline_page_test`（下拉刷新时检查未读，一分钟一次）。「顶栏随滚动收起」的两项没有单独翻译：收起逻辑在 `BarsOnScroll` 里，首页的测试已经覆盖了滚动。共 248 个，全部通过。`FakeWeibo` 的证书加上了 `*.api.weibo.com`（通配符只匹配一级子域名，`rm.api.weibo.com` 原来对不上）。
 

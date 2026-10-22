@@ -41,6 +41,7 @@ import io.github.leonfox28.maxbo.BuildConfig
 import io.github.leonfox28.maxbo.LocalAppGraph
 import io.github.leonfox28.maxbo.core.session.SessionState
 import io.github.leonfox28.maxbo.data.model.Account
+import io.github.leonfox28.maxbo.data.model.WeiboUser
 import io.github.leonfox28.maxbo.ui.auth.LoginPrompt
 import io.github.leonfox28.maxbo.ui.navigation.LocalNavigator
 import io.github.leonfox28.maxbo.ui.navigation.Route
@@ -75,10 +76,19 @@ fun MePage(padding: PaddingValues) {
     }
 }
 
-// Opens the profile once profiles are migrated (K4).
 @Composable
 private fun AccountItem(account: Account) {
+    val navigator = LocalNavigator.current
     ListItem(
+        modifier =
+            Modifier.clickable {
+                navigator.push(
+                    Route.Profile(
+                        account.uid,
+                        account.screenName?.let { WeiboUser(account.uid, it) },
+                    )
+                )
+            },
         headlineContent = { Text(account.screenName ?: "微博用户") },
         supportingContent = { Text("UID ${account.uid}") },
         leadingContent = {
