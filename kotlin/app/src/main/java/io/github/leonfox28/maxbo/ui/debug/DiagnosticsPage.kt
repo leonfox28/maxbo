@@ -29,8 +29,6 @@ import io.github.leonfox28.maxbo.core.net.WeiboCookieJar
 import io.github.leonfox28.maxbo.core.net.WeiboException
 import io.github.leonfox28.maxbo.core.session.SessionState
 import io.github.leonfox28.maxbo.core.util.devLog
-import io.github.leonfox28.maxbo.core.util.readMaps
-import io.github.leonfox28.maxbo.data.api.WeiboApi
 import io.github.leonfox28.maxbo.ui.widget.BackButton
 import kotlinx.coroutines.launch
 
@@ -130,18 +128,8 @@ private suspend fun probeRenewal(graph: AppGraph, log: (String) -> Unit) {
     val started = System.nanoTime()
     fun elapsed() = (System.nanoTime() - started) / 1_000_000
     try {
-        // The timeline's own request, until the timeline itself comes over (K2).
-        val json =
-            graph.api.getJson(
-                "${WeiboApi.WEB}/ajax/feed/friendstimeline",
-                mapOf(
-                    "list_id" to "11000${signedIn.account.uid}",
-                    "refresh" to 4,
-                    "count" to 20,
-                    "since_id" to 0,
-                ),
-            )
-        log("timeline: ${readMaps(json["statuses"]).size} statuses after ${elapsed()} ms")
+        val page = graph.api.fetchHomeTimeline(uid = signedIn.account.uid)
+        log("timeline: ${page.statuses.size} statuses after ${elapsed()} ms")
     } catch (e: WeiboException) {
         log("timeline: ${e.javaClass.simpleName} ${e.message} after ${elapsed()} ms")
     }

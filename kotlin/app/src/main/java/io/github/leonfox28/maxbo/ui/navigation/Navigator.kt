@@ -14,7 +14,9 @@ class Navigator {
 
     /** Closes the top page, unless it's the tabs. */
     fun pop() {
-        if (backStack.size > 1) backStack.removeAt(backStack.lastIndex)
+        if (backStack.size <= 1) return
+        val closed = backStack.removeAt(backStack.lastIndex)
+        (closed as? Route.Web)?.onClose?.invoke()
     }
 }
 

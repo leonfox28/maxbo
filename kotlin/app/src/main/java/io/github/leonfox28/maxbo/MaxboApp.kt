@@ -17,6 +17,7 @@ import androidx.lifecycle.viewmodel.navigation3.rememberViewModelStoreNavEntryDe
 import androidx.navigation3.runtime.entryProvider
 import androidx.navigation3.runtime.rememberSaveableStateHolderNavEntryDecorator
 import androidx.navigation3.ui.NavDisplay
+import io.github.leonfox28.maxbo.core.media.LocalImageLoader
 import io.github.leonfox28.maxbo.ui.auth.LoginPage
 import io.github.leonfox28.maxbo.ui.debug.DiagnosticsPage
 import io.github.leonfox28.maxbo.ui.navigation.LocalNavigator
@@ -30,6 +31,7 @@ import io.github.leonfox28.maxbo.ui.shell.HomeShell
 import io.github.leonfox28.maxbo.ui.theme.MaxboTheme
 import io.github.leonfox28.maxbo.ui.theme.isDark
 import io.github.leonfox28.maxbo.ui.widget.LocalSnackbars
+import io.github.leonfox28.maxbo.ui.widget.MigrationPlaceholder
 
 /** The whole app, in the theme and text size the user has chosen. */
 @Composable
@@ -41,6 +43,7 @@ fun MaxboApp(graph: AppGraph, navigator: Navigator = remember { Navigator() }) {
         LocalAppGraph provides graph,
         LocalNavigator provides navigator,
         LocalSnackbars provides remember { SnackbarHostState() },
+        LocalImageLoader provides graph.imageLoader,
         // On top of the system's font size, for every page, dialog and
         // snackbar alike.
         LocalDensity provides settings.textSize.applyTo(LocalDensity.current),
@@ -61,6 +64,13 @@ fun MaxboApp(graph: AppGraph, navigator: Navigator = remember { Navigator() }) {
                     entryProvider {
                         entry<Route.Home> { HomeShell() }
                         entry<Route.Login> { LoginPage() }
+                        entry<Route.StatusDetail> { MigrationPlaceholder("微博正文", "详情页（K3）") }
+                        entry<Route.Viewer> { MigrationPlaceholder("图片", "图片查看器（K3）") }
+                        entry<Route.Video> { MigrationPlaceholder("视频", "视频播放（K3）") }
+                        entry<Route.Profile> { MigrationPlaceholder("主页", "用户主页（K4）") }
+                        entry<Route.ProfileByName> { MigrationPlaceholder(it.name, "用户主页（K4）") }
+                        entry<Route.SearchResults> { MigrationPlaceholder(it.query, "搜索结果（K4）") }
+                        entry<Route.Web> { MigrationPlaceholder("网页", "应用内浏览器（K4）") }
                         entry<Route.Settings> { SettingsPage() }
                         entry<Route.Diagnostics> { if (BuildConfig.DEBUG) DiagnosticsPage() }
                     },

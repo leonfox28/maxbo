@@ -4,6 +4,8 @@ import android.content.Context
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import androidx.datastore.preferences.preferencesDataStoreFile
+import coil3.ImageLoader
+import io.github.leonfox28.maxbo.core.media.weiboImageLoader
 import io.github.leonfox28.maxbo.core.net.RequestThrottle
 import io.github.leonfox28.maxbo.core.net.WeiboCookieJar
 import io.github.leonfox28.maxbo.core.net.WeiboHttp
@@ -16,6 +18,7 @@ import io.github.leonfox28.maxbo.core.session.WebViewSessionRenewer
 import io.github.leonfox28.maxbo.core.settings.DataStoreSettingsStorage
 import io.github.leonfox28.maxbo.core.settings.SettingsController
 import io.github.leonfox28.maxbo.data.api.WeiboApi
+import io.github.leonfox28.maxbo.ui.timeline.TimelineController
 import java.io.File
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -35,7 +38,12 @@ class AppGraph(
     /** Signed in as [session] says, renewing the session when Weibo rejects it. */
     val api: WeiboApi,
     val webCookies: WebCookies,
+    val timeline: TimelineController,
+    imageLoader: () -> ImageLoader,
 ) {
+    /** Loads Weibo's pictures; made on first use. */
+    val imageLoader: ImageLoader by lazy(imageLoader)
+
     companion object {
         /** The real thing, reading the saved settings and session before the first frame. */
         fun create(context: Context): AppGraph {
@@ -70,12 +78,21 @@ class AppGraph(
                     httpFor = httpFor,
                     scope = scope,
                 )
+            val api = WeiboApi(httpFor(session.jar), onSessionExpired = session::renewOrExpire)
             return AppGraph(
                 appScope = scope,
                 settings = SettingsController(initialSettings, settingsStorage, scope),
                 session = session,
-                api = WeiboApi(httpFor(session.jar), onSessionExpired = session::renewOrExpire),
+                api = api,
                 webCookies = webCookies,
+                timeline = TimelineController(api, session, scope),
+                imageLoader = {
+                    weiboImageLoader(
+                        context.applicationContext,
+                        base,
+                        initialSettings.imageCacheLimitMb * 1024L * 1024,
+                    )
+                },
             )
         }
     }

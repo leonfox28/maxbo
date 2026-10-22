@@ -1,6 +1,7 @@
 package io.github.leonfox28.maxbo.ui.shell
 
 import androidx.activity.ComponentActivity
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
@@ -77,5 +78,11 @@ class HomeShellTest {
 
         tab("我").assertIsSelected()
         compose.onNode(hasText("设置")).assertExists()
+    }
+
+    @Test
+    fun `screen readers can tap the open tab again`() {
+        tab("首页").assert(SemanticsMatcher.keyIsDefined(SemanticsActions.CustomActions))
+        tab("我").assert(SemanticsMatcher.keyNotDefined(SemanticsActions.CustomActions))
     }
 }

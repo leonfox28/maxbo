@@ -338,7 +338,7 @@ Dart 代码约 1.5 万行，一个 `:app` 模块就够了，用包来分层（§
 |---|---|---|---|
 | K0 工程骨架 | ✅ 完成 | 见 git log | 见下方「K0 备注」 |
 | K1 网络、会话、登录 | 代码和测试完成，等真实会话验收（用户登录 `.dev`、设备测试） | 见 git log | 见下方「K1 备注」 |
-| K2 首页时间线与微博卡片 | 未开始 | | |
+| K2 首页时间线与微博卡片 | 代码和测试完成，等真实会话验收（时间线、翻页、图片、GIF、深色、release 包滚动） | 见 git log | 见下方「K2 备注」 |
 | K3 详情、评论、媒体 | 未开始 | | |
 | K4 用户主页、搜索、通知、网页 | 未开始 | | |
 | K5 互动与发布 | 未开始 | | |
@@ -354,7 +354,7 @@ Dart 代码约 1.5 万行，一个 `:app` 模块就够了，用包来分层（§
 - **设置**：`SettingsController`（`StateFlow`）的 `update()` 立即生效，保存在 `AppGraph.appScope` 里排队执行（离开页面不会中断），每次保存的都是最新的设置。`AppGraph.create()` 在 `Application.onCreate` 里读入设置（DataStore，在第一帧之前）。
 - **配色**：用临时的 Dart 测试打印了 Flutter 3.47 的 `ColorScheme.fromSeed(#3F51B5)`，抄进 `ui/theme/Color.kt`（Flutter 已去掉的 `background`、`surfaceVariant` 分别取 `surface`、`surfaceContainerHighest`）。字体层级不用改：Flutter 给中文用的 `dense2021` 与 Compose 默认的 M3 字号、行高、字距完全一样（也打印核对过）。导航胶囊与 Flutter 版截图对比，像素级一致。
 - **Manifest**：照搬了 Flutter 版的 `configChanges`，旋转、折叠、切换深色模式都不重建 Activity，页签和页面状态保留（模拟器上切深色模式核对过）。**顺手修的 Flutter 版问题**：Android 12 起 `allowBackup="false"` 不再阻止设备间迁移（换手机时的数据传输），WebView 的 Cookie（也就是登录态）会被带到新手机上，违反「登录态只在本机」。Kotlin 版加了 `data_extraction_rules.xml`，云备份和设备间迁移都排除所有数据。Flutter 版没有改（K7 后就不存在了）。
-- **无障碍**：Compose 不把已选中的 `Role.Tab` 标为可点击，读屏用户就没法「再点一次当前页签」。K2 做回到顶部/刷新时，要给选中的页签加一个自定义无障碍操作。页签的提示（长按显示名称）是自己触发的 `TooltipBox`，读屏不会多停一个空节点（`HomeShellTest` 核对）。
+- **无障碍**：Compose 不把已选中的 `Role.Tab` 标为可点击，读屏用户就没法「再点一次当前页签」。K2 已给选中的页签加了自定义无障碍操作「回到顶部或刷新」（有测试）。页签的提示（长按显示名称）是自己触发的 `TooltipBox`，读屏不会多停一个空节点（`HomeShellTest` 核对）。
 - **构建类型**：release 开了 R8（minify + shrinkResources），签名还没接（K7）。`benchmark` 构建类型（§6「测流畅度」）K0 就加上了，R8 后约 1.3 MB，在模拟器上启动、打开设置页、返回都正常。APK 里有两个 AndroidX 的小原生库（`libandroidx.graphics.path.so`、`libdatastore_shared_counter.so`，每个约 10 KB，四种 ABI 都有），K7 出通用 APK 不受影响。
 - **版本号**：versionCode 5022，versionName 暂时是 `0.12.0-dev`，发版时再问用户。
 - **测试**：迁移了 `app_settings_test` 的存储、`TextSize` 和 `listPixels` 部分（`viewerVariant` 依赖 `PicInfo`，放到 K2）；`app_info_test` 不迁移（版本号用 `BuildConfig`）。另外加了 `DataStoreSettingsStorageTest`、`HomeShellTest`（页签切换、打开设置页、返回箭头和系统返回）、`MainActivityTest`。共 19 个，全部通过。测试用的 `AppGraph` 由 `support/TestGraph.kt` 的 `testGraph()` 给出。
@@ -375,4 +375,18 @@ Dart 代码约 1.5 万行，一个 `:app` 模块就够了，用包来分层（§
 - **诊断页**：调试版「我」页的「开发者诊断」进入，K1 只有「模拟登录过期」一个探针（右上角 🔄），做法照 Dart 版：把会话的 `SUB` 换成无效值，再用应用自己的 API 请求一次首页时间线（K2 之前直接请求 `friendstimeline`，只数条数），看续期是否成功、用了多久。日志前缀 `diag:`。
 - **设备测试**：`app/src/androidTest/.../WebViewCookiesTest.kt` 对应 Flutter 的 `integration_test/cookie_bridge_test.dart`：读 `CookieManager` 写入的 Cookie、读本地页面响应设置的 HttpOnly Cookie、清空全部 Cookie。为此调试版加了 `network_security_config.xml`，只允许明文访问 `localhost`（与 Flutter 调试版相同）。它会清空被测应用的 WebView Cookie，只能在没有真实登录的模拟器上跑（§7）。
 - **测试**：迁移了 `cookie_jar_test`、`request_throttle_test`、`weibo_dio_test`（另加了跨域请求不带 XHR 头、重定向每一跳的 Cookie 两项）、`weibo_exception_test`、`session_controller_test`、`session_renewer_test`、`page_config_test`、`account_test`，`cookie_bridge_test` 拆成 `WebCookiesTest`（解析 Cookie 头）和设备测试，`weibo_api_test` 里属于 K1 的部分（表单格式、`ok` 但带 `error`）用 `postForm` 直接测，另加了 `fetchCurrentAccount` 和会话存储、「我」页的测试。共 81 个，全部通过。
+
+### K2 备注
+
+- **模型**：`Status`、`PicInfo`、`WeiboUser`、`FeedPage`、`Paged` 都是 data class，照 Dart 逐字段翻译（`text_raw` 转 HTML、`mix_media_info`、广告判定、`title` 里的「他赞过的微博」、`page_info` 卡片去重等）。时间用 `java.time.Instant`，为此开了 core library desugaring（minSdk 24）。`formatPostTime` 多了一个 `zone` 参数，测试固定用 Asia/Shanghai。
+- **正文**：`parseStatusText` 用 jsoup（`wholeText()` 不折叠空白，与 Dart 的 `.text` 一致），链接 URL 用 OkHttp 的 `HttpUrl`，非 http(s) 的仍按纯文本。`StatusText` 是一个 `AnnotatedString`：链接和「展开」是 `LinkAnnotation.Clickable`，表情和链接前的小图标是 `InlineTextContent`，边长为字号的 1.2 倍（sp），跟着字体大小缩放。
+- **图片**：Coil 3，`ImageLoader` 由 `AppGraph` 持有（测试换成 `FakeImageLoaderEngine`，每张图都是灰块，不联网）。所有图片请求都带 `Referer: https://weibo.com/`（与 Dart 版一样，不只 sinaimg）；内存和磁盘缓存的 key 都去掉签名参数（`imageCacheKey`）。GIF：API 28 起用 `AnimatedImageDecoder`，以下用 `GifDecoder`。磁盘缓存放在 `cacheDir/image_cache`，上限取启动时的设置；Coil 的磁盘缓存自己按 LRU 清理，比 Dart 版只在启动和调低上限时清理更及时。运行中调低上限怎么生效留到 K6。加载失败时点图片重试，与 Dart 版一样会先于外层的点击（头像、宫格）。
+- **卡片**：`StatusCard` 照 Dart 的窄卡片（头部、标签、正文、转发框、九宫格/混排/视频封面/链接卡片、计数）。宽卡片（`_WideLayout`）留到 K6；点赞按钮在 K5 之前只显示状态、吞掉点击；⋯ 菜单只在传了 `onDelete` 时出现（K5 才传）。计数用 `indication = null`，按下时自己和卡片都没有水波纹，对应 Dart 的 ink 测试（没有翻译成测试）。
+- **列表**：`PagedController`（`core/paging/`）是通用的分页控制器，状态是 `ListLoad`（加载中、失败、`PagedState`），用一个代数（generation）丢弃过期的结果：刷新成功、换账号、重新加载都会让之前发出的翻页结果作废。`TimelineController` 放在 `AppGraph` 里（以后发微博、转发要往里插），跟着会话的 uid 重置，未登录时是空列表、不发请求。时间线的 9 个 Dart 测试全部照搬。
+- **加载更多**：`LoadMoreTrigger` 只在滚动位置变化时检查，离末尾不到 800dp（按可见项的平均高度估算）就加载下一页；短得不能滚动的列表等页脚的「加载更多」按钮，与 Dart 版一致。失败后要用户点重试。
+- **滚动收起与再点页签**：`BarsOnScroll` 挂在首页 Scaffold 的 `nestedScroll` 上，只算手指拖动（`NestedScrollSource.UserInput`，惯性滑动不算），阈值 24dp，拖到顶（往上滚却没有可消耗的距离）就显示。导航胶囊往下移 1.5 倍自身高度，250 ms。再点当前页签经 `LocalTabReselect`（每个页签一个 `SharedFlow`）通知页面：不在顶部就滚回顶部，在顶部就刷新（显示下拉刷新的指示器）。下拉刷新用 Material 3 的 `PullToRefreshBox`。
+- **跳转**：`rememberStatusCardActions()`（`ui/status/StatusActions.kt`）对应 Dart 的 `statusCardActions`，外部链接用 `Intent.ACTION_VIEW`，打不开时提示「无法打开链接」。详情、看图、视频、主页、按昵称的主页、搜索结果、应用内网页这些页面已经有了 `Route`，暂时是「迁移中」的占位页，到对应阶段替换。`Route.Web` 带一个 `onClose`，页面关闭时调用，用于「去验证」后自动重试一次。
+- **宽屏**：`readingPadding()` 对应 `ReadingList` 的限宽居中，首页按 `feedColumnWidth`（≥840dp 时 1000），在 K6 宽卡片之前宽窗口下会是加宽的窄卡片。
+- **测试**：迁移了 `status_test`、`format_test`、`weibo_image_test`、`status_text_parser_test`、`status_card_test`（宽卡片的几项留到 K6，ink 一项见上）、`load_state_test`、`tab_reselect_test`（在 `TimelinePageTest` 里对真实的首页做）、`timeline_controller_test`，以及 `test/support/statuses.dart` 的全部构造函数（`support/Statuses.kt`，配一个小的 JSON 写法 `support/Json.kt`）。`timeline_page_test` 测的是下拉刷新时检查未读，等 K4 做未读时再迁。`app_settings_test` 剩下的 `viewerVariant` 部分也补上了。共 161 个，全部通过。Robolectric 里按坐标点文字不可靠（文字排版只是近似），测试里点链接用 `performFirstLinkClick`，点转发框用它的 test tag。
+- **测试不联网**：`testGraph()` 不传 `FakeWeibo` 时，请求一律失败（离线的 OkHttp 客户端），避免测试碰到真实的微博。
 

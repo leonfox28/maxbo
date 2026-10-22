@@ -11,6 +11,7 @@ import io.github.leonfox28.maxbo.core.net.unwrapResponse
 import io.github.leonfox28.maxbo.core.util.describeShape
 import io.github.leonfox28.maxbo.core.util.devLog
 import io.github.leonfox28.maxbo.data.model.Account
+import io.github.leonfox28.maxbo.data.model.FeedPage
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import okhttp3.FormBody
@@ -46,6 +47,27 @@ class WeiboApi(
                 devLog("no user in \$CONFIG: ${describeShape(config, maxDepth = 1)}")
                 throw SessionExpiredException()
             }
+    }
+
+    /**
+     * A page of the "最新微博" timeline of [uid]: the newest page, or the one after [maxId] (a previous
+     * page's [FeedPage.nextCursor]).
+     */
+    suspend fun fetchHomeTimeline(uid: String, maxId: String? = null): FeedPage {
+        val json =
+            getJson(
+                "$WEB/ajax/feed/friendstimeline",
+                mapOf(
+                    // The built-in "最新微博" group; see PLAN §8 item 3.
+                    "list_id" to "11000$uid",
+                    "refresh" to 4,
+                    "count" to 20,
+                    if (maxId == null) "since_id" to 0 else "max_id" to maxId,
+                ),
+            )
+        val page = FeedPage.fromJson(json)
+        devLog("timeline: ${page.statuses.size} statuses, more=${page.nextCursor != null}")
+        return page
     }
 
     /** Reads a JSON endpoint; [query] values that are null are left out. */

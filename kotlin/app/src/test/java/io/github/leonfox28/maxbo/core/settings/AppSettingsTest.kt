@@ -3,19 +3,34 @@ package io.github.leonfox28.maxbo.core.settings
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import io.github.leonfox28.maxbo.data.model.PicInfo
 import io.github.leonfox28.maxbo.support.InMemorySettingsStorage
+import io.github.leonfox28.maxbo.support.picJson
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertSame
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class AppSettingsTest {
+    private val pic = PicInfo.tryFromJson(picJson("p", width = 3000, height = 2000))!!
+
     @Test
     fun `image quality saves data in lists by ignoring the pixel ratio`() {
         assertEquals(360f, ImageQuality.Standard.listPixels(120f, 3f))
         assertEquals(360f, ImageQuality.Original.listPixels(120f, 3f))
         assertEquals(120f, ImageQuality.DataSaver.listPixels(120f, 3f))
+        assertTrue(
+            pic.variantFor(ImageQuality.DataSaver.listPixels(120f, 3f)).url.contains("/wap180/")
+        )
+    }
+
+    @Test
+    fun `image quality shows the original in the viewer only when asked to`() {
+        assertTrue(ImageQuality.Standard.viewerVariant(pic).url.contains("/mw2000/"))
+        assertTrue(ImageQuality.DataSaver.viewerVariant(pic).url.contains("/mw2000/"))
+        assertTrue(ImageQuality.Original.viewerVariant(pic).url.contains("/large/"))
     }
 
     @Test

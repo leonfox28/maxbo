@@ -4,6 +4,7 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandHorizontally
 import androidx.compose.animation.fadeIn
@@ -39,8 +40,10 @@ import androidx.compose.material3.TooltipBox
 import androidx.compose.material3.TooltipDefaults
 import androidx.compose.material3.rememberTooltipState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
@@ -49,18 +52,26 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.unit.dp
 import io.github.leonfox28.maxbo.ui.profile.MePage
 import io.github.leonfox28.maxbo.ui.theme.UnreadColor
+import io.github.leonfox28.maxbo.ui.timeline.TimelinePage
 import io.github.leonfox28.maxbo.ui.widget.AppSnackbarHost
+import io.github.leonfox28.maxbo.ui.widget.BarsOnScroll
 import io.github.leonfox28.maxbo.ui.widget.FloatingPill
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.launch
 
 private enum class Tab(val icon: ImageVector, val selectedIcon: ImageVector, val label: String) {
@@ -78,27 +89,42 @@ private enum class Tab(val icon: ImageVector, val selectedIcon: ImageVector, val
 fun HomeShell() {
     var current by rememberSaveable { mutableIntStateOf(Tab.Home.ordinal) }
     val tabs = rememberSaveableStateHolder()
+    val threshold = with(LocalDensity.current) { BarsOnScroll.Threshold.toPx() }
+    val bars = remember(threshold) { BarsOnScroll(threshold) }
+    val reselects = remember {
+        Tab.entries.map { MutableSharedFlow<Unit>(extraBufferCapacity = 1) }
+    }
+    val hidden by
+        animateFloatAsState(if (bars.visible) 0f else 1f, BarsOnScroll.spec(), label = "pill")
     Scaffold(
+        Modifier.nestedScroll(bars.connection),
         // Lists scroll on behind the pill; the padding below makes room for it.
         bottomBar = {
             FloatingNavBar(
                 selected = Tab.entries[current],
                 alerts = emptySet(),
-                onSelected = { current = it.ordinal },
+                onSelected = {
+                    bars.show()
+                    if (it.ordinal == current) reselects[current].tryEmit(Unit)
+                    else current = it.ordinal
+                },
+                modifier = Modifier.graphicsLayer { translationY = hidden * 1.5f * size.height },
             )
         },
         snackbarHost = { AppSnackbarHost() },
         contentWindowInsets = WindowInsets(0),
     ) { padding ->
         val tab = Tab.entries[current]
-        tabs.SaveableStateProvider(tab) { TabPage(tab, padding) }
+        CompositionLocalProvider(LocalTabReselect provides reselects[tab.ordinal]) {
+            tabs.SaveableStateProvider(tab) { TabPage(tab, padding) }
+        }
     }
 }
 
 @Composable
 private fun TabPage(tab: Tab, padding: PaddingValues) {
     when (tab) {
-        Tab.Home -> PlaceholderTab(tab.label, padding)
+        Tab.Home -> TimelinePage(padding)
         Tab.Search -> PlaceholderTab(tab.label, padding)
         Tab.Notifications -> PlaceholderTab(tab.label, padding)
         Tab.Me -> MePage(padding)
@@ -106,9 +132,14 @@ private fun TabPage(tab: Tab, padding: PaddingValues) {
 }
 
 @Composable
-private fun FloatingNavBar(selected: Tab, alerts: Set<Tab>, onSelected: (Tab) -> Unit) {
+private fun FloatingNavBar(
+    selected: Tab,
+    alerts: Set<Tab>,
+    onSelected: (Tab) -> Unit,
+    modifier: Modifier = Modifier,
+) {
     // As wide as its items, not the screen.
-    FloatingPill {
+    FloatingPill(modifier) {
         Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
             for (tab in Tab.entries) {
                 NavItem(
@@ -167,6 +198,17 @@ private fun NavItem(tab: Tab, selected: Boolean, alert: Boolean, onClick: () -> 
                     onClick {
                         onClick()
                         true
+                    }
+                    // Screen readers offer no click on a selected tab, so a
+                    // second tap (back to the top, or a refresh) is an action.
+                    if (selected) {
+                        customActions =
+                            listOf(
+                                CustomAccessibilityAction("回到顶部或刷新") {
+                                    onClick()
+                                    true
+                                }
+                            )
                     }
                 }
                 .combinedClickable(

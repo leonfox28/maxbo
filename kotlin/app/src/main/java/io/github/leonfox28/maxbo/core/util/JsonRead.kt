@@ -39,3 +39,6 @@ fun readUrl(value: JsonElement?): String? {
     if (url.startsWith("//")) return "https:$url"
     return if (url.startsWith("http")) url else null
 }
+
+/** An absolute https URL from an attribute such as an `<img>`'s `src`. */
+fun readUrl(value: String?): String? = readUrl(value?.let(::JsonPrimitive))

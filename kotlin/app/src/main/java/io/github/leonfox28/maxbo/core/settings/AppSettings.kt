@@ -3,6 +3,8 @@ package io.github.leonfox28.maxbo.core.settings
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.TextUnit
+import io.github.leonfox28.maxbo.data.model.PicInfo
+import io.github.leonfox28.maxbo.data.model.PicVariant
 
 /** Light, dark, or as the system has it. */
 enum class ThemeMode(val key: String) {
@@ -23,6 +25,10 @@ enum class ImageQuality(val key: String, val label: String, val description: Str
      */
     fun listPixels(logical: Float, density: Float): Float =
         logical * (if (this == DataSaver) 1f else density)
+
+    /** The rendition the image viewer shows. */
+    fun viewerVariant(pic: PicInfo): PicVariant =
+        if (this == Original) pic.largest ?: pic.viewerVariant else pic.viewerVariant
 }
 
 /**
