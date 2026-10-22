@@ -1,7 +1,6 @@
 import 'dart:convert';
 
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../data/models/account.dart';
 
@@ -35,23 +34,14 @@ abstract interface class SessionStorage {
   Future<void> clear();
 }
 
-/// Keeps the session in the Android Keystore / iOS Keychain.
+/// Keeps the session in the Android Keystore.
 class SecureSessionStorage implements SessionStorage {
   static const _key = 'session.v1';
-  static const _installedKey = 'session.installed';
 
   final _storage = const FlutterSecureStorage();
 
   @override
   Future<StoredSession?> load() async {
-    final prefs = SharedPreferencesAsync();
-    if (await prefs.getBool(_installedKey) != true) {
-      // The iOS Keychain outlives the app: drop a session left behind by a
-      // previous install instead of silently signing back in.
-      await _storage.delete(key: _key);
-      await prefs.setBool(_installedKey, true);
-      return null;
-    }
     final raw = await _storage.read(key: _key);
     if (raw == null) return null;
     try {

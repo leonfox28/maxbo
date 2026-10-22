@@ -1,6 +1,6 @@
 # maxbo
 
-开源、非商业的第三方微博阅读客户端（Flutter，Android + iOS）。方案、合规边界、接口实测结论和当前进度都在 [docs/PLAN.md](docs/PLAN.md)；**开工前先读第 2 节（合规边界）、第 8 节（实测结论）和第 11 节（进度与交接）**。
+开源、非商业的第三方微博阅读客户端（Flutter，只做 Android；2026-10-22 起不再支持 iOS，见 PLAN §10）。方案、合规边界、接口实测结论和当前进度都在 [docs/PLAN.md](docs/PLAN.md)；**开工前先读第 2 节（合规边界）、第 8 节（实测结论）和第 11 节（进度与交接）**。
 
 ## 常用命令
 
@@ -8,9 +8,8 @@
 dart format lib test integration_test
 flutter analyze                      # 必须 No issues found
 flutter test                         # 单元测试 + Widget 测试
-flutter test integration_test -d <iOS 模拟器 id>   # 平台通道测试，见下方注意事项
+flutter test integration_test -d <没有真实登录的 Android 模拟器>   # 平台通道测试，见下方注意事项
 flutter build apk --debug && adb -s <设备> install -r build/app/outputs/flutter-apk/app-debug.apk
-flutter build ios --simulator --debug
 flutter build apk --release --split-per-abi   # 发版用，签名见 PLAN §9
 ```
 
@@ -36,10 +35,10 @@ Flutter stable 3.47.x（Dart 3.13），通过 Homebrew cask 安装。
   - `WeiboCookieJar`：按站点（weibo.com / weibo.cn）保存 Cookie
   - `weibo_exception.dart`：集中处理微博的各种失败响应
 - `lib/core/session/`：会话
-  - 登录 Cookie 经原生平台通道读取（`SUB` 是 HttpOnly，Android 端在 `CookieBridge.kt`，iOS 端在 `ios/Runner/AppDelegate.swift`）
+  - 登录 Cookie 经原生平台通道读取（`SUB` 是 HttpOnly，原生端在 `CookieBridge.kt`）
   - `SessionController`（`sessionProvider`）
   - `SUB` 在服务端约 7 天失效。接口报过期时，`SessionRenewer` 在不显示的 WebView 里打开 weibo.com，让微博用 30 天的 `ALC` 换新 `SUB`（PLAN §8「会话续期」）。读请求续期后重发一次，写请求不重发。续期失败才退出登录
-  - 会话存在 Keystore / Keychain
+  - 会话存在 Android Keystore
 - `lib/core/media/`：`WeiboImage`，所有微博图片都经它加载（自动带 Referer，缓存 key 去掉签名参数）；`video_source.dart` 负责选视频地址，地址过期时重新请求 `statuses/show`；`image_disk_cache.dart` 按设置的上限清理图片磁盘缓存
 - `lib/core/settings/`：`settingsProvider`（主题、字体大小、图片质量、缓存上限），存在 `shared_preferences`，`main()` 在第一帧前读入。图片尺寸要经过 `ImageQuality` 选择；字体大小由 `MaxboApp` 统一套在 `MediaQuery.textScaler` 上（在系统字体大小的基础上乘倍数），页面里不用单独处理
 - `lib/core/paging/`：`PagedController<T>`，分页列表（评论、转发等）都继承它，界面用 `widgets/load_state.dart` 里的 `PagedSliverList` 和 `LoadMoreTrigger`

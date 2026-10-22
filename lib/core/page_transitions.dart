@@ -1,14 +1,10 @@
-import 'package:flutter/cupertino.dart' show CupertinoPageTransitionsBuilder;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 
 /// Flutter's own transitions, with Android's predictive back made smooth.
 const pageTransitionsTheme = PageTransitionsTheme(
-  builders: {
-    TargetPlatform.android: _PredictiveBackTransitions(),
-    TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
-  },
+  builders: {TargetPlatform.android: _PredictiveBackTransitions()},
 );
 
 /// [PredictiveBackPageTransitionsBuilder], Flutter's default on Android, made

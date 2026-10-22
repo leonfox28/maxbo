@@ -1,8 +1,8 @@
 # maxbo
 
-一个开源、非商业的第三方微博阅读客户端（Android / iOS），使用 Flutter 开发。
+一个开源、非商业的第三方微博阅读客户端（Android），使用 Flutter 开发。
 
-> **状态：早期测试版。** 主要在 Android 上测试过；iOS 版能编译、能启动，但登录后的功能还没有在 iOS 上完整测过。方案与进度见 [docs/PLAN.md](docs/PLAN.md)。
+> **状态：早期测试版，只支持 Android。** 方案与进度见 [docs/PLAN.md](docs/PLAN.md)。
 
 ## 功能
 
@@ -35,7 +35,7 @@
 
 ### iOS
 
-不上架 App Store。从 v0.2.0 起，Releases 页面提供**未签名**的 `maxbo-unsigned.ipa`，需要用你自己的 Apple ID 签名后安装（AltStore、SideStore、Sideloadly 或 Xcode），步骤见 [docs/ios-sideload.md](docs/ios-sideload.md)。
+不再提供。v0.2.0 到 v0.11.0 的 Releases 里附有未签名的 IPA，之后的版本不再提供，已经装上的 iOS 版也不会再更新。
 
 ## 从源码构建
 
@@ -44,8 +44,7 @@
 ```sh
 flutter pub get
 flutter test
-flutter build apk --release --split-per-abi   # Android
-flutter build ios --release --no-codesign     # iOS，之后自行签名
+flutter build apk --release --split-per-abi
 ```
 
 没有 `android/key.properties` 时，Android release 包用调试密钥签名，无法覆盖安装 Releases 页面上的正式包。
@@ -53,7 +52,7 @@ flutter build ios --release --no-codesign     # iOS，之后自行签名
 ## 隐私
 
 - 登录在微博官方网页登录页中完成，应用接触不到你的密码。
-- 登录状态只保存在你自己的设备上（Android Keystore / iOS Keychain），退出登录时清除。
+- 登录状态只保存在你自己的设备上（Android Keystore），退出登录时清除。
 - 项目**没有任何服务器**，没有统计、埋点或崩溃上报，不收集任何数据；应用只和微博的服务器通信。
 - 只在你操作时请求微博，不在后台轮询或预取，请求频率有上限。遇到验证码时，由你本人在微博的页面里完成。
 

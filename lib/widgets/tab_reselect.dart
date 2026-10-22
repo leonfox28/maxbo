@@ -18,8 +18,8 @@ class TabReselect extends InheritedWidget {
 
 /// A [RefreshIndicator] for a tab's list. Tapping the open tab again
 /// scrolls the list back to its top, or refreshes it if it's there already.
-/// The list must be the page's primary scroll view (`primary: true`), so
-/// that a tap on the iOS status bar scrolls it too.
+/// The list must be the page's primary scroll view (`primary: true`): that
+/// is how the tab finds it.
 class TabRefreshIndicator extends StatefulWidget {
   const TabRefreshIndicator({
     super.key,

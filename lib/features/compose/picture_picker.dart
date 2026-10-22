@@ -15,18 +15,9 @@ final picturePickerProvider =
       }
       return (limit) async {
         final picker = ImagePicker();
-        // Without full metadata iOS asks for no photo library access.
         final files = limit > 1
-            ? await picker.pickMultiImage(
-                limit: limit,
-                requestFullMetadata: false,
-              )
-            : [
-                ?await picker.pickImage(
-                  source: ImageSource.gallery,
-                  requestFullMetadata: false,
-                ),
-              ];
+            ? await picker.pickMultiImage(limit: limit)
+            : [?await picker.pickImage(source: ImageSource.gallery)];
         return [for (final f in files) f.path];
       };
     });

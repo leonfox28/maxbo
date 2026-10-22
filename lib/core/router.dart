@@ -171,8 +171,8 @@ final routerProvider = Provider<GoRouter>((ref) {
   return router;
 });
 
-/// A page with the platform's transitions: sliding in, following the
-/// predictive back gesture on Android and the swipe back on iOS.
+/// A page with the platform's transitions: sliding in, and following the
+/// predictive back gesture.
 ///
 /// go_router's `builder:` can't be relied on for this: it looks for
 /// material_ui's MaterialApp, not Flutter's own one that maxbo uses, and

@@ -287,7 +287,7 @@ void main() {
     expect(find.textContaining('maxbo 是非官方客户端'), findsOneWidget);
   });
 
-  // Both need pages with the platform's transitions, which go_router's
+  // Needs pages with the platform's transitions, which go_router's
   // `builder:` doesn't give maxbo (see `_page()` in router.dart).
   group('predictive back', () {
     Future<void> backGesture(
@@ -358,28 +358,6 @@ void main() {
       expect(tester.getTopLeft(section), before);
     });
   });
-
-  testWidgets('pages swipe back from the edge', (tester) async {
-    await tester.pumpWidget(app());
-    await tester.tap(find.byTooltip('我'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('设置'));
-    await tester.pumpAndSettle();
-
-    final section = find.text('外观');
-    final before = tester.getTopLeft(section);
-    final swipe = await tester.startGesture(const Offset(5, 300));
-    for (var i = 0; i < 10; i++) {
-      await swipe.moveBy(const Offset(50, 0));
-      await tester.pump(const Duration(milliseconds: 16));
-    }
-    expect(tester.getTopLeft(section).dx, greaterThan(before.dx));
-
-    await swipe.up();
-    await tester.pumpAndSettle();
-    expect(section, findsNothing);
-    expect(find.text('设置'), findsOneWidget);
-  }, variant: TargetPlatformVariant.only(TargetPlatform.iOS));
 
   testWidgets('the text size applies everywhere, even on a narrow phone', (
     tester,

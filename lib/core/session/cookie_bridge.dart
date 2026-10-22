@@ -4,8 +4,8 @@ import 'package:webview_flutter/webview_flutter.dart';
 /// Reads cookies from the platform WebView cookie store.
 ///
 /// webview_flutter can only write cookies, and Weibo's session cookie (SUB)
-/// is HttpOnly, so it has to be read natively. The native halves live in
-/// `android/.../CookieBridge.kt` and `ios/Runner/AppDelegate.swift`.
+/// is HttpOnly, so it has to be read natively. The native half lives in
+/// `android/.../CookieBridge.kt`.
 class CookieBridge {
   const CookieBridge();
 

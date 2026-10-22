@@ -14,7 +14,7 @@ const _disclaimer = [
 
 const _privacy = [
   '登录在微博官方网页登录页中完成，maxbo 接触不到你的密码。',
-  '登录状态只保存在本机（Android Keystore / iOS Keychain），退出登录时清除。',
+  '登录状态只保存在本机（Android Keystore），退出登录时清除。',
   '没有服务器，没有统计、埋点或崩溃上报，不收集任何数据；应用只和微博的服务器通信。',
   '只在你操作时请求微博，不在后台轮询或预取。',
 ];

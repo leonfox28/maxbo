@@ -356,7 +356,7 @@ class VideoInfo {
     );
   }
 
-  // Stream URLs come as plain http, which Android and iOS refuse by default;
+  // Stream URLs come as plain http, which Android refuses by default;
   // the CDN serves the same signed URLs over https, as weibo.com uses them.
   static String _https(String url) =>
       url.startsWith('http://') ? 'https://${url.substring(7)}' : url;

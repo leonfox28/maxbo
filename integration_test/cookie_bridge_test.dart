@@ -19,7 +19,7 @@ void main() {
 
   testWidgets('reads cookies written to the WebView store', (tester) async {
     // Keep the value URL-safe: webview_flutter percent-encodes values when
-    // writing on Android but not on iOS.
+    // writing on Android.
     await manager.setCookie(
       const WebViewCookie(
         name: 'maxbo_probe',

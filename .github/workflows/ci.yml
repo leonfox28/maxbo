@@ -36,16 +36,3 @@ jobs:
       - run: flutter test
       # Debug build only: this workflow never sees the release key.
       - run: flutter build apk --debug
-
-  ios:
-    name: Build iOS (simulator)
-    runs-on: macos-latest
-    steps:
-      - uses: actions/checkout@v7
-      - uses: subosito/flutter-action@v2
-        with:
-          flutter-version: ${{ env.FLUTTER_VERSION }}
-          channel: stable
-          cache: true
-      - run: flutter pub get
-      - run: flutter build ios --simulator --debug
