@@ -35,18 +35,23 @@ class NotificationsPageTest {
     /** What push_count answers. */
     @Volatile private var unreadCounts = "{}"
 
+    /** The comment the comments list has, and how long Weibo takes to give it. */
+    @Volatile private var newestComment = "收到的评论"
+    @Volatile private var commentsDelay = 0L
+
     init {
         web.respond = {
             when (it.url.encodedPath) {
                 "/2/remind/push_count.json" -> json(unreadCounts)
-                "/ajax/message/cmt" ->
+                "/ajax/message/cmt" -> {
+                    Thread.sleep(commentsDelay)
                     json(
                         noticePageJson(
                                 "comments",
                                 listOf(
                                     commentNoticeJson(
                                         id = 11,
-                                        text = "收到的评论",
+                                        text = newestComment,
                                         status = statusJson(id = 101, text = "我发的那条"),
                                         replyTo = commentJson(id = 10, text = "我之前的评论"),
                                     )
@@ -54,6 +59,7 @@ class NotificationsPageTest {
                             )
                             .toString()
                     )
+                }
                 "/ajax/comments/mentions" ->
                     json(
                         noticePageJson(
@@ -135,6 +141,17 @@ class NotificationsPageTest {
         tab("评论").performClick()
         app.waitFor("收到的评论")
         assertEquals(1, loads("/ajax/message/cmt"))
+    }
+
+    @Test
+    fun `the open tab shows what is new, however long Weibo takes`() {
+        open()
+        newestComment = "新收到的评论"
+        commentsDelay = 500
+        unreadCounts = """{"cmt":1}"""
+        checkUnread()
+
+        app.waitFor("新收到的评论")
     }
 
     @Test

@@ -156,16 +156,19 @@ private fun Notices(padding: PaddingValues, modifier: Modifier) {
     LaunchedEffect(homeTaps) { homeTaps.collect { taps[pager.currentPage].tryEmit(Unit) } }
 
     // The user is looking at the open tab: clear its mark, and reload its
-    // list if that came before whatever is new.
+    // list if that came before whatever is new. The reload goes on in the
+    // page's scope: clearing the mark restarts this effect.
     LaunchedEffect(pager.currentPage, unread) {
         val kind = Tabs[pager.currentPage].first
         if (!unread.has(kind)) return@LaunchedEffect
         graph.unread.markRead(kind)
         val list = model.opened(kind) ?: return@LaunchedEffect
         if (list.state.value is ListLoad.Ready) {
-            try {
-                list.refresh()
-            } catch (_: WeiboException) {}
+            scope.launch {
+                try {
+                    list.refresh()
+                } catch (_: WeiboException) {}
+            }
         }
     }
 
