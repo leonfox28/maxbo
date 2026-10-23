@@ -100,7 +100,11 @@ class ProfilePageTest {
         app.start(Route.ProfileByName("示例用户"))
         app.waitFor("普通的微博")
 
-        assertEquals(listOf("/ajax/profile/info", "/ajax/statuses/mymblog"), app.paths())
+        // The page's own, in order (opening the app also checks notifications).
+        assertEquals(
+            listOf("/ajax/profile/info", "/ajax/statuses/mymblog"),
+            app.paths().filter { it.startsWith("/ajax/") },
+        )
         assertEquals(
             "示例用户",
             requestsTo("/ajax/profile/info").single().queryParameter("screen_name"),
