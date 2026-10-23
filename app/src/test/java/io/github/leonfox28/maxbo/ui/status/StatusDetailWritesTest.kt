@@ -271,6 +271,8 @@ class StatusDetailWritesTest {
 
         text("5").performClick()
         waitFor("赞 6")
+        // The like shows before it is sent.
+        compose.waitUntil(5_000) { requestsTo("/ajax/statuses/setLike") == 1 }
 
         assertEquals("/ajax/statuses/setLike", lastRequest().url.encodedPath)
         assertEquals(mapOf("id" to "1"), sentForm())
