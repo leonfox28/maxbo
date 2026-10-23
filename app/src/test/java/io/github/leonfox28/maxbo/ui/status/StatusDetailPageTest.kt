@@ -185,11 +185,12 @@ class StatusDetailPageTest {
 
         waitFor("评论详情")
         waitFor("1 条回复")
+        // The latest request, but for the unread check made as the app opened, which may come
+        // any time.
+        val replies = web.requests.last { it.url.encodedPath != "/2/remind/push_count.json" }
         assertEquals(
             "600",
-            web.requests.last().url.queryParameter("id").let {
-                if (it == "6000000000000001") "600" else it
-            },
+            replies.url.queryParameter("id").let { if (it == "6000000000000001") "600" else it },
         )
     }
 

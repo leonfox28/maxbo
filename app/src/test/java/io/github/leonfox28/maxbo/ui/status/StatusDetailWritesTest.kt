@@ -107,7 +107,13 @@ class StatusDetailWritesTest {
 
     @After fun tearDown() = web.close()
 
-    private fun sentForm() = web.requests.last().form
+    /**
+     * The latest request, but for the unread check made as the app opened, which may come any time.
+     */
+    private fun lastRequest() =
+        web.requests.last { it.url.encodedPath != "/2/remind/push_count.json" }
+
+    private fun sentForm() = lastRequest().form
 
     private fun requestsTo(path: String) = web.requests.count { it.url.encodedPath == path }
 
@@ -161,7 +167,7 @@ class StatusDetailWritesTest {
         send("  新评论 ")
         waitFor("评论成功")
 
-        assertEquals("/ajax/comments/create", web.requests.last().url.encodedPath)
+        assertEquals("/ajax/comments/create", lastRequest().url.encodedPath)
         assertEquals("1", sentForm()["id"])
         assertEquals("新评论", sentForm()["comment"])
         assertFalse(compose.showsTextField())
@@ -200,7 +206,7 @@ class StatusDetailWritesTest {
         // The comment's thread preview now has the reply.
         waitFor("共1条回复 >")
 
-        assertEquals("/ajax/comments/reply", web.requests.last().url.encodedPath)
+        assertEquals("/ajax/comments/reply", lastRequest().url.encodedPath)
         assertEquals("1", sentForm()["id"])
         assertEquals("6000000000000001", sentForm()["cid"])
     }
@@ -225,7 +231,7 @@ class StatusDetailWritesTest {
         compose.onNodeWithText("删除").performClick()
         waitFor("已删除")
 
-        assertEquals("/ajax/statuses/destroyComment", web.requests.last().url.encodedPath)
+        assertEquals("/ajax/statuses/destroyComment", lastRequest().url.encodedPath)
         assertEquals(mapOf("cid" to "6000000000000002"), sentForm())
         assertFalse(shows("我写的评论"))
     }
@@ -251,7 +257,7 @@ class StatusDetailWritesTest {
         compose.onNodeWithText("删除").performClick()
         waitFor("已删除")
 
-        // The tabs underneath check for notices then.
+        // The unread check made as the app opened may come after it.
         val destroy = web.requests.single { it.url.encodedPath == "/ajax/statuses/destroy" }
         assertEquals(mapOf("id" to "1"), destroy.form)
         assertEquals(Route.Home, navigator.backStack.last())
@@ -266,7 +272,7 @@ class StatusDetailWritesTest {
         text("5").performClick()
         waitFor("赞 6")
 
-        assertEquals("/ajax/statuses/setLike", web.requests.last().url.encodedPath)
+        assertEquals("/ajax/statuses/setLike", lastRequest().url.encodedPath)
         assertEquals(mapOf("id" to "1"), sentForm())
     }
 
@@ -300,7 +306,7 @@ class StatusDetailWritesTest {
         compose.onAllNodes(hasText("转发") and hasClickAction()).onLast().performClick()
         waitFor("转发成功")
 
-        assertEquals("/ajax/statuses/normal_repost", web.requests.last().url.encodedPath)
+        assertEquals("/ajax/statuses/normal_repost", lastRequest().url.encodedPath)
         assertEquals("1", sentForm()["id"])
         waitFor("转发 4")
         assertTrue(top("我的转发") < top("转发了这条"))

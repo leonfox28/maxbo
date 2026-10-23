@@ -92,6 +92,8 @@ class NotificationsPageTest {
         app.start()
         compose.onNodeWithContentDescription("通知", substring = true).performClick()
         app.waitFor("收到的评论")
+        // Past the check made as the app opened, so it can't read the counts a test sets next.
+        checkUnread()
     }
 
     private fun tab(label: String) = compose.onNodeWithContentDescription(label)
