@@ -15,6 +15,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.navigation3.rememberViewModelStoreNavEntryDecorator
+import androidx.navigation3.runtime.NavEntry
 import androidx.navigation3.runtime.entryProvider
 import androidx.navigation3.runtime.rememberSaveableStateHolderNavEntryDecorator
 import androidx.navigation3.scene.DialogSceneStrategy
@@ -33,6 +34,7 @@ import io.github.leonfox28.maxbo.ui.media.VideoPlayerPage
 import io.github.leonfox28.maxbo.ui.navigation.LocalNavigator
 import io.github.leonfox28.maxbo.ui.navigation.Navigator
 import io.github.leonfox28.maxbo.ui.navigation.Route
+import io.github.leonfox28.maxbo.ui.navigation.fadingOnceClosed
 import io.github.leonfox28.maxbo.ui.navigation.popTransition
 import io.github.leonfox28.maxbo.ui.navigation.predictivePopTransition
 import io.github.leonfox28.maxbo.ui.navigation.pushTransition
@@ -99,29 +101,7 @@ fun MaxboApp(
                 transitionSpec = pushTransition(),
                 popTransitionSpec = popTransition(),
                 predictivePopTransitionSpec = predictivePopTransition(),
-                entryProvider =
-                    entryProvider {
-                        entry<Route.Home> { HomeShell() }
-                        entry<Route.Login> { LoginPage() }
-                        entry<Route.StatusDetail> { StatusDetailPage(it.id, it.initial) }
-                        entry<Route.Comments> { CommentRepliesPage(it.thread) }
-                        entry<Route.Viewer>(
-                            metadata = DialogSceneStrategy.dialog(FullScreenDialog)
-                        ) {
-                            KeepTextSize { ImageViewerPage(it.pics, it.index) }
-                        }
-                        entry<Route.Video> { VideoPlayerPage(it.id, it.index, it.initial) }
-                        entry<Route.Profile> { ProfilePage(uid = it.uid, initial = it.initial) }
-                        entry<Route.ProfileByName> { ProfilePage(screenName = it.name) }
-                        entry<Route.SearchResults> { SearchResultsPage(it.query) }
-                        entry<Route.Web> { WebPage(it.url) }
-                        entry<Route.Settings> { SettingsPage() }
-                        entry<Route.TextSize> { TextSizePage() }
-                        entry<Route.About> { AboutPage() }
-                        entry<Route.Licenses> { LicensesPage() }
-                        entry<Route.Compose> { ComposePage() }
-                        entry<Route.Diagnostics> { if (BuildConfig.DEBUG) DiagnosticsPage() }
-                    },
+                entryProvider = pages.fadingOnceClosed(navigator.backStack),
             )
             OverlayHost(overlays)
         }
@@ -130,6 +110,28 @@ fun MaxboApp(
 
 private val FullScreenDialog =
     DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)
+
+/** What each page shows. */
+private val pages: (Route) -> NavEntry<Route> = entryProvider {
+    entry<Route.Home> { HomeShell() }
+    entry<Route.Login> { LoginPage() }
+    entry<Route.StatusDetail> { StatusDetailPage(it.id, it.initial) }
+    entry<Route.Comments> { CommentRepliesPage(it.thread) }
+    entry<Route.Viewer>(metadata = DialogSceneStrategy.dialog(FullScreenDialog)) {
+        KeepTextSize { ImageViewerPage(it.pics, it.index) }
+    }
+    entry<Route.Video> { VideoPlayerPage(it.id, it.index, it.initial) }
+    entry<Route.Profile> { ProfilePage(uid = it.uid, initial = it.initial) }
+    entry<Route.ProfileByName> { ProfilePage(screenName = it.name) }
+    entry<Route.SearchResults> { SearchResultsPage(it.query) }
+    entry<Route.Web> { WebPage(it.url) }
+    entry<Route.Settings> { SettingsPage() }
+    entry<Route.TextSize> { TextSizePage() }
+    entry<Route.About> { AboutPage() }
+    entry<Route.Licenses> { LicensesPage() }
+    entry<Route.Compose> { ComposePage() }
+    entry<Route.Diagnostics> { if (BuildConfig.DEBUG) DiagnosticsPage() }
+}
 
 /**
  * Edge to edge, with status bar icons to suit the theme where no app bar sets them, as on the tabs
