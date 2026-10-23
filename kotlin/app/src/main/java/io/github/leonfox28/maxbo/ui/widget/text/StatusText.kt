@@ -8,11 +8,14 @@ import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalViewConfiguration
+import androidx.compose.ui.platform.ViewConfiguration
 import androidx.compose.ui.text.LinkAnnotation
 import androidx.compose.ui.text.Placeholder
 import androidx.compose.ui.text.PlaceholderVerticalAlign
@@ -21,6 +24,7 @@ import androidx.compose.ui.text.TextLinkStyles
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.withLink
+import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.isSpecified
 import androidx.compose.ui.unit.sp
@@ -96,7 +100,19 @@ fun StatusText(
                 }
             }
             .toMap()
-    Text(annotated, modifier, style = style, inlineContent = inline)
+    // Links take taps on their glyphs only, as in Flutter: stretched to the
+    // usual 48dp, a mention would take taps on the line below it, or on
+    // "共N条回复" under a reply.
+    val viewConfiguration = LocalViewConfiguration.current
+    val exactTargets =
+        remember(viewConfiguration) {
+            object : ViewConfiguration by viewConfiguration {
+                override val minimumTouchTargetSize = DpSize.Zero
+            }
+        }
+    CompositionLocalProvider(LocalViewConfiguration provides exactTargets) {
+        Text(annotated, modifier, style = style, inlineContent = inline)
+    }
 }
 
 private fun inlineImage(
