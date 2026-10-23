@@ -42,9 +42,14 @@ enum class TextSize(val key: String, val label: String, val factor: Float) {
     Large("large", "大", 1.15f),
     ExtraLarge("extraLarge", "特大", 1.3f);
 
-    /** The device's text scaling, [system], enlarged or reduced to this size. */
-    fun applyTo(system: Density): Density =
-        if (factor == 1f) system else ScaledTextDensity(system, factor)
+    /**
+     * The device's text scaling, [system], enlarged or reduced to this size. A density this has
+     * already scaled is scaled from its system one again, not twice.
+     */
+    fun applyTo(system: Density): Density {
+        val base = (system as? ScaledTextDensity)?.base ?: system
+        return if (factor == 1f) base else ScaledTextDensity(base, factor)
+    }
 }
 
 /**

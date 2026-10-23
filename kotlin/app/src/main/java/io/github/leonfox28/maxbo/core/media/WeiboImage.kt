@@ -35,7 +35,6 @@ import coil3.request.ImageRequest
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.Interceptor
 import okhttp3.OkHttpClient
-import okio.Path.Companion.toOkioPath
 
 // Signature parameters on avatar URLs that change every few hours.
 private val signatureParams = listOf("Expires", "ssig", "KID")
@@ -57,9 +56,9 @@ fun imageCacheKey(url: String): String {
 /**
  * The image loader for Weibo's pictures, on [base]'s connections: every request has weibo.com as
  * its Referer (Weibo's image hosts answer 403 without it, and a browser tab on weibo.com sends it
- * too), and pictures are cached on disk up to [diskCacheBytes].
+ * too), and pictures are cached on [diskCache].
  */
-fun weiboImageLoader(context: Context, base: OkHttpClient, diskCacheBytes: Long): ImageLoader {
+fun weiboImageLoader(context: Context, base: OkHttpClient, diskCache: DiskCache): ImageLoader {
     val client =
         base
             .newBuilder()
@@ -79,12 +78,7 @@ fun weiboImageLoader(context: Context, base: OkHttpClient, diskCacheBytes: Long)
                 else GifDecoder.Factory()
             )
         }
-        .diskCache {
-            DiskCache.Builder()
-                .directory(context.cacheDir.resolve("image_cache").toOkioPath())
-                .maxSizeBytes(diskCacheBytes)
-                .build()
-        }
+        .diskCache(diskCache)
         .build()
 }
 

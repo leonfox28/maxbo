@@ -342,7 +342,7 @@ Dart 代码约 1.5 万行，一个 `:app` 模块就够了，用包来分层（§
 | K3 详情、评论、媒体 | 代码和测试完成，等真实会话验收（PLAN §11「M3 详情与媒体」一行） | 见 git log | 见下方「K3 备注」 |
 | K4 用户主页、搜索、通知、网页 | 代码和测试完成，等真实会话验收（PLAN §11「M4 主页与热搜」「通知页」「搜索页签」「原生搜索结果」几行） | 见 git log | 见下方「K4 备注」 |
 | K5 互动与发布 | 代码和测试完成，等真实会话验收（PLAN §11「M5 轻互动」「发微博」「转发」「评论带图」几行；每项真实写操作先问用户） | 见 git log | 见下方「K5 备注」 |
-| K6 设置、关于、宽屏、诊断 | 未开始 | | |
+| K6 设置、关于、宽屏、诊断 | 代码和测试完成；设置、字体大小、深色、关于、开源许可、右下角胶囊已在模拟器上看过（未登录）；时间线宽卡片和详情页左右并排等登录后用 `wm density` 核对 | 见 git log | 见下方「K6 备注」 |
 | K7 对齐、切换、发版 | 未开始 | | |
 
 ### K0 备注
@@ -350,7 +350,7 @@ Dart 代码约 1.5 万行，一个 `:app` 模块就够了，用包来分层（§
 - **导航选了 Navigation 3**：页面栈是普通的 `SnapshotStateList`（`ui/navigation/Navigator.kt`），由我们自己推入和弹出，`Route` 里可以直接带上一页已有的数据（相当于 go_router 的 `extra`），不用序列化。四个页签不是导航目的地，而是栈底 `Route.Home` 里的状态，再点页签、滚动收起这些都留在 `HomeShell` 里做。Navigation 3 默认的转场是 700 ms 的淡入淡出，不像 Android，所以 `ui/navigation/Transitions.kt` 照 Flutter 的 `FadeForwardsPageTransitionsBuilder`（450 ms，新页从右边 25% 处滑入并淡入，旧页左移 25% 并在前 25% 的时间里淡出）和 `PredictiveBackPageTransitionsBuilder`（跟手缩到 0.9，向滑动方向偏移屏宽的 1/20，松手后淡出）重写了三种转场。和 Flutter 相比少了两点：手指上下移动时页面不跟着上下偏移，缩小时没有圆角。
 - **格式化选了 ktfmt**（kotlinlang 风格）：和 `dart format` 一样只管格式、没有配置项；ktlint 还要另外配置才能接受 Compose 的大写函数名。ktfmt 会删掉没用到的 import。
 - **界面语言**：`MainActivity.attachBaseContext` 里用 `applyOverrideConfiguration` 只覆盖语言，其余配置（深色模式、字体大小等）照常跟随系统变化。Android 8 以前 `Configuration()` 会把字体缩放设成 1，所以要把 `fontScale` 置回 0（未设定）；`MainActivityTest` 在 API 24 和 34 上核对了语言是中文、系统字体大小保留，去掉这一行 API 24 的测试就会失败。
-- **字体大小**：`TextSize.applyTo()` 返回一个包装过的 `Density`，在根部经 `LocalDensity` 提供：文字先按系统的方式换算（保留 Android 14 起的非线性缩放），再乘倍数，非文字的尺寸不变。与 Dart 版的 `_ScaledTextScaler` 相同。设置页还没有，K6 时在真机上核对。
+- **字体大小**：`TextSize.applyTo()` 返回一个包装过的 `Density`，在根部经 `LocalDensity` 提供：文字先按系统的方式换算（保留 Android 14 起的非线性缩放），再乘倍数，非文字的尺寸不变。与 Dart 版的 `_ScaledTextScaler` 相同。设置页还没有，K6 时在真机上核对。（K6 发现对话框、底部弹层、菜单不在这里生效，见「K6 备注」。）
 - **设置**：`SettingsController`（`StateFlow`）的 `update()` 立即生效，保存在 `AppGraph.appScope` 里排队执行（离开页面不会中断），每次保存的都是最新的设置。`AppGraph.create()` 在 `Application.onCreate` 里读入设置（DataStore，在第一帧之前）。
 - **配色**：用临时的 Dart 测试打印了 Flutter 3.47 的 `ColorScheme.fromSeed(#3F51B5)`，抄进 `ui/theme/Color.kt`（Flutter 已去掉的 `background`、`surfaceVariant` 分别取 `surface`、`surfaceContainerHighest`）。字体层级不用改：Flutter 给中文用的 `dense2021` 与 Compose 默认的 M3 字号、行高、字距完全一样（也打印核对过）。导航胶囊与 Flutter 版截图对比，像素级一致。
 - **Manifest**：照搬了 Flutter 版的 `configChanges`，旋转、折叠、切换深色模式都不重建 Activity，页签和页面状态保留（模拟器上切深色模式核对过）。**顺手修的 Flutter 版问题**：Android 12 起 `allowBackup="false"` 不再阻止设备间迁移（换手机时的数据传输），WebView 的 Cookie（也就是登录态）会被带到新手机上，违反「登录态只在本机」。Kotlin 版加了 `data_extraction_rules.xml`，云备份和设备间迁移都排除所有数据。Flutter 版没有改（K7 后就不存在了）。
@@ -420,3 +420,16 @@ Dart 代码约 1.5 万行，一个 `:app` 模块就够了，用包来分层（§
 - **详情页和楼中楼**：评论栏、页签上的计数（含本页的增减，新加载的数据到达后以它为准，判断方式同 Dart，比较的是 `Status` 对象本身）、底部栏的转发和赞、点评论回复、长按自己的评论删除，全部照 Dart。楼中楼页的评论栏和点回复都能回复，长按自己的回复删除，改动同时套用到下面详情页里那条评论的预览上。
 - **发微博**：`Route.Compose`，入口是首页页签右下角的「发微博」按钮（只在登录时、首页页签上显示，随导航胶囊收起）。草稿在 `AppGraph.composeDraft`，关页面不丢，换账号清空。Flutter 版从下往上弹出（`fullscreenDialog`），Kotlin 版和其他页面一样的进入动画。
 - **测试**：迁移了 `likes_test`（另加了「退出后清空」）、`comment_composer_test`、`repost_test`、`compose_draft_test`（另加了「换账号清空」）、`compose_page_test`、`comment_replies_page_test`、`weibo_api_test` 的写接口和 `parseUploadedPid`、`status_detail_page_test` 的写操作各项（放在 `StatusDetailWritesTest`），另加了首页「发微博」按钮的测试。`status_actions_test` 只测跳转，K2 已经覆盖；`status_detail_page_test` 的「按钮没有水波纹」同 K2 的说明，没有翻译。关弹层用遮罩的无障碍点击（`support/Sheets.kt` 的 `closeSheet()`），因为点遮罩中心会点到弹层上。共 305 个，全部通过。
+
+### K6 备注
+
+- **设置页**：照 Dart（主题、字体大小、图片质量、缓存上限、清除缓存并显示已用大小、关于）。选项对话框没有按钮，点选即关，与 Flutter 的 `SimpleDialog` 一样（用 `BasicAlertDialog` 自己排）。
+- **图片缓存**：Coil 的磁盘缓存在创建时定下上限，所以加了 `ImageDiskCache`（实现 Coil 的 `DiskCache` 接口、转发给 Coil 的实现）：调整上限时先关掉旧的，在同一目录上按新上限重建，再开一个空的编辑立即放弃，让 Coil 按 LRU 马上清到新上限之内（Coil 在编辑结束、超出上限时清理）。设置页经 `PictureCache` 接口读大小、清除（磁盘和内存）和改上限，测试换成假的。Coil 平时就按 LRU 清理，比 Dart 版只在启动和调低上限时清理更及时。
+- **字体大小页**：滑动条两端各有一个固定大小的「A」按钮，到头时变暗；滑动条读屏时读档位名（`stateDescription`）。示例微博和评论接不到按下（`pointerInput` 在 Initial 阶段吃掉按下），列表仍可滚动。
+- **对话框里的字体大小（修正 K0）**：K0 以为在根部提供 `LocalDensity` 就覆盖所有页面和对话框，实测不是：对话框、底部弹层、菜单、提示都是单独的窗口，窗口的根会按系统重新提供 `LocalDensity`，里面的文字回到系统大小（Flutter 的对话框在同一棵树里，没有这个问题）。现在根部另外提供 `LocalTextSize`，这些窗口的内容用 `KeepTextSize` 重新套上（`AppAlertDialog`、`OverlaySheet`、两个下拉菜单、导航胶囊的长按提示、图片查看器的对话框场景、开源许可的对话框），`applyTo()` 改成重复套用不会叠加。有测试，模拟器上「特大」时的主题对话框也看过。以后新加对话框、菜单要记得套。
+- **关于页**：文案照 Dart（与 README 一致），项目主页和问题反馈用外部浏览器打开（`openExternally()`，链接和网页页面的「在浏览器中打开」也改用它）。
+- **开源许可**：用 AboutLibraries 的 Gradle 插件（15.3.0）在构建时生成 `res/raw/aboutlibraries.json`，页面自己读这个文件列出库名、版本和许可证，点开看许可证全文。**偏离计划**：没有用 AboutLibraries 的界面库，因为 14.x、15.x 的界面库都是 Java 21 字节码，单元测试的 JDK 17 加载不了（应用本身能编译，D8 会转换）；自己写的列表也让许可证对话框跟着字体大小走。插件第一次生成用了约 9 分钟（解析依赖的 POM），之后走缓存。
+- **宽屏**：`windowSize()` 按窗口宽度（`LocalWindowInfo`）分档。时间线卡片用一个自定义 `Layout`（`CardLayout`）同时处理窄和宽：窄时上下排列，宽（卡片可用宽度加内边距不小于 840dp）时媒体或转发框在右边，正文限 400dp（无媒体时 640dp），计数在正文下面或卡片底部，与 Dart 的 `_WideLayout` 一致；不用每张卡片一个 `BoxWithConstraints`。详情页在 expanded 档用 `ReadingPanes` 左右并排，评论栏在右栏下面。首页导航胶囊在 expanded 档移到右下角，切换时胶囊重新出现。「我」页漏了阅读宽度限制（K4），一起补上。
+- **修的 K2 问题**：九宫格每格的宽度按 dp 算出来再各自取整到像素，三格加间距可能比整行多 1 像素，第三格就换到下一行，变成两列。宽卡片的测试先发现了这个问题；手机上分数密度时同样会出现。改成每行用 `weight` 平分，不再有取整误差。
+- **诊断页**：只迁了还用得上的：「核对接口（只读）」用应用自己的接口依次读账号、时间线、一条微博和它的评论、主页、热搜、搜索、未读提醒，只记数量（不读通知列表，那会把通知标成已读；用 `WeiboApi.withoutRenewal()`，异常的回应不会让用户退出登录）；「打开页面」按 `/n/昵称`、`/u/uid`、`/status/id`、`/results?q=` 打开页面（写操作测试时用来找测试微博）；会话续期。Dart 版为回答 PLAN §8 各个问题写的探针、真实点赞评论的「互动结构」探针没有迁。
+- **测试**：迁移了 `settings_page_test`、`text_size_page_test`、`image_disk_cache_test`（改为对 Coil 磁盘缓存的调整上限）、`adaptive_layout_test`、`status_card_test` 的宽卡片各项（`StatusCardWideTest`，用 Robolectric 的 NATIVE 图形模式：旧模式量文字时每个字符算 1 像素；尺寸用不裁剪的位置和大小，与 Flutter 的 `getRect` 一致）、`status_detail_page_test` 的宽窗口一项，以及 `app_test` 里尚未迁移的：在首页删除自己的微博、从「我」进设置、关于、开源许可，胶囊在手机上居中、宽窗口在右下角且卡片加宽。没有翻译的：预测性返回的逐帧测试（Flutter 自己的转场实现，Compose 由 Navigation 3 负责）；运行中改变窗口大小（Robolectric 不能在测试中途换尺寸，宽和窄分开用 `@Config` 测）；「窄手机上字体大小处处生效」由 `KeepTextSizeTest` 和字体大小页的测试代替。另修了 `NotificationsPageTest` 里一个负载高时才出现的竞态（打开应用时的未读检查还没回来，测试自己的检查被跳过）。共 339 个，全部通过。

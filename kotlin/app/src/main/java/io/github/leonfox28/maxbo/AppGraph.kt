@@ -5,6 +5,9 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import androidx.datastore.preferences.preferencesDataStoreFile
 import coil3.ImageLoader
+import io.github.leonfox28.maxbo.core.media.ImageDiskCache
+import io.github.leonfox28.maxbo.core.media.PictureCache
+import io.github.leonfox28.maxbo.core.media.WeiboPictureCache
 import io.github.leonfox28.maxbo.core.media.weiboImageLoader
 import io.github.leonfox28.maxbo.core.net.RequestThrottle
 import io.github.leonfox28.maxbo.core.net.WeiboCookieJar
@@ -32,6 +35,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.runBlocking
 import okhttp3.OkHttpClient
+import okio.Path.Companion.toOkioPath
 
 /**
  * The app's long-lived objects, made by hand: what Riverpod's providers were in the Flutter app.
@@ -49,6 +53,8 @@ class AppGraph(
     val unread: UnreadNoticesController,
     /** Reads the pictures the user picks, to upload them. */
     val pictures: PictureReader,
+    /** The pictures kept on the device, for the settings page. */
+    val pictureCache: PictureCache,
     imageLoader: () -> ImageLoader,
 ) {
     /** Loads Weibo's pictures; made on first use. */
@@ -94,6 +100,14 @@ class AppGraph(
                     scope = scope,
                 )
             val api = WeiboApi(httpFor(session.jar), onSessionExpired = session::renewOrExpire)
+            val diskCache =
+                ImageDiskCache(
+                    context.cacheDir.resolve("image_cache").toOkioPath(),
+                    initialSettings.imageCacheLimitMb * MB,
+                )
+            val imageLoader by lazy {
+                weiboImageLoader(context.applicationContext, base, diskCache)
+            }
             return AppGraph(
                 appScope = scope,
                 settings = SettingsController(initialSettings, settingsStorage, scope),
@@ -103,16 +117,14 @@ class AppGraph(
                 timeline = TimelineController(api, session, scope),
                 unread = UnreadNoticesController(api, session, scope),
                 pictures = ContentPictureReader(context.applicationContext),
-                imageLoader = {
-                    weiboImageLoader(
-                        context.applicationContext,
-                        base,
-                        initialSettings.imageCacheLimitMb * 1024L * 1024,
-                    )
-                },
+                pictureCache = WeiboPictureCache(diskCache) { imageLoader },
+                imageLoader = { imageLoader },
             )
         }
     }
 }
 
 val LocalAppGraph = staticCompositionLocalOf<AppGraph> { error("No AppGraph provided") }
+
+/** Bytes in a megabyte, as the settings count them. */
+const val MB = 1024L * 1024

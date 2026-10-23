@@ -7,6 +7,7 @@ import coil3.ImageLoader
 import coil3.annotation.ExperimentalCoilApi
 import coil3.test.FakeImageLoaderEngine
 import io.github.leonfox28.maxbo.AppGraph
+import io.github.leonfox28.maxbo.core.media.PictureCache
 import io.github.leonfox28.maxbo.core.net.RequestThrottle
 import io.github.leonfox28.maxbo.core.net.WeiboApiException
 import io.github.leonfox28.maxbo.core.net.WeiboCookieJar
@@ -46,6 +47,7 @@ fun testGraph(
     web: FakeWeibo? = null,
     scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined),
     pictures: PictureReader = FilePictureReader,
+    pictureCache: PictureCache = FakePictureCache(),
 ): AppGraph {
     val base = web?.client ?: offlineClient
     val throttle = RequestThrottle(minIntervalMs = 0)
@@ -61,6 +63,7 @@ fun testGraph(
         timeline = TimelineController(api, session, scope),
         unread = UnreadNoticesController(api, session, scope),
         pictures = pictures,
+        pictureCache = pictureCache,
         imageLoader = { fakeImageLoader() },
     )
 }

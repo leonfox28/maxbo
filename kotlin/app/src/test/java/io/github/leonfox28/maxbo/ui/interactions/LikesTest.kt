@@ -169,6 +169,7 @@ class LikesTest {
         compose.onAllNodesWithText("5")[0].performClick()
 
         compose.waitUntil(5_000) { compose.onAllNodesWithText("6").fetchSemanticsNodes().size == 2 }
+        compose.waitUntil(5_000) { web.requests.isNotEmpty() }
         assertEquals(listOf("/ajax/statuses/setLike"), paths())
     }
 
@@ -216,6 +217,8 @@ class LikesTest {
         compose.waitUntil(5_000) {
             compose.onAllNodesWithText("4").fetchSemanticsNodes().isNotEmpty()
         }
+        // Shown at once, before the request has even gone.
+        compose.waitUntil(5_000) { web.requests.isNotEmpty() }
         assertEquals(listOf("/ajax/statuses/updateLike"), paths())
         assertEquals("9", web.requests.single().form["object_id"])
         assertEquals(0, tapped)

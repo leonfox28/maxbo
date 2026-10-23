@@ -18,7 +18,6 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.outlined.AddPhotoAlternate
 import androidx.compose.material.icons.outlined.BrokenImage
 import androidx.compose.material.icons.outlined.Delete
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilledTonalIconButton
@@ -60,6 +59,7 @@ import io.github.leonfox28.maxbo.ui.compose.LocalPicturePicker
 import io.github.leonfox28.maxbo.ui.compose.PickerUnavailableException
 import io.github.leonfox28.maxbo.ui.navigation.LocalNavigator
 import io.github.leonfox28.maxbo.ui.navigation.Route
+import io.github.leonfox28.maxbo.ui.widget.AppAlertDialog
 import io.github.leonfox28.maxbo.ui.widget.OverlaySheet
 import io.github.leonfox28.maxbo.ui.widget.Overlays
 import kotlinx.coroutines.launch
@@ -350,7 +350,7 @@ suspend fun Overlays.confirmDelete(question: String = "确定删除这条评论�
         }
     if (chosen != true) return false
     return show<Boolean> { close ->
-        AlertDialog(
+        AppAlertDialog(
             onDismissRequest = { close(null) },
             text = { Text(question) },
             confirmButton = { TextButton(onClick = { close(true) }) { Text("删除") } },

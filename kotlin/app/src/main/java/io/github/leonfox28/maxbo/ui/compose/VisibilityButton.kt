@@ -24,6 +24,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import io.github.leonfox28.maxbo.data.model.StatusVisibility
+import io.github.leonfox28.maxbo.ui.theme.KeepTextSize
 
 private val StatusVisibility.icon: ImageVector
     get() =
@@ -48,19 +49,21 @@ fun VisibilityButton(value: StatusVisibility, onChange: ((StatusVisibility) -> U
             Text(value.label)
         }
         DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
-            for (choice in StatusVisibility.choices) {
-                DropdownMenuItem(
-                    text = { Text(choice.label) },
-                    onClick = {
-                        open = false
-                        onChange?.invoke(choice)
-                    },
-                    leadingIcon = { Icon(choice.icon, contentDescription = null) },
-                    trailingIcon =
-                        if (choice == value)
-                            ({ Icon(Icons.Filled.Check, contentDescription = null) })
-                        else null,
-                )
+            KeepTextSize {
+                for (choice in StatusVisibility.choices) {
+                    DropdownMenuItem(
+                        text = { Text(choice.label) },
+                        onClick = {
+                            open = false
+                            onChange?.invoke(choice)
+                        },
+                        leadingIcon = { Icon(choice.icon, contentDescription = null) },
+                        trailingIcon =
+                            if (choice == value)
+                                ({ Icon(Icons.Filled.Check, contentDescription = null) })
+                            else null,
+                    )
+                }
             }
         }
     }

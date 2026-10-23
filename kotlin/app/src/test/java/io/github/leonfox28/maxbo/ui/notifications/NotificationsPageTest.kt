@@ -98,8 +98,16 @@ class NotificationsPageTest {
 
     private fun loads(path: String) = app.paths().count { it == path }
 
+    /**
+     * Checks for unread notices, once the check made as the app opened is done: a check while one
+     * is on its way does nothing.
+     */
     private fun checkUnread() {
-        runBlocking { app.graph.unread.check() }
+        val before = loads("/2/remind/push_count.json")
+        compose.waitUntil(5_000) {
+            runBlocking { app.graph.unread.check() }
+            loads("/2/remind/push_count.json") > before
+        }
         compose.waitForIdle()
     }
 

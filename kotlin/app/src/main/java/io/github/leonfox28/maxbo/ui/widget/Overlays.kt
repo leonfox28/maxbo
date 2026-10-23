@@ -1,5 +1,6 @@
 package io.github.leonfox28.maxbo.ui.widget
 
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ModalBottomSheet
@@ -13,6 +14,7 @@ import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.staticCompositionLocalOf
+import io.github.leonfox28.maxbo.ui.theme.KeepTextSize
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.launch
 
@@ -78,6 +80,6 @@ fun <T : Any> OverlaySheet(
         onDismissRequest = { if (dismissible) close(null) },
         sheetState = state,
     ) {
-        content(dismiss)
+        KeepTextSize { Column { content(dismiss) } }
     }
 }

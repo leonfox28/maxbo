@@ -1,12 +1,9 @@
 package io.github.leonfox28.maxbo.ui.status
 
-import android.content.ActivityNotFoundException
-import android.content.Intent
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.platform.LocalContext
-import androidx.core.net.toUri
 import io.github.leonfox28.maxbo.data.model.PicInfo
 import io.github.leonfox28.maxbo.data.model.Status
 import io.github.leonfox28.maxbo.ui.interactions.rememberStatusWrites
@@ -14,9 +11,9 @@ import io.github.leonfox28.maxbo.ui.navigation.LocalNavigator
 import io.github.leonfox28.maxbo.ui.navigation.Navigator
 import io.github.leonfox28.maxbo.ui.navigation.Route
 import io.github.leonfox28.maxbo.ui.widget.LocalSnackbars
+import io.github.leonfox28.maxbo.ui.widget.openExternally
 import io.github.leonfox28.maxbo.ui.widget.status.StatusCardActions
 import io.github.leonfox28.maxbo.ui.widget.text.StatusLink
-import kotlinx.coroutines.launch
 
 /** What tapping parts of a status card (or a comment) does throughout the app. */
 @Composable
@@ -27,16 +24,7 @@ fun rememberStatusCardActions(): StatusCardActions {
     val scope = rememberCoroutineScope()
     val writes = rememberStatusWrites()
     return remember(navigator, context, writes) {
-        fun openExternally(url: String) {
-            try {
-                context.startActivity(Intent(Intent.ACTION_VIEW, url.toUri()))
-            } catch (_: ActivityNotFoundException) {
-                scope.launch {
-                    snackbars.currentSnackbarData?.dismiss()
-                    snackbars.showSnackbar("无法打开链接")
-                }
-            }
-        }
+        fun openExternally(url: String) = context.openExternally(url, snackbars, scope)
 
         fun openStatus(status: Status) = navigator.push(Route.StatusDetail(status.id, status))
 

@@ -1,8 +1,21 @@
 package io.github.leonfox28.maxbo.ui.widget
 
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.calculateEndPadding
 import androidx.compose.foundation.layout.calculateStartPadding
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.material3.VerticalDivider
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
@@ -68,4 +81,36 @@ fun readingPadding(
         end = side + extra.calculateEndPadding(LayoutDirection.Ltr),
         bottom = extra.calculateBottomPadding(),
     )
+}
+
+/** The size class of the app's window, as it is now. */
+@Composable
+fun windowSize(): WindowSize {
+    val width = LocalWindowInfo.current.containerSize.width
+    return WindowSize.fromWidth(with(LocalDensity.current) { width.toDp() })
+}
+
+/**
+ * Two columns side by side, as wide as reading columns can be and centred together in a wider
+ * window, split by a line unless not [divider].
+ *
+ * @param fillHeight whether the panes take all the height given, as panes of a page do, rather than
+ *   that of their content, such as a bar under one of them.
+ */
+@Composable
+fun ReadingPanes(
+    modifier: Modifier = Modifier,
+    divider: Boolean = true,
+    fillHeight: Boolean = true,
+    start: @Composable () -> Unit = {},
+    end: @Composable () -> Unit = {},
+) {
+    val height = if (fillHeight) Modifier.fillMaxHeight() else Modifier
+    Box(modifier.fillMaxWidth(), contentAlignment = Alignment.TopCenter) {
+        Row(Modifier.widthIn(max = ReadingWidth * 2 + 1.dp).then(height)) {
+            Box(Modifier.weight(1f).then(height)) { start() }
+            if (divider) VerticalDivider(height) else Spacer(Modifier.width(1.dp))
+            Box(Modifier.weight(1f).then(height)) { end() }
+        }
+    }
 }

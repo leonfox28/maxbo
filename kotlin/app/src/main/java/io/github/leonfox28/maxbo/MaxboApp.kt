@@ -38,9 +38,14 @@ import io.github.leonfox28.maxbo.ui.navigation.predictivePopTransition
 import io.github.leonfox28.maxbo.ui.navigation.pushTransition
 import io.github.leonfox28.maxbo.ui.profile.ProfilePage
 import io.github.leonfox28.maxbo.ui.search.SearchResultsPage
+import io.github.leonfox28.maxbo.ui.settings.AboutPage
+import io.github.leonfox28.maxbo.ui.settings.LicensesPage
 import io.github.leonfox28.maxbo.ui.settings.SettingsPage
+import io.github.leonfox28.maxbo.ui.settings.TextSizePage
 import io.github.leonfox28.maxbo.ui.shell.HomeShell
 import io.github.leonfox28.maxbo.ui.status.StatusDetailPage
+import io.github.leonfox28.maxbo.ui.theme.KeepTextSize
+import io.github.leonfox28.maxbo.ui.theme.LocalTextSize
 import io.github.leonfox28.maxbo.ui.theme.MaxboTheme
 import io.github.leonfox28.maxbo.ui.theme.isDark
 import io.github.leonfox28.maxbo.ui.webview.WebPage
@@ -71,9 +76,10 @@ fun MaxboApp(
         LocalOverlays provides overlays,
         LocalPicturePicker provides picturePicker,
         LocalImageLoader provides graph.imageLoader,
-        // On top of the system's font size, for every page, dialog and
-        // snackbar alike.
+        // On top of the system's font size, for every page and snackbar;
+        // dialogs, sheets and menus apply it again (KeepTextSize).
         LocalDensity provides settings.textSize.applyTo(LocalDensity.current),
+        LocalTextSize provides settings.textSize,
     ) {
         MaxboTheme(dark = dark) {
             NavDisplay(
@@ -98,7 +104,7 @@ fun MaxboApp(
                         entry<Route.Viewer>(
                             metadata = DialogSceneStrategy.dialog(FullScreenDialog)
                         ) {
-                            ImageViewerPage(it.pics, it.index)
+                            KeepTextSize { ImageViewerPage(it.pics, it.index) }
                         }
                         entry<Route.Video> { VideoPlayerPage(it.id, it.index, it.initial) }
                         entry<Route.Profile> { ProfilePage(uid = it.uid, initial = it.initial) }
@@ -106,6 +112,9 @@ fun MaxboApp(
                         entry<Route.SearchResults> { SearchResultsPage(it.query) }
                         entry<Route.Web> { WebPage(it.url) }
                         entry<Route.Settings> { SettingsPage() }
+                        entry<Route.TextSize> { TextSizePage() }
+                        entry<Route.About> { AboutPage() }
+                        entry<Route.Licenses> { LicensesPage() }
                         entry<Route.Compose> { ComposePage() }
                         entry<Route.Diagnostics> { if (BuildConfig.DEBUG) DiagnosticsPage() }
                     },

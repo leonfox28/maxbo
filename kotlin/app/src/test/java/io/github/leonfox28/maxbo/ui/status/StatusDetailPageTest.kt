@@ -4,6 +4,8 @@ import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.swipeUp
 import io.github.leonfox28.maxbo.MaxboApp
 import io.github.leonfox28.maxbo.data.model.Status
 import io.github.leonfox28.maxbo.support.FakeWeibo
@@ -24,6 +26,7 @@ import java.util.concurrent.TimeUnit
 import mockwebserver3.MockResponse
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -31,8 +34,7 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 
 // Writing (commenting, replying, deleting, liking, reposting) is in
-// StatusDetailWritesTest; the side-by-side layout of wide windows comes
-// over with K6.
+// StatusDetailWritesTest.
 @RunWith(RobolectricTestRunner::class)
 @Config(qualifiers = "w411dp-h891dp")
 class StatusDetailPageTest {
@@ -189,5 +191,32 @@ class StatusDetailPageTest {
                 if (it == "6000000000000001") "600" else it
             },
         )
+    }
+
+    private fun rect(text: String) =
+        compose.onNode(hasText(text), useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
+
+    @Test
+    @Config(qualifiers = "w1280dp-h800dp-mdpi")
+    fun `a wide window shows the lists beside the status`() {
+        open()
+        waitFor("完整的正文")
+        waitFor("最热的评论")
+
+        val post = rect("完整的正文")
+        val tabs = rect("评论 1.2万")
+        assertTrue(post.right < 640)
+        assertTrue(tabs.left > 640)
+        assertTrue(tabs.top < post.bottom)
+        assertTrue(rect("最热的评论").left > 640)
+        // The comment bar writes to the lists, so sits under them.
+        assertTrue(rect("写评论…").left > 640)
+
+        // The lists scroll on their own, leaving the status where it is.
+        compose.onNode(hasText("最热的评论"), useUnmergedTree = true).performTouchInput {
+            swipeUp(startY = centerY, endY = centerY - 100)
+        }
+        compose.waitForIdle()
+        assertEquals(post, rect("完整的正文"))
     }
 }

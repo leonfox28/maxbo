@@ -80,11 +80,14 @@ import io.github.leonfox28.maxbo.ui.notifications.NotificationsPage
 import io.github.leonfox28.maxbo.ui.notifications.UNREAD_RECHECK_MS
 import io.github.leonfox28.maxbo.ui.profile.MePage
 import io.github.leonfox28.maxbo.ui.search.SearchPage
+import io.github.leonfox28.maxbo.ui.theme.KeepTextSize
 import io.github.leonfox28.maxbo.ui.theme.UnreadColor
 import io.github.leonfox28.maxbo.ui.timeline.TimelinePage
 import io.github.leonfox28.maxbo.ui.widget.AppSnackbarHost
 import io.github.leonfox28.maxbo.ui.widget.BarsOnScroll
 import io.github.leonfox28.maxbo.ui.widget.FloatingPill
+import io.github.leonfox28.maxbo.ui.widget.WindowSize
+import io.github.leonfox28.maxbo.ui.widget.windowSize
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.launch
 
@@ -114,6 +117,11 @@ fun HomeShell() {
     val navigator = LocalNavigator.current
     val unread by graph.unread.state.collectAsStateWithLifecycle()
     val session by graph.session.state.collectAsStateWithLifecycle()
+    // On an expanded window the pill sits in the corner, out of the way of
+    // the wide timeline.
+    val corner = windowSize() == WindowSize.Expanded
+    // It comes back where it moved to, say, on unfolding.
+    LaunchedEffect(corner) { bars.show() }
     UnreadChecks()
     Scaffold(
         Modifier.nestedScroll(bars.connection),
@@ -138,6 +146,7 @@ fun HomeShell() {
                     if (it.ordinal == current) reselects[current].tryEmit(Unit)
                     else current = it.ordinal
                 },
+                alignment = if (corner) Alignment.CenterEnd else Alignment.Center,
                 modifier = Modifier.graphicsLayer { translationY = hidden * 1.5f * size.height },
             )
         },
@@ -185,10 +194,11 @@ private fun FloatingNavBar(
     selected: Tab,
     alerts: Set<Tab>,
     onSelected: (Tab) -> Unit,
+    alignment: Alignment,
     modifier: Modifier = Modifier,
 ) {
     // As wide as its items, not the screen.
-    FloatingPill(modifier) {
+    FloatingPill(modifier, alignment = alignment) {
         Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
             for (tab in Tab.entries) {
                 NavItem(
@@ -231,7 +241,7 @@ private fun NavItem(tab: Tab, selected: Boolean, alert: Boolean, onClick: () -> 
     TooltipBox(
         positionProvider =
             TooltipDefaults.rememberTooltipPositionProvider(TooltipAnchorPosition.Above),
-        tooltip = { PlainTooltip { Text(tab.label) } },
+        tooltip = { KeepTextSize { PlainTooltip { Text(tab.label) } } },
         state = tooltip,
         focusable = false,
         enableUserInput = false,

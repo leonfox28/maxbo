@@ -36,8 +36,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -61,9 +63,11 @@ import io.github.leonfox28.maxbo.ui.interactions.rememberLike
 import io.github.leonfox28.maxbo.ui.widget.MediaBadge
 import io.github.leonfox28.maxbo.ui.widget.PicGrid
 import io.github.leonfox28.maxbo.ui.widget.PlayIcon
+import io.github.leonfox28.maxbo.ui.widget.ReadingWidth
 import io.github.leonfox28.maxbo.ui.widget.TagLabel
 import io.github.leonfox28.maxbo.ui.widget.UserAvatar
 import io.github.leonfox28.maxbo.ui.widget.VerifiedIcon
+import io.github.leonfox28.maxbo.ui.widget.WideCardFrom
 import io.github.leonfox28.maxbo.ui.widget.showsVerified
 import io.github.leonfox28.maxbo.ui.widget.text.StatusLink
 import io.github.leonfox28.maxbo.ui.widget.text.StatusText
@@ -92,6 +96,13 @@ data class StatusCardActions(
 /**
  * A status as shown in a timeline, or atop its detail page when [detail], where the card itself
  * isn't tappable and the counts move to the page's tabs.
+ *
+ * Given [WideCardFrom] or more across, as a [FeedWidth] timeline gives it, a timeline card puts its
+ * pictures, video or retweeted post beside its text rather than under it: the text keeps to about
+ * the length of line it has on a phone, the media takes the rest, and the card takes less height.
+ * The counts stay under the text, at the foot of the card when the media runs further down.
+ * Text-only cards keep their text to the left, so all the text of a timeline lines up, in lines no
+ * longer than a reading column's.
  */
 @Composable
 fun StatusCard(
@@ -113,14 +124,95 @@ fun StatusCard(
             Activity(activity)
             Spacer(Modifier.height(8.dp))
         }
-        Header(status, actions)
-        Spacer(Modifier.height(8.dp))
-        Body(status, actions)
-        status.retweeted?.let {
+        if (detail) {
+            Header(status, actions)
             Spacer(Modifier.height(8.dp))
-            Retweeted(it, actions)
+            Body(status, actions)
+            status.retweeted?.let {
+                Spacer(Modifier.height(8.dp))
+                Retweeted(it, actions)
+            }
+        } else {
+            val retweeted = status.retweeted
+            CardLayout(
+                main = {
+                    Column {
+                        Header(status, actions)
+                        Spacer(Modifier.height(8.dp))
+                        // A retweet's own pictures, if it has any, stay with its text.
+                        Body(status, actions, withMedia = retweeted != null)
+                    }
+                },
+                aside =
+                    when {
+                        retweeted != null -> ({ Retweeted(retweeted, actions) })
+                        hasMedia(status) -> ({ Media(status, actions) })
+                        else -> null
+                    },
+                footer = { Counts(status, actions) },
+            )
         }
-        if (!detail) Counts(status, actions)
+    }
+}
+
+/** Beside media the text keeps to about a phone's width of line; the media takes the rest. */
+private val WideMainWidth = 400.dp
+private val WideAsideGap = 24.dp
+
+/** With no media, the longest line the text runs to. */
+private val WideMainAloneWidth = ReadingWidth
+
+/** Under media beside the text, as above it at the top of the card. */
+private val WideAsideBottom = 12.dp
+
+/** Between the text and the media under it. */
+private val NarrowAsideGap = 8.dp
+
+/**
+ * A timeline card's text ([main]), its counts ([footer]) and its media ([aside]), if any. Narrow,
+ * they go one under another. Wide, the media goes to the right of the text and counts; the counts
+ * come right after the text, or at the foot of the card if the media runs further down, so they
+ * never leave a gap under it.
+ */
+@Composable
+private fun CardLayout(
+    main: @Composable () -> Unit,
+    aside: (@Composable () -> Unit)?,
+    footer: @Composable () -> Unit,
+) {
+    Layout(listOf(main, footer, aside ?: {})) { (mains, footers, asides), constraints ->
+        val width = constraints.maxWidth
+        // The card's own padding counts towards the width a card is given.
+        val wide = width + 32.dp.roundToPx() >= WideCardFrom.roundToPx()
+        val hasAside = aside != null
+        val mainWidth =
+            if (!wide) width
+            else minOf(width, (if (hasAside) WideMainWidth else WideMainAloneWidth).roundToPx())
+        val exact = Constraints.fixedWidth(mainWidth)
+        val mainPlaced = mains.single().measure(exact)
+        val footerPlaced = footers.single().measure(exact)
+        val asideWidth = if (wide) maxOf(0, width - WideAsideGap.roundToPx() - mainWidth) else width
+        val asidePlaced = asides.singleOrNull()?.measure(Constraints(maxWidth = asideWidth))
+        if (wide) {
+            val height =
+                maxOf(
+                    mainPlaced.height + footerPlaced.height,
+                    asidePlaced?.let { it.height + WideAsideBottom.roundToPx() } ?: 0,
+                )
+            layout(width, height) {
+                mainPlaced.place(0, 0)
+                footerPlaced.place(0, height - footerPlaced.height)
+                asidePlaced?.place(mainWidth + WideAsideGap.roundToPx(), 0)
+            }
+        } else {
+            val gap = if (asidePlaced != null) NarrowAsideGap.roundToPx() else 0
+            val asideHeight = asidePlaced?.height ?: 0
+            layout(width, mainPlaced.height + gap + asideHeight + footerPlaced.height) {
+                mainPlaced.place(0, 0)
+                asidePlaced?.place(0, mainPlaced.height + gap)
+                footerPlaced.place(0, mainPlaced.height + gap + asideHeight)
+            }
+        }
     }
 }
 
@@ -291,9 +383,17 @@ private fun MixedGrid(status: Status, actions: StatusCardActions) {
     }
 }
 
-/** Text and media of a status, or of the post it retweets when [nested]. */
+/**
+ * Text and media of a status, or of the post it retweets when [nested]; without [withMedia], only
+ * the text, the media being shown elsewhere.
+ */
 @Composable
-private fun Body(status: Status, actions: StatusCardActions, nested: Boolean = false) {
+private fun Body(
+    status: Status,
+    actions: StatusCardActions,
+    nested: Boolean = false,
+    withMedia: Boolean = true,
+) {
     Column {
         if (status.text.isNotEmpty() || (nested && status.user != null)) {
             StatusText(
@@ -309,7 +409,7 @@ private fun Body(status: Status, actions: StatusCardActions, nested: Boolean = f
                 onExpand = actions.onExpand?.let { { it(status) } },
             )
         }
-        if (hasMedia(status)) {
+        if (withMedia && hasMedia(status)) {
             Spacer(Modifier.height(8.dp))
             Media(status, actions)
         }

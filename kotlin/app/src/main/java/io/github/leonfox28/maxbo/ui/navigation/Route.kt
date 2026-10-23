@@ -43,6 +43,14 @@ sealed interface Route {
 
     data object Settings : Route
 
+    /** The text size, on a slider over sample posts. */
+    data object TextSize : Route
+
+    data object About : Route
+
+    /** The libraries maxbo is built on, and their licences. */
+    data object Licenses : Route
+
     /** Debug builds only. */
     data object Diagnostics : Route
 }

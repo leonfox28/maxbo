@@ -1,8 +1,6 @@
 package io.github.leonfox28.maxbo.ui.webview
 
 import android.annotation.SuppressLint
-import android.content.ActivityNotFoundException
-import android.content.Intent
 import android.graphics.Bitmap
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
@@ -42,13 +40,13 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
-import androidx.core.net.toUri
 import io.github.leonfox28.maxbo.core.net.BROWSER_USER_AGENT
 import io.github.leonfox28.maxbo.ui.navigation.LocalNavigator
+import io.github.leonfox28.maxbo.ui.theme.KeepTextSize
 import io.github.leonfox28.maxbo.ui.widget.AppSnackbarHost
 import io.github.leonfox28.maxbo.ui.widget.LocalSnackbars
+import io.github.leonfox28.maxbo.ui.widget.openExternally
 import java.net.URLEncoder
-import kotlinx.coroutines.launch
 
 /**
  * Weibo's search results for [query], e.g. `#话题#`, on its mobile site: s.weibo.com is laid out for
@@ -87,14 +85,7 @@ fun WebPage(url: String) {
         if (view != null && view.canGoBack()) view.goBack() else navigator.pop()
     }
 
-    fun openExternally() {
-        val current = webView?.url ?: url
-        try {
-            context.startActivity(Intent(Intent.ACTION_VIEW, current.toUri()))
-        } catch (_: ActivityNotFoundException) {
-            scope.launch { snackbars.showSnackbar("无法打开链接") }
-        }
-    }
+    fun openExternally() = context.openExternally(webView?.url ?: url, snackbars, scope)
 
     BackHandler(enabled = canGoBack) { webView?.goBack() }
     Scaffold(
@@ -118,20 +109,22 @@ fun WebPage(url: String) {
                                 Icon(Icons.Filled.MoreVert, contentDescription = "更多")
                             }
                             DropdownMenu(menu, onDismissRequest = { menu = false }) {
-                                DropdownMenuItem(
-                                    text = { Text("刷新") },
-                                    onClick = {
-                                        menu = false
-                                        webView?.reload()
-                                    },
-                                )
-                                DropdownMenuItem(
-                                    text = { Text("在浏览器中打开") },
-                                    onClick = {
-                                        menu = false
-                                        openExternally()
-                                    },
-                                )
+                                KeepTextSize {
+                                    DropdownMenuItem(
+                                        text = { Text("刷新") },
+                                        onClick = {
+                                            menu = false
+                                            webView?.reload()
+                                        },
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text("在浏览器中打开") },
+                                        onClick = {
+                                            menu = false
+                                            openExternally()
+                                        },
+                                    )
+                                }
                             }
                         }
                     },

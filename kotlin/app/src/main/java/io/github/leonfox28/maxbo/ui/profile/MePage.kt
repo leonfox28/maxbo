@@ -2,6 +2,7 @@ package io.github.leonfox28.maxbo.ui.profile
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
@@ -19,7 +20,6 @@ import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.outlined.BugReport
 import androidx.compose.material.icons.outlined.Settings
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.ListItem
@@ -45,6 +45,8 @@ import io.github.leonfox28.maxbo.data.model.WeiboUser
 import io.github.leonfox28.maxbo.ui.auth.LoginPrompt
 import io.github.leonfox28.maxbo.ui.navigation.LocalNavigator
 import io.github.leonfox28.maxbo.ui.navigation.Route
+import io.github.leonfox28.maxbo.ui.widget.AppAlertDialog
+import io.github.leonfox28.maxbo.ui.widget.readingPadding
 import kotlinx.coroutines.launch
 
 // No app bar: the tab bar names the tab, and what an app bar would offer is
@@ -52,25 +54,26 @@ import kotlinx.coroutines.launch
 @Composable
 fun MePage(padding: PaddingValues) {
     val session by LocalAppGraph.current.session.state.collectAsStateWithLifecycle()
-    LazyColumn(
+    BoxWithConstraints(
         Modifier.fillMaxSize()
             .windowInsetsPadding(
                 WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal)
-            ),
-        contentPadding = padding,
+            )
     ) {
-        when (val state = session) {
-            // Settings stay within reach before logging in.
-            is SessionState.SignedOut -> {
-                item { LoginPrompt(state.expired, Modifier.fillMaxWidth()) }
-                item { HorizontalDivider() }
-                item { AppLinks() }
-            }
-            is SessionState.SignedIn -> {
-                item { AccountItem(state.account) }
-                item { HorizontalDivider() }
-                item { AppLinks() }
-                item { LogoutItem() }
+        LazyColumn(Modifier.fillMaxSize(), contentPadding = readingPadding(maxWidth, padding)) {
+            when (val state = session) {
+                // Settings stay within reach before logging in.
+                is SessionState.SignedOut -> {
+                    item { LoginPrompt(state.expired, Modifier.fillMaxWidth()) }
+                    item { HorizontalDivider() }
+                    item { AppLinks() }
+                }
+                is SessionState.SignedIn -> {
+                    item { AccountItem(state.account) }
+                    item { HorizontalDivider() }
+                    item { AppLinks() }
+                    item { LogoutItem() }
+                }
             }
         }
     }
@@ -145,7 +148,7 @@ private fun LogoutItem() {
         leadingContent = { Icon(Icons.AutoMirrored.Filled.Logout, contentDescription = null) },
     )
     if (confirming) {
-        AlertDialog(
+        AppAlertDialog(
             onDismissRequest = { confirming = false },
             title = { Text("退出登录") },
             text = { Text("将清除本机保存的微博登录状态。") },

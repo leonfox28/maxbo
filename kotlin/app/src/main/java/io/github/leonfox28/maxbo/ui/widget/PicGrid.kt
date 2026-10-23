@@ -5,7 +5,10 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
-import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -27,6 +30,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -67,20 +71,26 @@ fun PicGrid(
         val columns = if (items.size == 4) 2 else 3
         val shown = items.take(MAX_SHOWN)
         val hidden = total - shown.size
-        FlowRow(
+        // Rows of cells sharing the width, rather than cells of a computed
+        // width: rounded to pixels, three of those can overrun the row.
+        Column(
             Modifier.width(cell * columns + Gap * (columns - 1)),
-            horizontalArrangement = Arrangement.spacedBy(Gap),
             verticalArrangement = Arrangement.spacedBy(Gap),
-            maxItemsInEachRow = columns,
         ) {
-            shown.forEachIndexed { i, item ->
-                Tile(
-                    item,
-                    width = cell,
-                    height = cell,
-                    overlay = if (i == shown.lastIndex && hidden > 0) "+$hidden" else null,
-                    onClick = onClick?.let { { it(i) } },
-                )
+            shown.chunked(columns).forEachIndexed { row, rowItems ->
+                Row(horizontalArrangement = Arrangement.spacedBy(Gap)) {
+                    rowItems.forEachIndexed { column, item ->
+                        val i = row * columns + column
+                        Tile(
+                            item,
+                            DpSize(cell, cell),
+                            Modifier.weight(1f).aspectRatio(1f),
+                            overlay = if (i == shown.lastIndex && hidden > 0) "+$hidden" else null,
+                            onClick = onClick?.let { { it(i) } },
+                        )
+                    }
+                    repeat(columns - rowItems.size) { Spacer(Modifier.weight(1f)) }
+                }
             }
         }
     }
@@ -96,30 +106,28 @@ private fun Single(item: MixedMedia, width: Dp, onClick: (() -> Unit)?) {
         }
     val ratio = (aspectRatio ?: 1f).coerceIn(0.6f, 1.8f)
     val maxSide = width * 0.7f
-    Tile(
-        item,
-        width = if (ratio >= 1) maxSide else maxSide * ratio,
-        height = if (ratio >= 1) maxSide / ratio else maxSide,
-        onClick = onClick,
-    )
+    val size =
+        if (ratio >= 1) DpSize(maxSide, maxSide / ratio) else DpSize(maxSide * ratio, maxSide)
+    Tile(item, size, Modifier.size(size), onClick = onClick)
 }
 
+/** An item about [size], laid out by [modifier]; the size picks the picture's rendition. */
 @Composable
 private fun Tile(
     item: MixedMedia,
-    width: Dp,
-    height: Dp,
+    size: DpSize,
+    modifier: Modifier,
     overlay: String? = null,
     onClick: (() -> Unit)?,
 ) {
     Box(
-        Modifier.size(width, height)
+        modifier
             .testTag("media")
             .clip(TileShape)
             .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
     ) {
         when (item) {
-            is MixedMedia.Pic -> PicTile(item.pic, width, height)
+            is MixedMedia.Pic -> PicTile(item.pic, size.width, size.height)
             is MixedMedia.Video -> VideoTile(item.video)
         }
         if (overlay != null) MoreOverlay(overlay)

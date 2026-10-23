@@ -24,6 +24,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -92,7 +93,9 @@ import io.github.leonfox28.maxbo.ui.widget.HidingAppBar
 import io.github.leonfox28.maxbo.ui.widget.LoadMoreTrigger
 import io.github.leonfox28.maxbo.ui.widget.LocalOverlays
 import io.github.leonfox28.maxbo.ui.widget.LocalSnackbars
+import io.github.leonfox28.maxbo.ui.widget.ReadingPanes
 import io.github.leonfox28.maxbo.ui.widget.UserAvatar
+import io.github.leonfox28.maxbo.ui.widget.WindowSize
 import io.github.leonfox28.maxbo.ui.widget.loadErrorMessage
 import io.github.leonfox28.maxbo.ui.widget.pagedItems
 import io.github.leonfox28.maxbo.ui.widget.readingPadding
@@ -101,6 +104,7 @@ import io.github.leonfox28.maxbo.ui.widget.showMessage
 import io.github.leonfox28.maxbo.ui.widget.status.StatusCard
 import io.github.leonfox28.maxbo.ui.widget.status.StatusCardActions
 import io.github.leonfox28.maxbo.ui.widget.text.StatusText
+import io.github.leonfox28.maxbo.ui.widget.windowSize
 import kotlinx.coroutines.launch
 
 private const val TITLE = "微博正文"
@@ -218,6 +222,7 @@ private fun Detail(
     }
     var refreshing by remember { mutableStateOf(false) }
     val listState = rememberLazyListState()
+    val split = windowSize() == WindowSize.Expanded
 
     val comments = authorId?.let { model.comments(status, it, model.order) }
     val reposts = if (model.tab == DetailTab.Reposts) model.reposts(status) else null
@@ -229,6 +234,77 @@ private fun Detail(
     val repostsLoad =
         key(reposts) { reposts?.state?.collectAsStateWithLifecycle()?.value } ?: ListLoad.Loading
     val listLoad: ListLoad<*> = if (model.tab == DetailTab.Reposts) repostsLoad else commentsLoad
+
+    val postItems: LazyListScope.() -> Unit = {
+        item(key = "status") {
+            StatusCard(status, detail = true, actions = cardActions)
+        }
+        if (loadFailed) {
+            item(key = "failed") {
+                LoadFailedBar(loadErrorMessage(error), onRetry = model::reload)
+            }
+        }
+    }
+    val responseItems: LazyListScope.() -> Unit = {
+        stickyHeader(key = "tabs") {
+            Tabs(
+                status,
+                repostsCount = model.repostsCount(status),
+                commentsCount = model.commentsCount(status),
+                tab = model.tab,
+                onTab = { model.tab = it },
+            )
+        }
+        when {
+            model.tab == DetailTab.Reposts && reposts != null ->
+                pagedItems(
+                    repostsLoad,
+                    key = { it.id },
+                    onRetry = reposts::reload,
+                    onLoadMore = { scope.launch { reposts.loadMore() } },
+                    emptyText = "还没有人转发",
+                ) {
+                    RepostTile(it, base)
+                }
+            comments != null -> {
+                item(key = "order") {
+                    OrderSwitch(model.order) { model.order = it }
+                }
+                pagedItems(
+                    commentsLoad,
+                    key = { it.id },
+                    onRetry = comments::reload,
+                    onLoadMore = { scope.launch { comments.loadMore() } },
+                    emptyText = "还没有评论",
+                ) { comment ->
+                    CommentTile(
+                        comment,
+                        authorId = authorId,
+                        actions = base,
+                        onThread = {
+                            navigator.push(
+                                Route.Comments(CommentThread(comment, status.id, authorId))
+                            )
+                        },
+                        onClick = if (comment.canReply) ({ reply(comment) }) else null,
+                        onLongClick =
+                            if (me != null && comment.user?.id == me) {
+                                { delete(comment) }
+                            } else null,
+                    )
+                }
+            }
+            else ->
+                item(key = "no-comments") {
+                    Box(
+                        Modifier.fillMaxWidth().padding(40.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text("无法加载这条微博的评论")
+                    }
+                }
+        }
+    }
 
     LoadMoreTrigger(
         listState,
@@ -244,14 +320,27 @@ private fun Detail(
         Modifier.nestedScroll(bars.connection),
         bottomBar = {
             if (status.user != null) {
-                BottomBar(
-                    status,
-                    onComment = ::comment,
-                    // The list of reposts, if open, gets the new one from the repost itself.
-                    onRepost = { writes.repost(status) { model.count(status, reposts = 1) } },
-                    modifier =
-                        Modifier.graphicsLayer { translationY = hidden * 1.5f * size.height },
-                )
+                val slide = Modifier.graphicsLayer { translationY = hidden * 1.5f * size.height }
+                val bar: @Composable (Modifier) -> Unit = { modifier ->
+                    BottomBar(
+                        status,
+                        onComment = ::comment,
+                        // The list of reposts, if open, gets the new one from the repost itself.
+                        onRepost = { writes.repost(status) { model.count(status, reposts = 1) } },
+                        modifier = modifier,
+                    )
+                }
+                // Under the lists it writes to.
+                if (split) {
+                    ReadingPanes(
+                        slide,
+                        divider = false,
+                        fillHeight = false,
+                        end = { bar(Modifier) },
+                    )
+                } else {
+                    bar(slide)
+                }
             }
         },
         snackbarHost = { AppSnackbarHost() },
@@ -281,85 +370,35 @@ private fun Detail(
                     }
                 },
             ) {
-                BoxWithConstraints(Modifier.fillMaxSize()) {
-                    LazyColumn(
-                        Modifier.fillMaxSize(),
-                        state = listState,
-                        // Room to scroll the last item out from under the comment bar.
-                        contentPadding =
-                            readingPadding(
-                                maxWidth,
-                                PaddingValues(bottom = padding.calculateBottomPadding()),
-                            ),
-                    ) {
-                        item(key = "status") {
-                            StatusCard(status, detail = true, actions = cardActions)
-                        }
-                        if (loadFailed) {
-                            item(key = "failed") {
-                                LoadFailedBar(loadErrorMessage(error), onRetry = model::reload)
+                // Room to scroll the last item out from under the comment bar.
+                val bottom = PaddingValues(bottom = padding.calculateBottomPadding())
+                if (split) {
+                    // The lists scroll on their own, leaving the status where it is.
+                    ReadingPanes(
+                        start = {
+                            LazyColumn(Modifier.fillMaxSize(), contentPadding = bottom) {
+                                postItems()
                             }
-                        }
-                        stickyHeader(key = "tabs") {
-                            Tabs(
-                                status,
-                                repostsCount = model.repostsCount(status),
-                                commentsCount = model.commentsCount(status),
-                                tab = model.tab,
-                                onTab = { model.tab = it },
-                            )
-                        }
-                        when {
-                            model.tab == DetailTab.Reposts && reposts != null ->
-                                pagedItems(
-                                    repostsLoad,
-                                    key = { it.id },
-                                    onRetry = reposts::reload,
-                                    onLoadMore = { scope.launch { reposts.loadMore() } },
-                                    emptyText = "还没有人转发",
-                                ) {
-                                    RepostTile(it, base)
-                                }
-                            comments != null -> {
-                                item(key = "order") {
-                                    OrderSwitch(model.order) { model.order = it }
-                                }
-                                pagedItems(
-                                    commentsLoad,
-                                    key = { it.id },
-                                    onRetry = comments::reload,
-                                    onLoadMore = { scope.launch { comments.loadMore() } },
-                                    emptyText = "还没有评论",
-                                ) { comment ->
-                                    CommentTile(
-                                        comment,
-                                        authorId = authorId,
-                                        actions = base,
-                                        onThread = {
-                                            navigator.push(
-                                                Route.Comments(
-                                                    CommentThread(comment, status.id, authorId)
-                                                )
-                                            )
-                                        },
-                                        onClick =
-                                            if (comment.canReply) ({ reply(comment) }) else null,
-                                        onLongClick =
-                                            if (me != null && comment.user?.id == me) {
-                                                { delete(comment) }
-                                            } else null,
-                                    )
-                                }
+                        },
+                        end = {
+                            LazyColumn(
+                                Modifier.fillMaxSize(),
+                                state = listState,
+                                contentPadding = bottom,
+                            ) {
+                                responseItems()
                             }
-                            else ->
-                                item(key = "no-comments") {
-                                    Box(
-                                        Modifier.fillMaxWidth().padding(40.dp),
-                                        contentAlignment = Alignment.Center,
-                                    ) {
-                                        Text("无法加载这条微博的评论")
-                                    }
-                                }
+                        },
+                    )
+                } else {
+                    BoxWithConstraints(Modifier.fillMaxSize()) {
+                        LazyColumn(
+                            Modifier.fillMaxSize(),
+                            state = listState,
+                            contentPadding = readingPadding(maxWidth, bottom),
+                        ) {
+                            postItems()
+                            responseItems()
                         }
                     }
                 }

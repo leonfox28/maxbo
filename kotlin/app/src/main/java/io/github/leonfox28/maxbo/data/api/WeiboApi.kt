@@ -79,6 +79,12 @@ class WeiboApi(
     private val clock: () -> Long = System::nanoTime,
 ) {
     /**
+     * This API without renewal: a rejected session fails the request and nothing else, so an odd
+     * answer to a diagnostic request never signs the user out.
+     */
+    fun withoutRenewal() = WeiboApi(http, onSessionExpired = null, clock = clock)
+
+    /**
      * The signed-in account; throws [SessionExpiredException] for visitors.
      *
      * weibo.com has no JSON endpoint for this; the web app reads the user from the `$CONFIG` object
