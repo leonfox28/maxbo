@@ -1,6 +1,6 @@
 # maxbo
 
-一个开源、非商业的第三方微博阅读客户端（Android），使用 Flutter 开发。
+一个开源、非商业的第三方微博阅读客户端（Android），使用 Kotlin 和 Jetpack Compose 开发。
 
 > **状态：早期测试版，只支持 Android。** 方案与进度见 [docs/PLAN.md](docs/PLAN.md)。
 
@@ -25,13 +25,9 @@
 
 ### Android
 
-在 [Releases](https://github.com/leonfox28/maxbo/releases) 页面下载 APK：
+在 [Releases](https://github.com/leonfox28/maxbo/releases) 页面下载 `maxbo-vX.Y.Z.apk`，所有手机都用这一个（需要 Android 7.0 及以上）。鸿蒙 HarmonyOS 5/6 可以通过卓易通安装 APK。每个 Release 都附有 `SHA256SUMS.txt`，可以用来核对下载的文件。
 
-- `app-arm64-v8a-release.apk`：绝大多数手机选这个；
-- `app-armeabi-v7a-release.apk`：较老的 32 位手机；
-- `app-x86_64-release.apk`：模拟器。
-
-鸿蒙 HarmonyOS 5/6 可以通过卓易通安装 APK。每个 Release 都附有 `SHA256SUMS.txt`，可以用来核对下载的文件。
+从 v0.12.0 起应用用 Kotlin 重写。可以直接覆盖安装旧版，但装上后要重新登录、重新设置。
 
 ### iOS
 
@@ -39,15 +35,14 @@
 
 ## 从源码构建
 
-需要 Flutter stable 3.47.x。
+需要 JDK 17 和 Android SDK（compileSdk 37）。Gradle 由仓库里的 wrapper 下载。
 
 ```sh
-flutter pub get
-flutter test
-flutter build apk --release --split-per-abi
+./gradlew testDebugUnitTest
+./gradlew assembleRelease
 ```
 
-没有 `android/key.properties` 时，Android release 包用调试密钥签名，无法覆盖安装 Releases 页面上的正式包。
+没有 `key.properties` 时，release 包用调试密钥签名，无法覆盖安装 Releases 页面上的正式包。
 
 ## 隐私
 

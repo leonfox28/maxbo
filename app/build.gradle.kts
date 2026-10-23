@@ -1,8 +1,18 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.aboutlibraries)
 }
+
+// Release signing reads key.properties at the root (gitignored). Without it,
+// release builds fall back to the debug key so anyone can build locally.
+val keyProperties =
+    Properties().apply {
+        val file = rootProject.file("key.properties")
+        if (file.exists()) file.inputStream().use { load(it) }
+    }
 
 android {
     namespace = "io.github.leonfox28.maxbo"
@@ -12,22 +22,35 @@ android {
         applicationId = "io.github.leonfox28.maxbo"
         minSdk = 24
         targetSdk = 36
-        // Above every Flutter build (ABI × 1000 + build number, up to 4021
-        // for v0.11.0), so the Kotlin app installs over them.
+        // One more for each release. The Flutter builds before 0.12.0 went up
+        // to 4021 (ABI × 1000 + build number), so this installs over them.
         versionCode = 5022
-        versionName = "0.12.0-dev"
+        versionName = "0.12.0"
         manifestPlaceholders["appLabel"] = "maxbo"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    signingConfigs {
+        if (keyProperties.isNotEmpty()) {
+            create("release") {
+                storeFile = file(keyProperties.getProperty("storeFile"))
+                storePassword = keyProperties.getProperty("storePassword")
+                keyAlias = keyProperties.getProperty("keyAlias")
+                keyPassword = keyProperties.getProperty("keyPassword")
+            }
+        }
+    }
+
     buildTypes {
-        // `.dev` until the switch (KOTLIN_MIGRATION.md §2.2), so the Flutter
-        // debug app and its login stay as they are.
+        // Debug builds install next to the release app, so a signature
+        // mismatch never forces an uninstall (and the login state with it).
         debug {
-            applicationIdSuffix = ".dev"
-            manifestPlaceholders["appLabel"] = "maxbo dev"
+            applicationIdSuffix = ".debug"
+            manifestPlaceholders["appLabel"] = "maxbo debug"
         }
         release {
+            signingConfig =
+                signingConfigs.findByName("release") ?: signingConfigs.getByName("debug")
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(
@@ -35,12 +58,12 @@ android {
                 "proguard-rules.pro",
             )
         }
-        // A release build installable over the `.dev` app and its login, to
+        // A release build installable over the debug app and its login, to
         // measure smoothness (debug builds are far slower).
         create("benchmark") {
             initWith(getByName("release"))
-            applicationIdSuffix = ".dev"
-            manifestPlaceholders["appLabel"] = "maxbo dev"
+            applicationIdSuffix = ".debug"
+            manifestPlaceholders["appLabel"] = "maxbo debug"
             signingConfig = signingConfigs.getByName("debug")
             matchingFallbacks += "release"
         }

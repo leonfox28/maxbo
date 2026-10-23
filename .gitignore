@@ -7,24 +7,13 @@
 *.iws
 .vscode/
 
-# Flutter / Dart
-.dart_tool/
-.flutter-plugins
-.flutter-plugins-dependencies
-.pub-cache/
-.pub/
+# Gradle / Android
+.gradle/
+.kotlin/
 build/
-coverage/
-*.g.dart.bak
-
-# Android
-**/android/.gradle/
-**/android/captures/
-**/android/local.properties
-**/android/key.properties
-**/android/app/debug/
-**/android/app/profile/
-**/android/app/release/
+captures/
+local.properties
+key.properties
 *.jks
 *.keystore
 
@@ -36,4 +25,3 @@ cookies*.json
 # Local agent & MCP configs (contain tokens/credentials)
 .mcp.json
 .pi/
-

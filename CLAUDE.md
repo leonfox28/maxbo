@@ -1,21 +1,22 @@
 # maxbo
 
-开源、非商业的第三方微博阅读客户端（Flutter，只做 Android；2026-10-22 起不再支持 iOS，见 PLAN §10）。方案、合规边界、接口实测结论和当前进度都在 [docs/PLAN.md](docs/PLAN.md)；**开工前先读第 2 节（合规边界）、第 8 节（实测结论）和第 11 节（进度与交接）**。
+开源、非商业的第三方微博阅读客户端（Kotlin + Jetpack Compose，只做 Android）。方案、合规边界、接口实测结论和当前进度都在 [docs/PLAN.md](docs/PLAN.md)；**开工前先读第 2 节（合规边界）、第 8 节（实测结论）和第 11 节（进度与交接）**。
 
-**正在迁移到 Kotlin + Jetpack Compose**（2026-10-22 用户决定）：计划、分阶段做法和进度都在 [docs/KOTLIN_MIGRATION.md](docs/KOTLIN_MIGRATION.md)，做迁移的上下文先读它。迁移期间 Flutter 代码保持可构建、可发版，下面的命令和架构说明仍然是 Flutter 版的，切换（K7）时再改。
+v0.11.0 及以前是 Flutter 版，2026-10-23 起换成 Kotlin 重写的版本（v0.12.0）。迁移的经过和各处设计的理由记在 [docs/KOTLIN_MIGRATION.md](docs/KOTLIN_MIGRATION.md) 的 §11；Flutter 代码只在 git 历史里（`53b24b0` 及以前）。
 
 ## 常用命令
 
 ```sh
-dart format lib test integration_test
-flutter analyze                      # 必须 No issues found
-flutter test                         # 单元测试 + Widget 测试
-flutter test integration_test -d <没有真实登录的 Android 模拟器>   # 平台通道测试，见下方注意事项
-flutter build apk --debug && adb -s <设备> install -r build/app/outputs/flutter-apk/app-debug.apk
-flutter build apk --release --split-per-abi   # 发版用，签名见 PLAN §9
+./gradlew spotlessApply                                        # 格式化（ktfmt，kotlinlang 风格）
+./gradlew spotlessCheck lint testDebugUnitTest assembleDebug   # 与 CI 相同，必须全部通过；提交前跑全量
+adb -s <设备> install -r app/build/outputs/apk/debug/app-debug.apk
+ANDROID_SERIAL=<没有真实登录的模拟器> ./gradlew connectedDebugAndroidTest   # 设备测试，见下方注意事项
+./gradlew assembleBenchmark   # 测流畅度：release 优化、调试密钥签名，可以覆盖安装到调试版上
+./gradlew assembleRelease     # 发版用，签名见 PLAN §9
+./gradlew --stop              # 构建完停掉 Gradle/Kotlin daemon（合计约 5 GB）
 ```
 
-Flutter stable 3.47.x（Dart 3.13），通过 Homebrew cask 安装。
+工具链：AGP 9.4.1、Gradle 9.8.2（wrapper）、Kotlin 2.4.21、JDK 17（Temurin）；compileSdk 37、targetSdk 36、minSdk 24。版本统一写在 `gradle/libs.versions.toml`。Robolectric 跑 SDK 34（35 以上要 Java 21）。
 
 ## 硬性约束
 
@@ -27,37 +28,43 @@ Flutter stable 3.47.x（Dart 3.13），通过 Homebrew cask 安装。
 - **参考项目不能复制代码**：Android_16_Weibo、weiboX 没有 License，只能参考它们的接口形态。
 - **测试数据**：只用手写的合成数据。真实响应放在 `captured/`（已 gitignore），不得提交。
 - **日志**：日志和诊断输出里不得出现 Cookie 值或微博正文。调试日志用 `devLog()`，它只在调试版输出。
-- **保护真实登录态**：真实登录需要短信验证码和人机验证。保存着登录态的设备只能用 `install -r` 更新（调试版包名是 `io.github.leonfox28.maxbo.debug`），不要在上面跑 `integration_test`（会清空 WebView Cookie），也不要卸载或清除数据。
+- **保护真实登录态**：真实登录需要短信验证码和人机验证。保存着登录态的设备只能用 `install -r` 更新（调试版包名是 `io.github.leonfox28.maxbo.debug`），不要卸载或清除数据，也不要在上面跑 `connectedDebugAndroidTest`（它会清空 WebView Cookie，跑完还会卸载应用）。设备测试用没有真实登录的 AVD `maxbo_test`。
 - **先问用户**：完成人机验证、勾选用户协议、以用户身份对外操作（关注、点赞、评论），都必须先得到用户确认。写操作只在用户指定的测试微博上测，测完恢复原状。
 
 ## 架构速览
 
-- `lib/core/net/`：网络层
-  - `createWeiboDio()`：浏览器 UA、Cookie 和 XSRF 拦截器、限流
-  - `WeiboCookieJar`：按站点（weibo.com / weibo.cn）保存 Cookie
-  - `weibo_exception.dart`：集中处理微博的各种失败响应
-- `lib/core/session/`：会话
-  - 登录 Cookie 经原生平台通道读取（`SUB` 是 HttpOnly，原生端在 `CookieBridge.kt`）
-  - `SessionController`（`sessionProvider`）
-  - `SUB` 在服务端约 7 天失效。接口报过期时，`SessionRenewer` 在不显示的 WebView 里打开 weibo.com，让微博用 30 天的 `ALC` 换新 `SUB`（PLAN §8「会话续期」）。读请求续期后重发一次，写请求不重发。续期失败才退出登录
-  - 会话存在 Android Keystore
-- `lib/core/media/`：`WeiboImage`，所有微博图片都经它加载（自动带 Referer，缓存 key 去掉签名参数）；`video_source.dart` 负责选视频地址，地址过期时重新请求 `statuses/show`；`image_disk_cache.dart` 按设置的上限清理图片磁盘缓存
-- `lib/core/settings/`：`settingsProvider`（主题、字体大小、图片质量、缓存上限），存在 `shared_preferences`，`main()` 在第一帧前读入。图片尺寸要经过 `ImageQuality` 选择；字体大小由 `MaxboApp` 统一套在 `MediaQuery.textScaler` 上（在系统字体大小的基础上乘倍数），页面里不用单独处理
-- `lib/core/paging/`：`PagedController<T>`，分页列表（评论、转发等）都继承它，界面用 `widgets/load_state.dart` 里的 `PagedSliverList` 和 `LoadMoreTrigger`
-- `lib/data/api/weibo_api.dart`：所有端点都集中在这里。新增端点时写成 `WeiboApi` 的方法，内部调用 `getJson()` / `getPage()`。当前用户从 weibo.com 首页内嵌的 `window.$CONFIG` 解析得到（`/ajax/config` 不存在）。
-- `lib/data/models/`：`Status`、`Comment` 等模型，`tryFromJson` 容错解析，字段读取用 `core/util/json_read.dart`
-- `lib/widgets/`：微博卡片 `StatusCard`、正文 `StatusText`（`parseStatusText()` 把 HTML 拆成片段）、九宫格 `PicGrid`、头像 `UserAvatar`、底部悬浮胶囊 `FloatingPill`（导航栏和评论栏共用）、`BarsOnScroll`（往下滚隐藏、往回滚出现的判断，首页导航栏和详情页顶栏/底栏共用；会隐藏的顶栏用同一文件里的 `HidingAppBar`，只有顶栏要隐藏的页面直接用 `HidingAppBarBody`，如用户主页和搜索结果页）、`TabRefreshIndicator`（标签页列表的下拉刷新；再点一次当前标签，不在顶部就回到顶部，已在顶部就刷新，列表要设 `primary: true`）、`adaptive_layout.dart`（平板和折叠屏：`WindowSize` 按窗口宽度分档，expanded 档首页的导航胶囊放在右下角；正文限宽 `readingWidth` 居中，`ListView` 用 `ReadingList`、`CustomScrollView` 用 `ReadingSlivers`，新页面的列表也要套上；首页时间线用 `ReadingList(feed: true)`，宽窗口下卡片加宽、媒体放到正文右侧；详情页在 expanded 档用 `ReadingPanes` 左右并排）
-- `lib/features/`：各个页面。登录页是 WebView 加载微博官方登录页，每次主页面加载完成或失败都校验一次会话。详情页在 `status/`，评论和楼中楼在 `comments/`，图片查看器和视频播放在 `media_viewer/`，用户主页在 `profile/`（`/u/:uid`，@ 用 `/n/:name`），搜索页签在 `search/`（`/search`，顶部搜索栏，下面是热搜榜；搜索、热搜条目和正文里的 #话题# 都用 `openSearchResults()` 打开 `/results?q=`，即 `SearchResultsPage`：`statuses/search` 的结果列表，话题带 `Topic` 话题头），通知在 `notifications/`（`unreadNoticesProvider` 决定导航栏的通知图标是否变红，只在登录、打开或回到应用、下拉刷新首页时检查），设置页、字体大小页（`/text-size`，滑动条加示例微博）和关于页在 `settings/`（关于页的声明文案与 README 保持一致）。卡片和评论上的点击统一由 `features/status/status_actions.dart` 处理。
-- `lib/features/compose/`：发微博（`/compose`，入口是首页右下角的「写」按钮）。`composeDraftProvider` 保存草稿（关页面不丢，换账号清空），`send()` 在发送时才逐张上传图片（`uploadPicture()`，picupload 跨域请求，用 `kPlainCrossOrigin` 去掉 XHR/XSRF 头），再调 `postStatus()`；选图经 `picturePickerProvider`（`compose/picture_picker.dart`，评论弹层也用），测试里覆盖它。
-- `lib/features/interactions/`：点赞、评论和转发。`likesProvider` 让同一条微博或评论的点赞状态在所有页面一致（改动只套用在改动时的那份数据上，新加载的数据优先）；`showCommentComposer()` 是写评论/回复的弹层，可以带一张图（点「发送」时才上传，`send` 回调收到文字和 pid）。写接口在 `WeiboApi` 里都走 `postForm()`。删除自己的微博用 `deleteOwnStatus()`（卡片上的 ⋯ 只对当前账号的微博显示，经 `StatusCardActions.onDelete`），删除确认用 `confirmDelete()`。转发用 `repostStatus()`（卡片上的转发数经 `StatusCardActions.onRepost`，详情页底部条也有），转发的转发预填 `//@作者:原文`，发出后加到已打开的列表顶部。
-- `lib/features/webview/`：应用内 WebView（`openWebPage()`），与登录页共用 Cookie 和 UA。搜索结果页右上角的「网页版」走 `m.weibo.cn`（`weiboSearchUrl()`，游客身份，只有第一页），因为 `s.weibo.com` 只有 PC 版布局。验证码也在这里由用户本人完成（`ErrorRetry` 上的「去验证」）。
-- **不自动重试**：`ProviderScope(retry: noRetry)` 关掉了 Riverpod 默认的失败重试，保证请求都由用户操作触发；测试里的 scope/container 也要传。
-- 诊断页：只在调试版提供，入口是「我」页列表里的「开发者诊断」，用来对真实会话核对接口；「互动结构」探针会真实点赞和评论，跑之前要问用户。
+源码在 `app/src/main/java/io/github/leonfox28/maxbo/`，单个 `:app` 模块，按包分层。
+
+- 根包：`MaxboApplication` 在第一帧之前用 `AppGraph.create()` 读入设置和会话；`MainActivity`（edge-to-edge，界面语言固定中文）；`MaxboApp` 是根部的 Composable（主题、字体大小、`Navigator`、`Overlays`、提示条、`UnreadChecks`）。
+- `AppGraph`：手写的依赖容器（不用 Hilt/Koin），持有设置、会话、`WeiboApi`、时间线、未读、点赞、草稿、`OpenLists`、图片加载器等全应用共用的对象，经 `LocalAppGraph` 取用。页面状态用 ViewModel + `StateFlow`。
+- `core/net/`：网络层
+  - `WeiboHttp`：OkHttp，浏览器 UA、Cookie（`WeiboCookieJar`，按站点 weibo.com / weibo.cn 保存）、Referer/XSRF 等请求头、`RequestThrottle` 限流。读请求和写请求各用一个 client，写请求关掉 `retryOnConnectionFailure`；picupload 跨域上传用 `PlainCrossOrigin` 去掉 XHR/XSRF 头。
+  - `WeiboException.kt`：集中处理微博的各种失败响应（登录过期、验证码、频率限制、网络、接口错误），界面上用 `loadErrorMessage()` 取文案。
+- `core/session/`：会话
+  - `WebCookies` 直接读 `CookieManager`（包括 HttpOnly 的 `SUB`）；`SessionController` 的状态是 `SignedOut(expired)` / `SignedIn(account)`。主动退出时连同 WebView 的 Cookie 一起清掉；登录过期时保留它们。
+  - `SUB` 在服务端约 7 天失效。接口报过期时，`SessionRenewer` 在不挂到界面上的 WebView 里打开 weibo.com，让微博用 30 天的 `ALC` 换新 `SUB`（PLAN §8「会话续期」）。读请求续期后重发一次，写请求不重发。续期失败才退出登录。
+  - 会话用 Android Keystore 里的 AES-GCM 密钥加密，存在 `noBackupFilesDir/session`。
+- `core/media/`：`WeiboImage.kt` 是 Coil 的图片加载器，所有微博图片都经它加载（带 Referer、http 改成 https，缓存 key 去掉签名参数）；`ImageDiskCache` 的上限跟着设置走；`VideoSource.kt` 负责选视频地址，地址过期时重新请求 `statuses/show`。
+- `core/settings/`：`SettingsController`（主题、字体大小、图片质量、缓存上限），存在 DataStore，第一帧前读入。图片尺寸要经过 `ImageQuality` 选择。字体大小在根部经 `LocalDensity` 统一套上（系统字体大小乘倍数），页面里不用单独处理；但对话框、底部弹层、菜单、提示是单独的窗口，**新加的要用 `AppAlertDialog` 或套上 `KeepTextSize`**。
+- `core/paging/`：`PagedController<T>`，分页列表（时间线、评论、转发、通知等）都继承它，子类写 `fetchPage()` 和 `idOf()`；用户自己的改动用 `prepend()` / `remove()` / `replace()`。界面用 `ui/widget/PagedItems.kt` 的 `pagedItems()` 和 `LoadState.kt` 里的 `LoadMoreTrigger`、`ErrorRetry`。
+- `core/util/`：`devLog()`、容错读取 JSON 的 `JsonRead.kt`、时间和计数的格式化 `Format.kt`。
+- `data/api/WeiboApi.kt`：所有端点都集中在这里。新增端点时写成 `WeiboApi` 的方法，读用 `getJson()` / `getPage()`，写用 `postForm()`。当前用户从 weibo.com 首页内嵌的 `window.$CONFIG` 解析得到（`PageConfig.kt`，`/ajax/config` 不存在）。
+- `data/model/`：`Status`、`Comment` 等模型，`tryFromJson` 容错解析 kotlinx-serialization 的 `JsonElement` 树，不用 `@Serializable`。
+- `ui/navigation/`：Navigation 3。页面栈是我们自己持有的列表（`Navigator`，经 `LocalNavigator` 取用，`push()` / `pop()`），页面是 `Route`（可以带上一页已有的数据），转场和预测性返回在 `Transitions.kt`。
+- `ui/shell/HomeShell.kt`：栈底的 `Route.Home`，四个页签（首页、搜索、通知、我）和底部悬浮胶囊 `FloatingPill`；往下滚隐藏、往回滚出现（`BarsOnScroll`）；再点一次当前页签经 `LocalTabReselect` 通知页面：不在顶部就回到顶部，已在顶部就刷新。
+- `ui/widget/`：微博卡片 `status/StatusCard.kt`（宽窗口时媒体放到正文右侧，自定义 `Layout`）、正文 `text/StatusText.kt`（`parseStatusText()` 用 jsoup 把 HTML 拆成片段）、九宫格 `PicGrid`、头像 `UserAvatar`、`HidingAppBar` / `HidingAppBarBody`（随滚动隐藏的顶栏）、`AdaptiveLayout.kt`（`windowSize()` 按 600/840 分档；正文限宽用 `readingPadding()`，新页面的列表也要套上；详情页在 expanded 档用 `ReadingPanes` 左右并排）、`Overlays`（弹层和对话框放在整个应用上方，`show()` 挂起到关闭）、`LocalSnackbars`（全应用共用的提示条）。
+- `ui/<功能>/`：各个页面。登录页 `auth/`（WebView 加载微博官方登录页，每次主页面加载完成或失败都校验一次会话）；时间线 `timeline/`；详情页 `status/`；评论和楼中楼 `comments/`；看图（Telephoto）和视频（Media3）`media/`；用户主页和「我」页 `profile/`；搜索和搜索结果 `search/`；通知 `notifications/`（`UnreadNoticesController` 只在登录、打开或回到应用、下拉刷新首页时检查，由根部的 `UnreadChecks` 触发）；应用内 WebView `webview/`；设置、字体大小、关于、开源许可 `settings/`（关于页的声明文案与 README 保持一致）；诊断页 `debug/`（只在调试版，「我」页的「开发者诊断」进入）。卡片和评论上的点击统一由 `status/StatusActions.kt` 的 `rememberStatusCardActions()` 处理。
+- `ui/interactions/`：点赞 `LikesController`（同一条微博或评论的点赞状态在所有页面一致；改动只套用在改动时的那份数据上，新加载的数据优先）；`showCommentComposer()` 是写评论/回复的弹层，可以带一张图，点「发送」时才上传；`rememberStatusWrites()` 提供转发和删除自己的微博；`OpenLists` 让发微博、转发、删除改动已打开的列表，不为此发请求。
+- `ui/compose/`：发微博（`Route.Compose`，入口是首页右下角的按钮）。`AppGraph.composeDraft` 保存草稿（关页面不丢，换账号清空），发送时才逐张上传图片，再发微博。选图用系统照片选择器（`PicturePicker`）。
+- **不自动重试**：OkHttp 里没有重试拦截器，失败都等用户操作。要跟应用同寿命的副作用（例如未读检查）放在根部，不要放在导航条目里。
 
 ## 约定
 
-- **语言**：代码注释用英文，界面文案用中文。
+- **语言**：代码注释用英文，界面文案用中文（只有中文，不做多语言）。
 - **数据**：ID 一律用字符串；JSON 手写容错解析，不用代码生成。
-- **依赖注入**：Riverpod 3（不用代码生成）。测试通过覆盖 `weiboDioFactoryProvider`、`sessionStorageProvider`、`cookieBridgeProvider`、`sessionRenewerProvider` 注入假实现，假实现见 `test/support/fakes.dart`（`signedInOverrides()` 一次给齐）。测跳转用 `test/support/routes.dart` 的 `stubRouter()`。
-- **版本号**：`pubspec.yaml` 的 `version` 和 `lib/core/app_info.dart` 的 `appVersion` 一起改（有测试核对）。
+- **测试**（`app/src/test/`，JUnit 4 + Robolectric + Compose UI Test）：
+  - `support/TestGraph.kt` 的 `testGraph()` 用假实现（`support/Fakes.kt`）拼出一个 `AppGraph`，`restored = signedIn` 就是已登录（uid 7）。不传 `web` 时请求一律按离线失败，不会碰到真实的微博；
+  - `support/FakeWeibo.kt` 是本地的 HTTPS MockWebServer，DNS 全部指向它，用到它的测试类要跑在 Robolectric 下；
+  - 页面测试用 `TestHost`，整个应用的流程用 `AppHarness`，合成数据的构造函数在 `support/Statuses.kt`。
+- **版本号**：只在 `app/build.gradle.kts` 里，`versionName` 和 `versionCode` 一起改，`versionCode` 每发一版加 1。
 - **提交**：用英文写提交信息，先一句话概括，再空一行写原因。每完成一个里程碑或一个独立修复就提交一次。

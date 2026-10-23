@@ -2,6 +2,8 @@
 
 写于 2026-10-22，基于 v0.11.0 和去掉 iOS 之后的代码（`2ad832e`）。用户决定把 maxbo 从 Flutter 整体迁移到 Kotlin + Jetpack Compose，只做 Android（PLAN §10）。
 
+> **已完成（2026-10-23，v0.12.0）**。本文现在只是迁移的记录，§11 各阶段的备注说明了 Kotlin 版各处为什么这样做。当前的开发说明以 CLAUDE.md 和 PLAN §11 为准。文中的 `kotlin/` 目录已经移到仓库根目录；`lib/`、`test/` 等 Flutter 代码已删掉，要对照时看 git 历史（`53b24b0` 是最后一个带 Flutter 代码的提交）。
+
 ## 0. 新上下文从这里开始
 
 1. 先读 `CLAUDE.md`，里面的硬性约束在迁移期间全部有效。再读 PLAN §2（合规边界）、§8（接口实测结论）、§11（各功能的行为细节、后续要点、开发环境注意），最后读本文。
@@ -339,11 +341,11 @@ Dart 代码约 1.5 万行，一个 `:app` 模块就够了，用包来分层（§
 | K0 工程骨架 | ✅ 完成 | 见 git log | 见下方「K0 备注」 |
 | K1 网络、会话、登录 | ✅ 完成（10-23 真实会话验收，见「真实会话验收」）；退出登录清 Cookie 只由设备测试覆盖，没在真实登录上做 | 见 git log | 见下方「K1 备注」 |
 | K2 首页时间线与微博卡片 | ✅ 完成（10-23 真实会话验收）；滚动流畅度在模拟器上测不出结论，K7 在真机上看 | 见 git log | 见下方「K2 备注」 |
-| K3 详情、评论、媒体 | ✅ 完成（10-23 真实会话验收）；视频地址过期后换新地址还没在真实会话上看 | 见 git log | 见下方「K3 备注」 |
+| K3 详情、评论、媒体 | ✅ 完成（10-23 真实会话验收，视频地址过期后换新地址在 K7 时核对） | 见 git log | 见下方「K3 备注」 |
 | K4 用户主页、搜索、通知、网页 | ✅ 完成（10-23 真实会话验收，修了两个问题） | 见 git log | 见下方「K4 备注」 |
 | K5 互动与发布 | ✅ 完成（10-23 真实会话验收，修了一个问题；测试微博和测试账号都已恢复原状） | 见 git log | 见下方「K5 备注」 |
 | K6 设置、关于、宽屏、诊断 | ✅ 完成（10-23 真实会话验收：宽卡片、左右并排、字体大小） | 见 git log | 见下方「K6 备注」 |
-| K7 对齐、切换、发版 | 未开始 | | |
+| K7 对齐、切换、发版 | ✅ 切换完成（10-23）；发版见「K7 备注」 | 见 git log | 见下方「K7 备注」 |
 
 ### K0 备注
 
@@ -447,5 +449,15 @@ Dart 代码约 1.5 万行，一个 `:app` 模块就够了，用包来分层（§
   - `216f40b`：评论图片是 `http://` 地址，OkHttp 遵守 Android 的明文禁令，评论和通知里显示成破图（Flutter 的 dart:io 不受这个限制）。图片加载器把 http 改成 https，缓存 key 不区分协议，加了 `WeiboImageLoaderTest`。
   - `216f51e`：「我」页的分隔线照 Flutter 的 `Divider()` 上下各留 8dp。
   - `81e7fb7`：Compose 把可点的区域都撑到至少 48dp，正文里的 @、话题、链接也会拿走下一行的点击：回复以 @ 开头时，点楼中楼预览的「共1条回复」会打开那个人的主页，卡片里点链接正下方的文字也会打开链接。`StatusText` 里把 `minimumTouchTargetSize` 设为 0，链接只认字形，与 Flutter 一致（`StatusTextTapTest`）。`1047c02` 让 `ProfilePageTest` 多看到一次打开应用时的未读检查，`521999e` 改了这个测试（当时只跑了相关的几个测试类，没跑全量）。
-- **还没核对**：视频地址过期后自动换新地址（要时间线加载 1 小时后再点视频）；退出登录清 Cookie（会丢真实登录，只由设备测试覆盖）；在真机上看流畅度（K7）。
+- **还没核对**：退出登录清 Cookie（会丢真实登录，只由设备测试覆盖）；在真机上看流畅度（K7 时用户决定发版后自己用着看）。视频地址过期在 K7 时核对了，见「K7 备注」。
 - **模拟器的毛病**：adb 会掉线（`adb reconnect offline` 能恢复），10-23 下午还出现过 `adb shell` 和截图挂起、连控制台都不响应，当时主机内存已满（12G 在压缩），qemu 占 200% CPU；用户关掉模拟器后冷启动（`emulator -avd Pixel_9 -no-snapshot-load`）恢复，`.dev` 和 `.debug` 的登录态都在。Gradle 和 Kotlin 编译的 daemon 构建完会常驻、合计约 5 GB，内存紧时构建完用 `./gradlew --stop` 停掉。`adb exec-out screencap` 挂起时，可以用模拟器控制台的 `screenrecord screenshot <目录>` 截图（要先 `auth`，口令在 `~/.emulator_console_auth_token`）。
+
+### K7 备注
+
+- **对齐**：§7 的测试清单逐个对过，`test/` 和 `integration_test/` 下的每个 Dart 测试文件都有对应的 Kotlin 测试，或者在各阶段的备注里写了理由（`app_info_test` 换成 BuildConfig；`status_actions_test` 由 K2 的跳转测试覆盖；`tab_reselect_test` 在 `TimelinePageTest` 里；`cookie_bridge_test` 拆成 `WebCookiesTest` 和设备测试）。README「功能」各项在 K1–K6 的真实会话验收里已经走过，K7 又在 `.dev` 上补看了：清除图片缓存（100 MB → 0）、「原图」画质看大图（清晰，进程约 208 MB，看完改回「标准」）、关于页、开源许可；**视频地址过期**：时间线 22:15 刷新，23:18（旧地址已过期）点视频，先请求一次 `statuses/show`，再正常播放，logcat 里没有 `video failed`，与 Flutter 版 M3 的结果相同。
+- **性能**：模拟器测不出结论（K2 的验收），用户 10-23 决定发版后在自己的手机上用着看，有问题再出补丁版。Baseline Profile 没有做。
+- **包名**：调试版的后缀从 `.dev` 改回 `.debug`（显示名称「maxbo debug」），`benchmark` 构建类型也改成 `.debug`。用户同意后，10-23 22:26 用 `install -r` 覆盖了 emulator-5554 上的 Flutter 调试版：Kotlin 版读不到 Flutter 版存的会话，启动时是未登录，但同一个包名下 WebView 的 Cookie 还在，打开登录页就直接登上了，没有走短信和人机验证；重启后保持登录。视频那项测完后按用户的意思卸载了 `.dev`。
+- **签名和版本号**：`app/build.gradle.kts` 照 Flutter 宿主工程的做法读仓库根目录的 `key.properties`（从 `android/key.properties` 手动移过来，不在 git 里），没有它时 release 包退回调试密钥签名。本地打的 release 包核对过证书 SHA-256 等于 PLAN §9 的值，是一个约 3.1 MB 的通用 APK（里面只有两个 AndroidX 的小原生库，四种 ABI 都有）。versionName 0.12.0（用户定的），versionCode 5022。
+- **删除 Flutter**：删掉了 `lib/`、`test/`、`integration_test/`、`android/`、`pubspec.yaml`、`pubspec.lock`、`analysis_options.yaml`、`.metadata`，以及没进 git 的 `build/`、`.dart_tool/` 等；`kotlin/` 的内容移到根目录（图标在 K0 时已复制，逐个比对过与 Flutter 版相同）。`.gitignore` 换成 Gradle 的规则。代码注释里「as the Flutter app had it」这类说明保留，它们解释了为什么这样做。
+- **CI**：`ci.yml` 只剩 Gradle 的 job（在根目录跑，JDK 17）。`release.yml` 改为：核对 tag 和 `versionName` 一致，跑格式检查、lint 和测试，用 Secrets 里的密钥打 release 包，核对证书指纹，改名为 `maxbo-vX.Y.Z.apk`，再生成 `SHA256SUMS.txt` 建草稿 Release。
+- **顺手发现的问题**：`.mcp.json` 和 `.pi/mcp.json`（Penpot MCP 的配置，里面有访问 token）虽然写在 `.gitignore` 里，但 10-14 的 `f76d3b3` 已经把它们加进了 git，并推到了公开仓库。`53b24b0` 让 git 不再跟踪它们（本地文件还在）；token 要由用户在 Penpot 作废，历史没有重写。

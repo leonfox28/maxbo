@@ -1,7 +1,6 @@
 # Versions checked against Google Maven and Maven Central on 2026-10-22
-# (KOTLIN_MIGRATION.md §3). Newer than the Flutter host project's AGP 9.1 and
-# Gradle 9.3: the current AndroidX libraries need compileSdk 37, which takes
-# AGP 9.4, which takes Gradle 9.6 or later.
+# (KOTLIN_MIGRATION.md §3). The current AndroidX libraries need compileSdk 37,
+# which takes AGP 9.4, which takes Gradle 9.6 or later.
 
 [versions]
 agp = "9.4.1"
