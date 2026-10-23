@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.windowInsetsPadding
@@ -65,12 +66,12 @@ fun MePage(padding: PaddingValues) {
                 // Settings stay within reach before logging in.
                 is SessionState.SignedOut -> {
                     item { LoginPrompt(state.expired, Modifier.fillMaxWidth()) }
-                    item { HorizontalDivider() }
+                    item { HorizontalDivider(Modifier.padding(vertical = 8.dp)) }
                     item { AppLinks() }
                 }
                 is SessionState.SignedIn -> {
                     item { AccountItem(state.account) }
-                    item { HorizontalDivider() }
+                    item { HorizontalDivider(Modifier.padding(vertical = 8.dp)) }
                     item { AppLinks() }
                     item { LogoutItem() }
                 }
