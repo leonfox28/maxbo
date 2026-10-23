@@ -38,7 +38,7 @@ class UnreadNoticesController(
     val state: StateFlow<UnreadNotices> = _state.asStateFlow()
 
     private var checkedAt: Long? = null
-    private var checking = false
+    @Volatile private var checking = false
 
     /** Kinds marked read while a check was out, whose result predates that. */
     private val readDuringCheck = mutableSetOf<NoticeKind>()
@@ -61,20 +61,22 @@ class UnreadNoticesController(
     }
 
     /**
-     * Asks Weibo what is unread, unless it was asked less than [minIntervalMs] ago. Failures leave
-     * things as they were: the mark is a hint only.
+     * Asks Weibo what is unread, unless it was asked less than [minIntervalMs] ago or is being
+     * asked now. Failures leave things as they were: the mark is a hint only.
+     *
+     * @return whether it asked.
      */
-    suspend fun check(minIntervalMs: Long = 0) {
-        if (session.state.value !is SessionState.SignedIn || checking) return
+    suspend fun check(minIntervalMs: Long = 0): Boolean {
+        if (session.state.value !is SessionState.SignedIn || checking) return false
         val now = clock()
-        checkedAt?.let { if (now - it < minIntervalMs) return }
+        checkedAt?.let { if (now - it < minIntervalMs) return false }
         checkedAt = now
         checking = true
         readDuringCheck.clear()
         val generation = generation
         try {
             val unread = api.fetchUnreadNotices()
-            if (generation != this.generation) return
+            if (generation != this.generation) return true
             // Loading a list marks it read on Weibo's side, so a tab opened
             // since the check went out is up to date.
             _state.value = UnreadNotices(_state.value.kinds + unread.kinds - readDuringCheck)
@@ -83,6 +85,7 @@ class UnreadNoticesController(
         } finally {
             checking = false
         }
+        return true
     }
 
     /** [check] in the background, as for an event the user caused elsewhere. */

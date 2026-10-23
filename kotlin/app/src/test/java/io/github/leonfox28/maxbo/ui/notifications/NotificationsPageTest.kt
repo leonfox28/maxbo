@@ -100,14 +100,10 @@ class NotificationsPageTest {
 
     /**
      * Checks for unread notices, once the check made as the app opened is done: a check while one
-     * is on its way does nothing.
+     * is on its way does nothing, and a tab opened meanwhile counts as read for that one.
      */
     private fun checkUnread() {
-        val before = loads("/2/remind/push_count.json")
-        compose.waitUntil(5_000) {
-            runBlocking { app.graph.unread.check() }
-            loads("/2/remind/push_count.json") > before
-        }
+        compose.waitUntil(5_000) { runBlocking { app.graph.unread.check() } }
         compose.waitForIdle()
     }
 
