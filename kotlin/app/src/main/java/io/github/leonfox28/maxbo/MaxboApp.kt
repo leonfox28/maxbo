@@ -36,6 +36,7 @@ import io.github.leonfox28.maxbo.ui.navigation.Route
 import io.github.leonfox28.maxbo.ui.navigation.popTransition
 import io.github.leonfox28.maxbo.ui.navigation.predictivePopTransition
 import io.github.leonfox28.maxbo.ui.navigation.pushTransition
+import io.github.leonfox28.maxbo.ui.notifications.UnreadChecks
 import io.github.leonfox28.maxbo.ui.profile.ProfilePage
 import io.github.leonfox28.maxbo.ui.search.SearchResultsPage
 import io.github.leonfox28.maxbo.ui.settings.AboutPage
@@ -81,6 +82,9 @@ fun MaxboApp(
         LocalDensity provides settings.textSize.applyTo(LocalDensity.current),
         LocalTextSize provides settings.textSize,
     ) {
+        // Out here, where it stays for as long as the app: under a page pushed
+        // over the tabs, they leave the composition.
+        UnreadChecks()
         MaxboTheme(dark = dark) {
             NavDisplay(
                 backStack = navigator.backStack,

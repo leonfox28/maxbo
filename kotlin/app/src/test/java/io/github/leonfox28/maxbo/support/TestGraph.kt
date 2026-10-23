@@ -48,6 +48,7 @@ fun testGraph(
     scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined),
     pictures: PictureReader = FilePictureReader,
     pictureCache: PictureCache = FakePictureCache(),
+    clock: () -> Long = { System.nanoTime() / 1_000_000 },
 ): AppGraph {
     val base = web?.client ?: offlineClient
     val throttle = RequestThrottle(minIntervalMs = 0)
@@ -61,7 +62,7 @@ fun testGraph(
         api = api,
         webCookies = webCookies,
         timeline = TimelineController(api, session, scope),
-        unread = UnreadNoticesController(api, session, scope),
+        unread = UnreadNoticesController(api, session, scope, clock),
         pictures = pictures,
         pictureCache = pictureCache,
         imageLoader = { fakeImageLoader() },

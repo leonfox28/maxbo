@@ -46,7 +46,6 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -69,15 +68,12 @@ import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.leonfox28.maxbo.LocalAppGraph
 import io.github.leonfox28.maxbo.core.session.SessionState
 import io.github.leonfox28.maxbo.ui.navigation.LocalNavigator
 import io.github.leonfox28.maxbo.ui.navigation.Route
 import io.github.leonfox28.maxbo.ui.notifications.NotificationsPage
-import io.github.leonfox28.maxbo.ui.notifications.UNREAD_RECHECK_MS
 import io.github.leonfox28.maxbo.ui.profile.MePage
 import io.github.leonfox28.maxbo.ui.search.SearchPage
 import io.github.leonfox28.maxbo.ui.theme.KeepTextSize
@@ -122,7 +118,6 @@ fun HomeShell() {
     val corner = windowSize() == WindowSize.Expanded
     // It comes back where it moved to, say, on unfolding.
     LaunchedEffect(corner) { bars.show() }
-    UnreadChecks()
     Scaffold(
         Modifier.nestedScroll(bars.connection),
         // Over the pill's end.
@@ -157,25 +152,6 @@ fun HomeShell() {
         CompositionLocalProvider(LocalTabReselect provides reselects[tab.ordinal]) {
             tabs.SaveableStateProvider(tab) { TabPage(tab, padding) }
         }
-    }
-}
-
-/**
- * Checks for unread notifications when the user signs in or opens the app, and when they come back
- * to it (at most once a minute), never in between (PLAN §2).
- */
-@Composable
-private fun UnreadChecks() {
-    val graph = LocalAppGraph.current
-    val session by graph.session.state.collectAsStateWithLifecycle()
-    val uid = (session as? SessionState.SignedIn)?.account?.uid
-    LaunchedEffect(uid) { if (uid != null) graph.unread.check() }
-    // Coming back to the app, not opening it: that is the check above.
-    var away by remember { mutableStateOf(false) }
-    LifecycleEventEffect(Lifecycle.Event.ON_STOP) { away = true }
-    LifecycleEventEffect(Lifecycle.Event.ON_START) {
-        if (away) graph.unread.requestCheck(UNREAD_RECHECK_MS)
-        away = false
     }
 }
 
