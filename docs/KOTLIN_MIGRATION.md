@@ -345,7 +345,7 @@ Dart 代码约 1.5 万行，一个 `:app` 模块就够了，用包来分层（§
 | K4 用户主页、搜索、通知、网页 | ✅ 完成（10-23 真实会话验收，修了两个问题） | 见 git log | 见下方「K4 备注」 |
 | K5 互动与发布 | ✅ 完成（10-23 真实会话验收，修了一个问题；测试微博和测试账号都已恢复原状） | 见 git log | 见下方「K5 备注」 |
 | K6 设置、关于、宽屏、诊断 | ✅ 完成（10-23 真实会话验收：宽卡片、左右并排、字体大小） | 见 git log | 见下方「K6 备注」 |
-| K7 对齐、切换、发版 | ✅ 切换完成（10-23）；发版见「K7 备注」 | 见 git log | 见下方「K7 备注」 |
+| K7 对齐、切换、发版 | ✅ 完成（10-23，v0.12.0 发布） | 见 git log | 见下方「K7 备注」 |
 
 ### K0 备注
 
@@ -461,3 +461,5 @@ Dart 代码约 1.5 万行，一个 `:app` 模块就够了，用包来分层（§
 - **删除 Flutter**：删掉了 `lib/`、`test/`、`integration_test/`、`android/`、`pubspec.yaml`、`pubspec.lock`、`analysis_options.yaml`、`.metadata`，以及没进 git 的 `build/`、`.dart_tool/` 等；`kotlin/` 的内容移到根目录（图标在 K0 时已复制，逐个比对过与 Flutter 版相同）。`.gitignore` 换成 Gradle 的规则。代码注释里「as the Flutter app had it」这类说明保留，它们解释了为什么这样做。
 - **CI**：`ci.yml` 只剩 Gradle 的 job（在根目录跑，JDK 17）。`release.yml` 改为：核对 tag 和 `versionName` 一致，跑格式检查、lint 和测试，用 Secrets 里的密钥打 release 包，核对证书指纹，改名为 `maxbo-vX.Y.Z.apk`，再生成 `SHA256SUMS.txt` 建草稿 Release。
 - **顺手发现的问题**：`.mcp.json` 和 `.pi/mcp.json`（Penpot MCP 的配置，里面有访问 token）虽然写在 `.gitignore` 里，但 10-14 的 `f76d3b3` 已经把它们加进了 git，并推到了公开仓库。`53b24b0` 让 git 不再跟踪它们（本地文件还在）；token 要由用户在 Penpot 作废，历史没有重写。
+- **CI 上的偶发失败**：推上去后 CI 有两个页面测试失败，本地都能过。原因是 `1047c02` 把「打开应用时检查未读」移到了应用根部，CI 机器慢，这次请求可能晚到：详情页的测试把它当成了最后一个请求，通知页的测试里它读到了测试刚改的未读数，把列表多重新加载了一次。`4ee16b3` 让详情页的测试跳过这个请求，通知页的测试先等它结束。以后整个应用的页面测试，断言「最后一个请求」时都要想到它。
+- **发版**：用户定的版本号 0.12.0（versionCode 5022）。CI 通过后打 tag，`release.yml` 第一次按新写法运行就成功了：草稿里是 `maxbo-v0.12.0.apk`（约 3.1 MB）和 `SHA256SUMS.txt`。下载核对了校验值、证书指纹和包名/版本号，再 `install -r` 到 emulator-5554 上没登录的 Flutter 正式版 0.11.0 上，直接覆盖成功，启动后是未登录状态、关于页显示 0.12.0。发布为 Pre-release，发布说明写明了已用 Kotlin 重写、装上后要重新登录和重新设置、可以直接覆盖安装。
