@@ -51,6 +51,7 @@ class FakeWeibo : Closeable {
             .addSubjectAlternativeName("weibo.cn")
             .addSubjectAlternativeName("*.weibo.cn")
             .addSubjectAlternativeName("*.sina.com.cn")
+            .addSubjectAlternativeName("*.sinaimg.cn")
             .addSubjectAlternativeName("example.com")
             .build()
 

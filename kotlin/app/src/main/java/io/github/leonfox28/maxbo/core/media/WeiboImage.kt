@@ -41,13 +41,14 @@ private val signatureParams = listOf("Expires", "ssig", "KID")
 
 /**
  * The cache key for [url]: signature parameters are dropped, so a re-signed URL for the same
- * picture hits the cache.
+ * picture hits the cache, and so is plain http, which is fetched over https anyway.
  */
 fun imageCacheKey(url: String): String {
     val parsed = url.toHttpUrlOrNull()
-    if (parsed == null || parsed.querySize == 0) return url
+    if (parsed == null || (parsed.querySize == 0 && parsed.isHttps)) return url
     return parsed
         .newBuilder()
+        .scheme("https")
         .apply { signatureParams.forEach(::removeAllQueryParameters) }
         .build()
         .toString()
@@ -56,7 +57,7 @@ fun imageCacheKey(url: String): String {
 /**
  * The image loader for Weibo's pictures, on [base]'s connections: every request has weibo.com as
  * its Referer (Weibo's image hosts answer 403 without it, and a browser tab on weibo.com sends it
- * too), and pictures are cached on [diskCache].
+ * too), goes over https, and pictures are cached on [diskCache].
  */
 fun weiboImageLoader(context: Context, base: OkHttpClient, diskCache: DiskCache): ImageLoader {
     val client =
@@ -64,8 +65,16 @@ fun weiboImageLoader(context: Context, base: OkHttpClient, diskCache: DiskCache)
             .newBuilder()
             .addInterceptor(
                 Interceptor { chain ->
+                    val request = chain.request()
+                    // Some come as plain http (a comment's pictures, say), which
+                    // Android refuses; Weibo's image hosts serve them over https.
+                    val url = request.url.newBuilder().scheme("https").build()
                     chain.proceed(
-                        chain.request().newBuilder().header("Referer", "https://weibo.com/").build()
+                        request
+                            .newBuilder()
+                            .url(url)
+                            .header("Referer", "https://weibo.com/")
+                            .build()
                     )
                 }
             )

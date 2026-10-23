@@ -22,4 +22,14 @@ class ImageCacheKeyTest {
         assertNotEquals(imageCacheKey("$a?v=2"), imageCacheKey("$a?v=3"))
         assertNotEquals(imageCacheKey(a), imageCacheKey("https://wx1.sinaimg.cn/orj960/abc.jpg"))
     }
+
+    @Test
+    fun `cache key is the same over http and https`() {
+        val https = "https://wx3.sinaimg.cn/bmiddle/abc.jpg"
+        assertEquals(https, imageCacheKey("http://wx3.sinaimg.cn/bmiddle/abc.jpg"))
+        assertEquals(
+            imageCacheKey("$https?ssig=a"),
+            imageCacheKey("http://wx3.sinaimg.cn/bmiddle/abc.jpg?ssig=b"),
+        )
+    }
 }
