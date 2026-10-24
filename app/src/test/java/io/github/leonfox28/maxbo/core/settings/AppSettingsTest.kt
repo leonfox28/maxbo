@@ -37,13 +37,28 @@ class AppSettingsTest {
     fun `text size scales text on top of the device setting`() {
         val device = Density(density = 1f, fontScale = 2f)
         assertSame(device, TextSize.Standard.applyTo(device))
-        assertEquals(23f, with(TextSize.Large.applyTo(device)) { 10.sp.toDp().value }, 1e-4f)
-        assertEquals(18f, with(TextSize.Small.applyTo(device)) { 10.sp.toDp().value }, 1e-4f)
-        assertEquals(
-            13f,
-            with(TextSize.ExtraLarge.applyTo(Density(1f))) { 10.sp.toDp().value },
-            1e-4f,
-        )
+        assertEquals(2.3f, TextSize.Large.applyTo(device).fontScale, 1e-6f)
+        assertEquals(1.8f, TextSize.Small.applyTo(device).fontScale, 1e-6f)
+        // On Android's curve for 1.15, not 14 × 1.15 = 16.1.
+        assertEquals(16.4f, with(TextSize.Large.applyTo(Density(1f))) { 14.sp.toDp().value }, 1e-4f)
+    }
+
+    @Test
+    fun `text size converts sp as layout does, from the font scale alone`() {
+        for (device in listOf(Density(1f), Density(density = 2.75f, fontScale = 1.3f))) {
+            for (size in TextSize.entries) {
+                val scaled = size.applyTo(device)
+                val laidOut = Density(scaled.density, scaled.fontScale)
+                for (sp in listOf(10, 14, 22)) {
+                    assertEquals(
+                        "$size at ${device.fontScale}, ${sp}sp",
+                        with(laidOut) { sp.sp.toPx() },
+                        with(scaled) { sp.sp.toPx() },
+                        1e-4f,
+                    )
+                }
+            }
+        }
     }
 
     @Test
@@ -52,7 +67,7 @@ class AppSettingsTest {
         assertEquals(3f, scaled.density)
         assertEquals(2.3f, scaled.fontScale, 1e-4f)
         assertEquals(30f, with(scaled) { 10.dp.toPx() })
-        assertEquals(10f, with(scaled) { 23.dp.toSp().value }, 1e-4f)
+        assertEquals(10f, with(scaled) { 10.sp.toDp().toSp().value }, 1e-4f)
     }
 
     @Test

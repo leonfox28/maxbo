@@ -9,6 +9,7 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.toSize
+import io.github.leonfox28.maxbo.core.settings.TextSize
 import io.github.leonfox28.maxbo.support.TestHost
 import io.github.leonfox28.maxbo.support.signedIn
 import io.github.leonfox28.maxbo.support.testGraph
@@ -31,10 +32,12 @@ class NoticeTabsTest {
 
     private val labels = listOf("评论", "@我的微博", "@我的评论", "赞")
 
-    private fun show(fontScale: Float) {
+    /** The page at text [size], on a device whose own font size is [deviceFontScale]. */
+    private fun show(size: TextSize, deviceFontScale: Float = 1f) {
         compose.setContent {
-            val system = LocalDensity.current
-            CompositionLocalProvider(LocalDensity provides Density(system.density, fontScale)) {
+            // As MaxboApp applies the text size.
+            val device = Density(LocalDensity.current.density, deviceFontScale)
+            CompositionLocalProvider(LocalDensity provides size.applyTo(device)) {
                 TestHost(testGraph(restored = signedIn)) { NotificationsPage(PaddingValues()) }
             }
         }
@@ -61,7 +64,7 @@ class NoticeTabsTest {
 
     @Test
     fun `tabs share the width evenly while every label fits in a share`() {
-        show(fontScale = 0.8f)
+        show(TextSize.ExtraSmall)
 
         for (it in labels) assertEquals(it, 90f, tab(it).width, 0.5f)
         assertOneLineEach()
@@ -70,7 +73,7 @@ class NoticeTabsTest {
     @Test
     fun `larger text keeps every label on one line, the short ones giving up room`() {
         // "@我的微博" alone would wrap in a quarter of the width.
-        show(fontScale = 1.15f)
+        show(TextSize.Large)
 
         assertOneLineEach()
         val widths = labels.map { tab(it).width }
@@ -80,8 +83,18 @@ class NoticeTabsTest {
     }
 
     @Test
+    @Config(qualifiers = "w425dp-h900dp-440dpi")
+    fun `larger text keeps every label on one line on a dense screen`() {
+        // At one pixel to the dp, text sizes that differ by a fraction of a
+        // pixel are set alike.
+        show(TextSize.Large)
+
+        assertOneLineEach()
+    }
+
+    @Test
     fun `text too large for the width scrolls the tabs`() {
-        show(fontScale = 2.6f)
+        show(TextSize.ExtraLarge, deviceFontScale = 2f)
 
         assertOneLineEach()
         assertTrue(tab("赞").right > 360f)

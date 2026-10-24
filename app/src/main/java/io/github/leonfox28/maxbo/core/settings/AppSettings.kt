@@ -1,8 +1,6 @@
 package io.github.leonfox28.maxbo.core.settings
 
 import androidx.compose.ui.unit.Density
-import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.unit.TextUnit
 import io.github.leonfox28.maxbo.data.model.PicInfo
 import io.github.leonfox28.maxbo.data.model.PicVariant
 
@@ -53,8 +51,13 @@ enum class TextSize(val key: String, val label: String, val factor: Float) {
 }
 
 /**
- * Scales text as [base] does, then by [factor], keeping [base]'s nonlinear scaling (Android 14 and
- * later), if any. Everything other than text keeps [base]'s size.
+ * Scales text as a device whose font size is [factor] times [base]'s would. Everything other than
+ * text keeps [base]'s size.
+ *
+ * Only the font scale changes, not how sp convert at it. Layout hands text a density of [density]
+ * and [fontScale] alone, converting sp on the nonlinear curve for that scale at any API level, so a
+ * conversion of our own would only hold where `LocalDensity` is read directly: text measured there
+ * would come out a little smaller than it is laid out (the notification tabs wrapped from that).
  */
 private data class ScaledTextDensity(val base: Density, val factor: Float) : Density {
     override val density: Float
@@ -62,10 +65,6 @@ private data class ScaledTextDensity(val base: Density, val factor: Float) : Den
 
     override val fontScale: Float
         get() = base.fontScale * factor
-
-    override fun TextUnit.toDp(): Dp = with(base) { this@toDp.toDp() } * factor
-
-    override fun Dp.toSp(): TextUnit = with(base) { (this@toSp / factor).toSp() }
 }
 
 /** User preferences, kept on the device only. */
