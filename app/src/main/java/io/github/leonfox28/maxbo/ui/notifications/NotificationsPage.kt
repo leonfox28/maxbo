@@ -30,7 +30,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.PrimaryTabRow
+import androidx.compose.material3.PrimaryScrollableTabRow
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
@@ -54,8 +54,10 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -175,13 +177,21 @@ private fun Notices(padding: PaddingValues, modifier: Modifier) {
     Column(modifier) {
         // Over the lists' column, not spread across a wide window.
         Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-            PrimaryTabRow(pager.currentPage, Modifier.widthIn(max = ReadingWidth)) {
-                Tabs.forEachIndexed { i, (kind, label) ->
-                    Tab(
-                        selected = pager.currentPage == i,
-                        onClick = { scope.launch { pager.animateScrollToPage(i) } },
-                        text = { TabLabel(label, unread.has(kind)) },
-                    )
+            BoxWithConstraints(Modifier.widthIn(max = ReadingWidth)) {
+                val widths = tabWidths(Tabs.map { it.second }, constraints.maxWidth)
+                PrimaryScrollableTabRow(
+                    pager.currentPage,
+                    edgePadding = 0.dp,
+                    minTabWidth = 0.dp,
+                ) {
+                    Tabs.forEachIndexed { i, (kind, label) ->
+                        Tab(
+                            selected = pager.currentPage == i,
+                            onClick = { scope.launch { pager.animateScrollToPage(i) } },
+                            modifier = Modifier.width(widths[i]),
+                            text = { TabLabel(label, unread.has(kind)) },
+                        )
+                    }
                 }
             }
         }
@@ -189,6 +199,53 @@ private fun Notices(padding: PaddingValues, modifier: Modifier) {
             NoticeList(model, Tabs[page].first, padding, taps[page])
         }
     }
+}
+
+/** The space [Tab] leaves on either side of its label. */
+private val TabLabelPadding = 16.dp
+
+/**
+ * How wide to make the tabs of a bar [width] pixels across, so that each label stays on one line:
+ * an even share while every label fits in one, else each label's own width with what is left over
+ * going to the narrowest. With large enough text, the tabs are wider than the bar, and it scrolls.
+ */
+@Composable
+private fun tabWidths(labels: List<String>, width: Int): List<Dp> {
+    val measurer = rememberTextMeasurer()
+    // What Tab sets its label in.
+    val style = MaterialTheme.typography.titleSmall
+    val density = LocalDensity.current
+    return remember(labels, width, measurer, style, density) {
+        with(density) {
+            val padding = TabLabelPadding.roundToPx() * 2
+            val needs = labels.map {
+                measurer.measure(it, style, maxLines = 1).size.width + padding
+            }
+            shareWidth(needs, width).map { it.toDp() }
+        }
+    }
+}
+
+/**
+ * Widths for things needing [needs] each, out of [width]: each at least its need, with what is left
+ * of [width] evening up the narrowest. Their needs alone if those come to [width] or more.
+ */
+internal fun shareWidth(needs: List<Int>, width: Int): List<Int> {
+    if (needs.sum() >= width) return needs
+    val widestFirst = needs.indices.sortedByDescending { needs[it] }
+    // Set aside the widest while they need more than an even share of what is left.
+    var rest = width
+    var count = needs.size
+    for (i in widestFirst) {
+        if (needs[i] * count <= rest) break
+        rest -= needs[i]
+        count--
+    }
+    val widths = needs.toMutableList()
+    widestFirst.takeLast(count).forEachIndexed { j, i ->
+        widths[i] = rest / count + if (j < rest % count) 1 else 0
+    }
+    return widths
 }
 
 /** A tab's name, with a dot at its top right while it has something unread. */
