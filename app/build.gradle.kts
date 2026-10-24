@@ -1,4 +1,5 @@
 import java.util.Properties
+import org.gradle.api.tasks.testing.logging.TestExceptionFormat
 
 plugins {
     alias(libs.plugins.android.application)
@@ -96,6 +97,11 @@ android {
             isReturnDefaultValues = true
         }
     }
+}
+
+// Whole stack traces in the log: CI keeps no test reports to look at.
+tasks.withType<Test>().configureEach {
+    testLogging { exceptionFormat = TestExceptionFormat.FULL }
 }
 
 dependencies {
