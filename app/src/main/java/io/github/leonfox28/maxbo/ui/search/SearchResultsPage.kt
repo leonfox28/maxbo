@@ -58,6 +58,7 @@ import io.github.leonfox28.maxbo.ui.status.rememberStatusCardActions
 import io.github.leonfox28.maxbo.ui.webview.weiboSearchUrl
 import io.github.leonfox28.maxbo.ui.widget.AppSnackbarHost
 import io.github.leonfox28.maxbo.ui.widget.HidingAppBarBody
+import io.github.leonfox28.maxbo.ui.widget.KeepAtTop
 import io.github.leonfox28.maxbo.ui.widget.LoadMoreTrigger
 import io.github.leonfox28.maxbo.ui.widget.LocalSnackbars
 import io.github.leonfox28.maxbo.ui.widget.pagedItems
@@ -100,7 +101,8 @@ class SearchResultsViewModel(query: String, api: WeiboApi) : ViewModel() {
 fun SearchResultsPage(query: String) {
     val api = LocalAppGraph.current.api
     val results = viewModel { SearchResultsViewModel(query, api) }.results
-    val load by results.state.collectAsStateWithLifecycle()
+    // A value, not a state the list reads itself, for KeepAtTop.
+    val load = results.state.collectAsStateWithLifecycle().value
     val navigator = LocalNavigator.current
     val snackbars = LocalSnackbars.current
     val scope = rememberCoroutineScope()
@@ -119,6 +121,7 @@ fun SearchResultsPage(query: String) {
     val topic = if (load is ListLoad.Ready) results.topic else null
     var refreshing by remember { mutableStateOf(false) }
 
+    KeepAtTop(listState, (load as? ListLoad.Ready)?.list?.items)
     LoadMoreTrigger(
         listState,
         onNearEnd =

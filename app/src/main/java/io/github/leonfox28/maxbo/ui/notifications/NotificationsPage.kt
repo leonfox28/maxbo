@@ -83,6 +83,7 @@ import io.github.leonfox28.maxbo.ui.navigation.Route
 import io.github.leonfox28.maxbo.ui.shell.LocalTabReselect
 import io.github.leonfox28.maxbo.ui.status.rememberStatusCardActions
 import io.github.leonfox28.maxbo.ui.theme.UnreadColor
+import io.github.leonfox28.maxbo.ui.widget.KeepAtTop
 import io.github.leonfox28.maxbo.ui.widget.LoadMoreTrigger
 import io.github.leonfox28.maxbo.ui.widget.LocalSnackbars
 import io.github.leonfox28.maxbo.ui.widget.ReadingWidth
@@ -306,6 +307,7 @@ private fun NoticeList(
             }
         }
     }
+    KeepAtTop(listState, (load as? ListLoad.Ready)?.list?.items)
     LoadMoreTrigger(
         listState,
         onNearEnd =

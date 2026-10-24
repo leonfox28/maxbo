@@ -64,6 +64,24 @@ class TimelinePageTest {
     }
 
     @Test
+    fun `a refresh from the top shows the newest status, not the old first one`() {
+        var newest = 30
+        web.respond = {
+            json(
+                feedJson((newest downTo 1).map { statusJson(id = it.toLong(), text = "第${it}条") })
+                    .toString()
+            )
+        }
+        compose.setContent { MaxboApp(testGraph(restored = signedIn, web = web)) }
+        compose.waitUntil(5_000) { shown(30) }
+
+        newest = 32
+        compose.onNodeWithContentDescription("首页").performClick()
+        compose.waitUntil(5_000) { feeds() == 2 }
+        compose.waitUntil(5_000) { shown(32) }
+    }
+
+    @Test
     fun `pulling to refresh checks notifications, once a minute`() {
         web.respond = {
             if (it.url.encodedPath == "/2/remind/push_count.json") json("""{"cmt":1}""")

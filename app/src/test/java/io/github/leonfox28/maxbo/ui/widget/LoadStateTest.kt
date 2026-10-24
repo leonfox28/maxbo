@@ -1,8 +1,22 @@
 package io.github.leonfox28.maxbo.ui.widget
 
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.test.hasScrollToIndexAction
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollToIndex
+import androidx.compose.ui.unit.dp
 import io.github.leonfox28.maxbo.core.net.CaptchaRequiredException
 import io.github.leonfox28.maxbo.core.net.WeiboApiException
 import io.github.leonfox28.maxbo.support.TestHost
@@ -83,4 +97,31 @@ class LoadStateTest {
 
         compose.onNodeWithText("没有更多了").assertExists()
     }
+
+    @Test
+    fun `KeepAtTop shows items added above the top, but not to a list scrolled down`() {
+        var items by mutableStateOf((1..30).map { "第${it}条" })
+        lateinit var state: LazyListState
+        compose.setContent {
+            state = rememberLazyListState()
+            Feed(state, items)
+        }
+
+        items = listOf("第0条") + items
+        compose.onNodeWithText("第0条").assertExists()
+        assertEquals(0, state.firstVisibleItemIndex)
+
+        compose.onNode(hasScrollToIndexAction()).performScrollToIndex(10)
+        items = listOf("第-1条") + items
+        compose.waitForIdle()
+        assertEquals(11, state.firstVisibleItemIndex)
+        compose.onNodeWithText("第10条").assertExists()
+    }
+}
+
+/** [items] in a list, given to it by recomposition as the app's lists are. */
+@Composable
+private fun Feed(state: LazyListState, items: List<String>) {
+    KeepAtTop(state, items)
+    LazyColumn(state = state) { items(items, key = { it }) { Text(it, Modifier.height(100.dp)) } }
 }

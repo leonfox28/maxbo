@@ -41,6 +41,7 @@ import io.github.leonfox28.maxbo.ui.notifications.UNREAD_RECHECK_MS
 import io.github.leonfox28.maxbo.ui.shell.LocalTabReselect
 import io.github.leonfox28.maxbo.ui.status.rememberStatusCardActions
 import io.github.leonfox28.maxbo.ui.widget.ErrorRetry
+import io.github.leonfox28.maxbo.ui.widget.KeepAtTop
 import io.github.leonfox28.maxbo.ui.widget.LoadMoreFooter
 import io.github.leonfox28.maxbo.ui.widget.LoadMoreTrigger
 import io.github.leonfox28.maxbo.ui.widget.LocalSnackbars
@@ -115,6 +116,7 @@ private fun StatusList(timeline: PagedState<Status>, padding: PaddingValues, mod
             }
         }
     }
+    KeepAtTop(listState, timeline.items)
     // After a failure, loading more waits for the retry button.
     LoadMoreTrigger(
         listState,

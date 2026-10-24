@@ -20,7 +20,9 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
@@ -58,6 +60,30 @@ fun LoadMoreTrigger(state: LazyListState, onNearEnd: (() -> Unit)?) {
             }
     }
 }
+
+/**
+ * Keeps [state] at the very top when [items] change while it's there, as when a refresh brings
+ * newer items. Left to itself, a lazy list keeps showing the item it showed first, which would
+ * leave the new ones out of sight above it.
+ *
+ * The list's content has to get [items] by recomposition, as a value rather than a state it reads
+ * itself: otherwise the list can measure them before this sees them.
+ */
+@Composable
+fun KeepAtTop(state: LazyListState, items: List<*>?) {
+    val shown = remember(state) { ShownItems(items) }
+    // Applied before the list is measured with the new items, its position
+    // still the one it had with the old.
+    SideEffect {
+        if (shown.items === items) return@SideEffect
+        shown.items = items
+        if (state.firstVisibleItemIndex == 0 && state.firstVisibleItemScrollOffset == 0) {
+            state.requestScrollToItem(0)
+        }
+    }
+}
+
+private class ShownItems(var items: List<*>?)
 
 /**
  * The end of a paged list: a spinner while the next page loads, the error and a retry button when
