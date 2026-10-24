@@ -1,6 +1,7 @@
 package io.github.leonfox28.maxbo.ui.widget.text
 
 import io.github.leonfox28.maxbo.core.util.readUrl
+import io.github.leonfox28.maxbo.data.model.PicInfo
 import io.github.leonfox28.maxbo.data.model.UrlEntity
 import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
@@ -31,8 +32,11 @@ sealed interface StatusLink {
     /** A `#话题#`, without the surrounding `#`. */
     data class Topic(val topic: String) : StatusLink
 
-    /** A picture linked from the text rather than attached. */
-    data class Image(val url: HttpUrl) : StatusLink
+    /**
+     * Pictures linked from the text rather than attached, such as those of a repost along the chain
+     * (`查看2张图片`); [pics] are empty when [url] isn't a picture on Weibo's image hosts.
+     */
+    data class Image(val url: HttpUrl, val pics: List<PicInfo>) : StatusLink
 
     data class Web(val url: HttpUrl) : StatusLink
 }
@@ -143,7 +147,9 @@ private fun linkOf(a: Element, label: String, urls: List<UrlEntity>): StatusLink
         val topic = label.substring(1, label.length - 1)
         if (topic.isNotEmpty()) return StatusLink.Topic(topic)
     }
-    if (a.hasAttr("data-pid") || url.host.endsWith(".sinaimg.cn")) return StatusLink.Image(url)
+    if (a.hasAttr("data-pids") || a.hasAttr("data-pid") || url.host.endsWith(".sinaimg.cn")) {
+        return StatusLink.Image(url, linkedPics(a, url, urls))
+    }
     if (url.host == "t.cn") {
         for (entity in urls) {
             val long = entity.longUrl?.toHttpUrlOrNull() ?: continue
@@ -151,6 +157,24 @@ private fun linkOf(a: Element, label: String, urls: List<UrlEntity>): StatusLink
         }
     }
     return StatusLink.Web(url)
+}
+
+// A link to several pictures names them all in `data-pids` but links to the
+// first; one to a single picture may name it in `data-pid`. The url_struct
+// entry of the link has them in full; failing that, they are built from
+// their pids, or the link itself.
+private fun linkedPics(a: Element, url: HttpUrl, urls: List<UrlEntity>): List<PicInfo> {
+    val pids = (a.attr("data-pids").split(',') + a.attr("data-pid")).map(String::trim)
+    val known = urls.flatMap { it.pics }.associateBy { it.id }
+    val pics =
+        pids.filter(String::isNotEmpty).distinct().mapNotNull {
+            known[it] ?: PicInfo.tryFromPid(it)
+        }
+    return when {
+        pics.isNotEmpty() -> pics
+        url.host.endsWith(".sinaimg.cn") -> listOf(PicInfo.fromUrl(url.toString()))
+        else -> emptyList()
+    }
 }
 
 private fun sameUrl(short: String, url: HttpUrl): Boolean {

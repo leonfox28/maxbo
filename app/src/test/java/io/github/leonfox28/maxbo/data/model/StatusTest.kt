@@ -257,6 +257,47 @@ class StatusTest {
     }
 
     @Test
+    fun `a link to the pictures of a repost along the chain opens them all`() {
+        // Weibo links to the first picture and names them all in data-pids.
+        val s =
+            parse(
+                statusJson(
+                    text =
+                        "转发//<a href=/n/某人 usercard=\"name=@某人\">@某人</a>:看图 " +
+                            "<a target=\"_blank\" data-pids=p1,p2 " +
+                            "href=\"https://wx4.sinaimg.cn/large/p1.jpg\">" +
+                            "<img class=\"icon-link\" title=\"http://t.cn/Pics\" " +
+                            "src=\"https://h5.sinaimg.cn/photo.png\"/>查看2张图片</a>",
+                    extra =
+                        mapOf(
+                            "url_struct" to
+                                listOf(
+                                    obj(
+                                        "short_url" to "http://t.cn/Pics",
+                                        "url_title" to "查看2张图片",
+                                        "url_type" to 39,
+                                        "pic_ids" to listOf("p1", "p2"),
+                                        "pic_infos" to
+                                            obj(
+                                                "p2" to picJson("p2", width = 1080, height = 1574),
+                                                "p1" to picJson("p1", width = 1080, height = 1448),
+                                            ),
+                                    )
+                                )
+                        ),
+                )
+            )
+
+        val link =
+            parseStatusText(s.text, urls = s.urls)
+                .filterIsInstance<TextSegment.Link>()
+                .single { it.text == "查看2张图片" }
+                .link as StatusLink.Image
+        assertEquals(listOf("p1", "p2"), link.pics.map { it.id })
+        assertEquals(1080f / 1574, link.pics[1].aspectRatio!!, 0.001f)
+    }
+
+    @Test
     fun `reads a video cover, length and shape`() {
         val s =
             parse(

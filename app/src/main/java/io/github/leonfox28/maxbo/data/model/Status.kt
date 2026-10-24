@@ -267,8 +267,16 @@ data class Status(
     }
 }
 
-/** A short link (`t.cn/…`) in a status body. */
-data class UrlEntity(val shortUrl: String, val longUrl: String? = null, val title: String? = null) {
+/**
+ * A short link (`t.cn/…`) in a status body. [pics] are the pictures a "查看图片" link shows, such as
+ * those of a comment or of a repost along the chain.
+ */
+data class UrlEntity(
+    val shortUrl: String,
+    val longUrl: String? = null,
+    val title: String? = null,
+    val pics: List<PicInfo> = emptyList(),
+) {
     companion object {
         fun tryFromJson(json: JsonObject): UrlEntity? {
             val short = readUrl(json["short_url"]) ?: return null
@@ -276,6 +284,7 @@ data class UrlEntity(val shortUrl: String, val longUrl: String? = null, val titl
                 shortUrl = short,
                 longUrl = readUrl(json["long_url"]) ?: readUrl(json["ori_url"]),
                 title = readString(json["url_title"]),
+                pics = picsOf(json),
             )
         }
     }

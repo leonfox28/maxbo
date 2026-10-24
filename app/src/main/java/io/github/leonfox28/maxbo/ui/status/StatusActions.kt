@@ -40,8 +40,8 @@ fun rememberStatusCardActions(): StatusCardActions {
                     is StatusLink.Mention -> navigator.push(Route.ProfileByName(link.screenName))
                     is StatusLink.Topic -> openSearchResults(navigator, "#${link.topic}#")
                     is StatusLink.Image ->
-                        if (link.url.host.endsWith(".sinaimg.cn")) {
-                            viewPictures(listOf(PicInfo.fromUrl(link.url.toString())), 0)
+                        if (link.pics.isNotEmpty()) {
+                            viewPictures(link.pics, 0)
                         } else {
                             openExternally(link.url.toString())
                         }

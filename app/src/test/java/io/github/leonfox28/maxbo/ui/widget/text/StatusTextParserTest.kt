@@ -119,6 +119,34 @@ class StatusTextParserTest {
     }
 
     @Test
+    fun `picture links without url_struct open pictures built from their pids or the link`() {
+        fun pics(html: String) =
+            (parseStatusText(html).filterIsInstance<TextSegment.Link>().single().link
+                    as StatusLink.Image)
+                .pics
+                .map { it.viewerVariant.url }
+        val first = "0123456ABy1abcdefghijk0000000001"
+        val second = "0123456ABy1abcdefghijk0000000002"
+
+        assertEquals(
+            listOf("large/$first.jpg", "large/$second.jpg"),
+            pics(
+                    "<a data-pids=$first,$second href=https://wx1.sinaimg.cn/large/$first.jpg>查看2张图片</a>"
+                )
+                .map { it.substringAfter(".cn/") },
+        )
+        // Older pids can't be built on; the link stands for its picture.
+        assertEquals(
+            listOf("https://wx1.sinaimg.cn/large/p1.jpg"),
+            pics("<a data-pid=p1 href=https://wx1.sinaimg.cn/large/p1.jpg>查看图片</a>"),
+        )
+        assertEquals(
+            emptyList<String>(),
+            pics("<a data-pid=p1 href=https://example.com/p1>查看图片</a>"),
+        )
+    }
+
+    @Test
     fun `a truncated post ends with expand`() {
         assertEquals(
             listOf("text:很长的内容...", "expand"),
