@@ -20,7 +20,6 @@ import androidx.navigation3.runtime.entryProvider
 import androidx.navigation3.runtime.rememberSaveableStateHolderNavEntryDecorator
 import androidx.navigation3.scene.DialogSceneStrategy
 import androidx.navigation3.scene.SinglePaneSceneStrategy
-import androidx.navigation3.ui.NavDisplay
 import io.github.leonfox28.maxbo.core.media.LocalImageLoader
 import io.github.leonfox28.maxbo.ui.auth.LoginPage
 import io.github.leonfox28.maxbo.ui.comments.CommentRepliesPage
@@ -33,11 +32,8 @@ import io.github.leonfox28.maxbo.ui.media.ImageViewerPage
 import io.github.leonfox28.maxbo.ui.media.VideoPlayerPage
 import io.github.leonfox28.maxbo.ui.navigation.LocalNavigator
 import io.github.leonfox28.maxbo.ui.navigation.Navigator
+import io.github.leonfox28.maxbo.ui.navigation.PageStack
 import io.github.leonfox28.maxbo.ui.navigation.Route
-import io.github.leonfox28.maxbo.ui.navigation.fadingOnceClosed
-import io.github.leonfox28.maxbo.ui.navigation.popTransition
-import io.github.leonfox28.maxbo.ui.navigation.predictivePopTransition
-import io.github.leonfox28.maxbo.ui.navigation.pushTransition
 import io.github.leonfox28.maxbo.ui.notifications.UnreadChecks
 import io.github.leonfox28.maxbo.ui.profile.ProfilePage
 import io.github.leonfox28.maxbo.ui.search.SearchResultsPage
@@ -88,9 +84,10 @@ fun MaxboApp(
         // over the tabs, they leave the composition.
         UnreadChecks()
         MaxboTheme(dark = dark) {
-            NavDisplay(
+            PageStack(
                 backStack = navigator.backStack,
                 onBack = navigator::pop,
+                dark = dark,
                 entryDecorators =
                     listOf(
                         rememberSaveableStateHolderNavEntryDecorator(),
@@ -98,10 +95,7 @@ fun MaxboApp(
                     ),
                 // The image viewer is a dialog over the page it opened from.
                 sceneStrategies = listOf(DialogSceneStrategy(), SinglePaneSceneStrategy()),
-                transitionSpec = pushTransition(),
-                popTransitionSpec = popTransition(),
-                predictivePopTransitionSpec = predictivePopTransition(),
-                entryProvider = pages.fadingOnceClosed(navigator.backStack),
+                entryProvider = pages,
             )
             OverlayHost(overlays)
         }
