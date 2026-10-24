@@ -348,6 +348,8 @@ app/src/androidTest/            # 设备测试（读 WebView 的 HttpOnly Cookie
 | 通知页签折行 | ✅ 完成（v0.12.2 发布）：通知页的四个页签原来平分宽度，「@我的微博」在标准字号下刚好放进手机宽度的四分之一，字体调大一档或者 360dp 宽的屏幕就折成两行。现在先量出每个名字要的宽度：都放得进平分的一份时仍然平分，否则每个页签至少和名字一样宽，剩下的宽度均分给较短的几个（`shareWidth()`）；加起来比页签栏还宽时页签栏可以左右滑动（`PrimaryScrollableTabRow`）。`NoticeTabsTest` 覆盖平分、大字号、放不下时滚动和剩余宽度的分配 | 见 git log |
 | 「查看N张图片」只显示第一张 | ✅ 完成（v0.12.2 发布）：转发链里某一层转发带多张图时，正文里是一个「查看N张图片」链接，`href` 只指向第一张，点开查看器里只有这一张。现在按 `data-pids` 从 `url_struct` 取全部图片，取不到就用 pid 拼，查看器里能翻全部（格式见 §8「正文链接」，10-24 实测） | 见 git log |
 | v0.12.2 | ✅ 2026-10-24 发布（Pre-release，`maxbo-v0.12.2.apk`，versionCode 5024）：通知页签在大字号下不再折行、「查看N张图片」能翻看全部图片，属于修复，所以升 patch 版本。推送这两个修复后，CI 上 `AppFlowsTest` 的宽窗口一项偶发失败（`CalledFromWrongThreadException`，接着是 `SlotTable` 里的 `ArrayIndexOutOfBoundsException`），本地全量跑三遍、单独跑六遍都没复现，推测的原因见「后续要点」的「测试里的线程」；CI 日志只有异常的第一帧，于是改为打印完整调用栈。版本提交的 CI 和 `release.yml` 都一次通过。下载后核对过校验值、证书指纹、包名和版本号，能在 emulator-5554 上覆盖安装 release 版 0.12.1（未登录），关于页显示 0.12.2 | `2beb8f2` `7ae2da0`，见 `v0.12.2` 标签 |
+| 刷新后新微博不可见 | ✅ 完成（v0.12.3 发布）：在列表顶部下拉刷新或再点一次首页页签，新微博排到了原来第一条的上面，但 `LazyColumn` 按 key 留在原来显示的那一项上，新内容在视野之外，看上去像没刷新。通知页的列表和搜索结果也一样。`KeepAtTop`（`ui/widget/LoadState.kt`）在列表数据换了一份而列表正停在最顶上时，赶在按新数据测量之前 `requestScrollToItem(0)`；已经往下滚过的列表不受影响。列表数据要经重组传进 `LazyColumn` 的内容，不能在内容里自己读 state，否则列表可能先于 `KeepAtTop` 看到新数据。`LoadStateTest` 和 `TimelinePageTest` 覆盖 | `35cfe73` |
+| v0.12.3 | ✅ 2026-10-24 发布（Pre-release，`maxbo-v0.12.3.apk`，versionCode 5025）：在列表顶部刷新后新微博直接可见，属于修复，所以升 patch 版本。版本提交的 CI 和 `release.yml` 都一次通过。下载后核对过校验值、证书指纹、包名和版本号，能在 emulator-5554 上覆盖安装 release 版 0.12.2（未登录），关于页显示 0.12.3 | `35cfe73`，见 `v0.12.3` 标签 |
 
 ### 已有的基础设施
 
