@@ -1,7 +1,9 @@
 package io.github.leonfox28.maxbo
 
+import android.app.UiModeManager
 import android.graphics.Color
 import android.graphics.drawable.ColorDrawable
+import android.os.Build
 import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
 import androidx.activity.compose.LocalActivity
@@ -10,6 +12,7 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.graphics.toArgb
@@ -23,6 +26,7 @@ import androidx.navigation3.runtime.rememberSaveableStateHolderNavEntryDecorator
 import androidx.navigation3.scene.DialogSceneStrategy
 import androidx.navigation3.scene.SinglePaneSceneStrategy
 import io.github.leonfox28.maxbo.core.media.LocalImageLoader
+import io.github.leonfox28.maxbo.core.settings.ThemeMode
 import io.github.leonfox28.maxbo.ui.auth.LoginPage
 import io.github.leonfox28.maxbo.ui.comments.CommentRepliesPage
 import io.github.leonfox28.maxbo.ui.compose.ComposePage
@@ -71,7 +75,7 @@ fun MaxboApp(
     val settings by graph.settings.settings.collectAsStateWithLifecycle()
     val dark = settings.themeMode.isDark()
     val overlays = remember { Overlays() }
-    WindowFor(dark)
+    WindowFor(settings.themeMode, dark)
     CompositionLocalProvider(
         LocalAppGraph provides graph,
         LocalNavigator provides navigator,
@@ -139,10 +143,20 @@ private val pages: (Route) -> NavEntry<Route> = entryProvider {
  * into the next. Its own, from the manifest's theme, is the system's light or dark as of when the
  * activity was created, which dark mode in maxbo's settings, or the system's switched on since,
  * leaves light (the activity handles uiMode changes itself).
+ *
+ * From Android 12, the system also has the app's own [mode] for the window it shows while the app
+ * starts next, in place of its own light or dark.
  */
 @Composable
-private fun WindowFor(dark: Boolean) {
+private fun WindowFor(mode: ThemeMode, dark: Boolean) {
     val activity = LocalActivity.current as? ComponentActivity ?: return
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+        LaunchedEffect(activity, mode) {
+            activity
+                .getSystemService(UiModeManager::class.java)
+                .setApplicationNightMode(mode.nightMode)
+        }
+    }
     DisposableEffect(activity, dark) {
         activity.enableEdgeToEdge(
             statusBarStyle = SystemBarStyle.auto(Color.TRANSPARENT, Color.TRANSPARENT) { dark },
@@ -153,6 +167,15 @@ private fun WindowFor(dark: Boolean) {
         onDispose {}
     }
 }
+
+/** For [UiModeManager.setApplicationNightMode]; the system's own, unless chosen. */
+private val ThemeMode.nightMode
+    get() =
+        when (this) {
+            ThemeMode.System -> UiModeManager.MODE_NIGHT_AUTO
+            ThemeMode.Light -> UiModeManager.MODE_NIGHT_NO
+            ThemeMode.Dark -> UiModeManager.MODE_NIGHT_YES
+        }
 
 // The scrims enableEdgeToEdge() puts behind three-button navigation.
 private val LightScrim = Color.argb(0xe6, 0xFF, 0xFF, 0xFF)
