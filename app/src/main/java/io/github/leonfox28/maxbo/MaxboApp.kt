@@ -1,6 +1,7 @@
 package io.github.leonfox28.maxbo
 
 import android.graphics.Color
+import android.graphics.drawable.ColorDrawable
 import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
 import androidx.activity.compose.LocalActivity
@@ -11,6 +12,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -43,7 +45,9 @@ import io.github.leonfox28.maxbo.ui.settings.SettingsPage
 import io.github.leonfox28.maxbo.ui.settings.TextSizePage
 import io.github.leonfox28.maxbo.ui.shell.HomeShell
 import io.github.leonfox28.maxbo.ui.status.StatusDetailPage
+import io.github.leonfox28.maxbo.ui.theme.DarkColors
 import io.github.leonfox28.maxbo.ui.theme.KeepTextSize
+import io.github.leonfox28.maxbo.ui.theme.LightColors
 import io.github.leonfox28.maxbo.ui.theme.LocalTextSize
 import io.github.leonfox28.maxbo.ui.theme.MaxboTheme
 import io.github.leonfox28.maxbo.ui.theme.isDark
@@ -67,7 +71,7 @@ fun MaxboApp(
     val settings by graph.settings.settings.collectAsStateWithLifecycle()
     val dark = settings.themeMode.isDark()
     val overlays = remember { Overlays() }
-    SystemBarsFor(dark)
+    WindowFor(dark)
     CompositionLocalProvider(
         LocalAppGraph provides graph,
         LocalNavigator provides navigator,
@@ -130,15 +134,22 @@ private val pages: (Route) -> NavEntry<Route> = entryProvider {
 /**
  * Edge to edge, with status bar icons to suit the theme where no app bar sets them, as on the tabs
  * or once a page's app bar has scrolled away.
+ *
+ * The window behind the pages is in the theme's background too: it shows through as one page fades
+ * into the next. Its own, from the manifest's theme, is the system's light or dark as of when the
+ * activity was created, which dark mode in maxbo's settings, or the system's switched on since,
+ * leaves light (the activity handles uiMode changes itself).
  */
 @Composable
-private fun SystemBarsFor(dark: Boolean) {
+private fun WindowFor(dark: Boolean) {
     val activity = LocalActivity.current as? ComponentActivity ?: return
     DisposableEffect(activity, dark) {
         activity.enableEdgeToEdge(
             statusBarStyle = SystemBarStyle.auto(Color.TRANSPARENT, Color.TRANSPARENT) { dark },
             navigationBarStyle = SystemBarStyle.auto(LightScrim, DarkScrim) { dark },
         )
+        val background = if (dark) DarkColors.background else LightColors.background
+        activity.window.setBackgroundDrawable(ColorDrawable(background.toArgb()))
         onDispose {}
     }
 }
