@@ -64,7 +64,8 @@ import me.saket.telephoto.zoomable.rememberZoomableImageState
  * Full-screen pictures: swipe between them, pinch or double-tap to zoom, tap or flick vertically to
  * close. Shown as a dialog over the page, which shows through as a picture is flicked away.
  * Pictures taller than the screen open filling its width, from the top. A live photo moves when its
- * "实况" mark is tapped or the picture long-pressed.
+ * "实况" mark is tapped or the picture long-pressed, and, if the user chose so, once on its own
+ * (without sound) when the viewer settles on it.
  *
  * @param statusId the status the pictures belong to, if any, where a live photo's video is fetched
  *   afresh.
@@ -83,8 +84,17 @@ fun ImageViewerPage(pics: List<PicInfo>, initialIndex: Int, statusId: String? = 
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val live = remember { LivePhotoPlayer(context, api, statusId, scope) }
+    val settings by LocalAppGraph.current.settings.settings.collectAsStateWithLifecycle()
     DisposableEffect(live) { onDispose { live.release() } }
-    LaunchedEffect(pager.currentPage) { live.stop() }
+    // Only a picture on show moves.
+    LaunchedEffect(pager.currentPage) {
+        if (live.current?.id != pics[pager.currentPage].id) live.stop()
+    }
+    // Not those swiped past on the way.
+    LaunchedEffect(pager.settledPage) {
+        val pic = pics[pager.settledPage]
+        if (settings.autoplayLivePhotos && pic.liveVideo != null) live.autoplay(pic)
+    }
     LifecycleEventEffect(Lifecycle.Event.ON_PAUSE) { live.stop() }
 
     Box(

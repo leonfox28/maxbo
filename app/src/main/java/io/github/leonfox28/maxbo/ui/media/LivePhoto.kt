@@ -60,8 +60,9 @@ import kotlinx.coroutines.launch
 
 /**
  * Plays the moving part of the viewer's live photos ("实况"), one at a time and once through, over
- * the still picture; its video is fetched only when asked for. Its URL expires like a video's (PLAN
- * §8), so one that fails is fetched afresh from status [statusId], once.
+ * the still picture; its video is fetched only when asked for, or when the viewer plays it on its
+ * own ([autoplay]). Its URL expires like a video's (PLAN §8), so one that fails is fetched afresh
+ * from status [statusId], once.
  */
 @OptIn(UnstableApi::class)
 @Stable
@@ -91,6 +92,10 @@ class LivePhotoPlayer(
     private var loaded: String? = null
     /** Whether [loaded]'s URL came from fetching its status again. */
     private var fetched = false
+    /** Whether [current] plays without sound. */
+    private var muted = false
+    /** The ids of the pictures that have played on their own. */
+    private val autoplayed = mutableSetOf<String>()
     private var resolving: Job? = null
 
     private val listener =
@@ -112,18 +117,23 @@ class LivePhotoPlayer(
                     current = null
                     failed = pic.id
                 } else {
-                    play(pic, refresh = true)
+                    play(pic, refresh = true, muted = muted)
                 }
             }
         }
 
-    /** Plays [pic]'s motion from the start; with [refresh], from a URL fetched afresh. */
-    fun play(pic: PicInfo, refresh: Boolean = false) {
+    /**
+     * Plays [pic]'s motion from the start, with sound unless [muted]; with [refresh], from a URL
+     * fetched afresh.
+     */
+    fun play(pic: PicInfo, refresh: Boolean = false, muted: Boolean = false) {
         stop()
         current = pic
         failed = null
+        this.muted = muted
         val buffered = player?.takeIf { pic.id == loaded && !refresh }
         if (buffered != null) {
+            buffered.volume = volume
             buffered.seekTo(0)
             buffered.play()
             return
@@ -142,11 +152,23 @@ class LivePhotoPlayer(
             loaded = pic.id
             fetched = source.fetched
             val player = player ?: create().also { player = it }
+            player.volume = volume
             player.setMediaItem(MediaItem.fromUri(source.url))
             player.prepare()
             player.play()
         }
     }
+
+    /**
+     * Plays [pic]'s motion without sound, as the viewer does on its own, which it does once for
+     * each picture: one swiped back to stays still, and costs no new download.
+     */
+    fun autoplay(pic: PicInfo) {
+        if (autoplayed.add(pic.id)) play(pic, muted = true)
+    }
+
+    private val volume
+        get() = if (muted) 0f else 1f
 
     fun stop() {
         resolving?.cancel()

@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.outlined.CleaningServices
@@ -17,6 +18,7 @@ import androidx.compose.material.icons.outlined.DarkMode
 import androidx.compose.material.icons.outlined.FormatSize
 import androidx.compose.material.icons.outlined.Image
 import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material.icons.outlined.MotionPhotosAuto
 import androidx.compose.material.icons.outlined.Storage
 import androidx.compose.material3.AlertDialogDefaults
 import androidx.compose.material3.BasicAlertDialog
@@ -27,6 +29,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -152,6 +155,16 @@ fun SettingsPage() {
                     }
                 }
                 item {
+                    SwitchSetting(
+                        Icons.Outlined.MotionPhotosAuto,
+                        "自动播放实况照片",
+                        "查看大图时静音播放一遍，每张要下载几 MB",
+                        settings.autoplayLivePhotos,
+                    ) { on ->
+                        update { it.copy(autoplayLivePhotos = on) }
+                    }
+                }
+                item {
                     Setting(
                         Icons.Outlined.Storage,
                         "图片缓存上限",
@@ -239,6 +252,23 @@ private fun Setting(
         trailingContent =
             if (opensPage) ({ Icon(Icons.Filled.ChevronRight, contentDescription = null) })
             else null,
+    )
+}
+
+@Composable
+private fun SwitchSetting(
+    icon: ImageVector,
+    title: String,
+    description: String,
+    checked: Boolean,
+    onChange: (Boolean) -> Unit,
+) {
+    ListItem(
+        headlineContent = { Text(title) },
+        modifier = Modifier.toggleable(checked, role = Role.Switch, onValueChange = onChange),
+        supportingContent = { Text(description) },
+        leadingContent = { Icon(icon, contentDescription = null) },
+        trailingContent = { Switch(checked, onCheckedChange = null) },
     )
 }
 

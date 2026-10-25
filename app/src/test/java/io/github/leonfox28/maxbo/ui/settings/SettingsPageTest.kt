@@ -1,7 +1,10 @@
 package io.github.leonfox28.maxbo.ui.settings
 
 import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.ui.test.assertIsOff
+import androidx.compose.ui.test.assertIsOn
 import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.isToggleable
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
@@ -71,6 +74,16 @@ class SettingsPageTest {
         tap("省流量")
 
         assertEquals(ImageQuality.DataSaver, storage.stored.imageQuality)
+    }
+
+    @Test
+    fun `turns on playing live photos on their own`() {
+        compose.onNode(hasText("自动播放实况照片") and isToggleable()).assertIsOff()
+
+        tap("自动播放实况照片")
+
+        assertEquals(true, storage.stored.autoplayLivePhotos)
+        compose.onNode(hasText("自动播放实况照片") and isToggleable()).assertIsOn()
     }
 
     @Test

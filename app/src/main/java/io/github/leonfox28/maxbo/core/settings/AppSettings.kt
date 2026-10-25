@@ -72,6 +72,11 @@ data class AppSettings(
     val themeMode: ThemeMode = ThemeMode.System,
     val textSize: TextSize = TextSize.Standard,
     val imageQuality: ImageQuality = ImageQuality.Standard,
+    /**
+     * Whether a live photo's motion plays on its own, once and without sound, when the image viewer
+     * shows it; otherwise only when asked for.
+     */
+    val autoplayLivePhotos: Boolean = false,
     /** How large the picture disk cache may grow before the oldest pictures are deleted. */
     val imageCacheLimitMb: Int = 300,
 ) {

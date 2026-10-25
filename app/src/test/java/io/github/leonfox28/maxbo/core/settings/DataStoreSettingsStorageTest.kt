@@ -31,6 +31,7 @@ class DataStoreSettingsStorageTest {
                 themeMode = ThemeMode.Dark,
                 textSize = TextSize.ExtraSmall,
                 imageQuality = ImageQuality.Original,
+                autoplayLivePhotos = true,
                 imageCacheLimitMb = 1024,
             )
         storage.save(settings)

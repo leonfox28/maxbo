@@ -45,7 +45,7 @@ ANDROID_SERIAL=<没有真实登录的模拟器> ./gradlew connectedDebugAndroidT
   - `SUB` 在服务端约 7 天失效。接口报过期时，`SessionRenewer` 在不挂到界面上的 WebView 里打开 weibo.com，让微博用 30 天的 `ALC` 换新 `SUB`（PLAN §8「会话续期」）。读请求续期后重发一次，写请求不重发。续期失败才退出登录。
   - 会话用 Android Keystore 里的 AES-GCM 密钥加密，存在 `noBackupFilesDir/session`。
 - `core/media/`：`WeiboImage.kt` 是 Coil 的图片加载器，所有微博图片都经它加载（带 Referer、http 改成 https，缓存 key 去掉签名参数）；`ImageDiskCache` 的上限跟着设置走；`VideoSource.kt` 负责选视频地址（实况照片的动态也是），地址过期时重新请求 `statuses/show`。
-- `core/settings/`：`SettingsController`（主题、字体大小、图片质量、缓存上限），存在 DataStore，第一帧前读入。图片尺寸要经过 `ImageQuality` 选择。字体大小在根部经 `LocalDensity` 统一套上（系统字体大小乘倍数），页面里不用单独处理；但对话框、底部弹层、菜单、提示是单独的窗口，**新加的要用 `AppAlertDialog` 或套上 `KeepTextSize`**。
+- `core/settings/`：`SettingsController`（主题、字体大小、图片质量、实况照片自动播放、缓存上限），存在 DataStore，第一帧前读入。图片尺寸要经过 `ImageQuality` 选择。字体大小在根部经 `LocalDensity` 统一套上（系统字体大小乘倍数），页面里不用单独处理；但对话框、底部弹层、菜单、提示是单独的窗口，**新加的要用 `AppAlertDialog` 或套上 `KeepTextSize`**。
 - `core/paging/`：`PagedController<T>`，分页列表（时间线、评论、转发、通知等）都继承它，子类写 `fetchPage()` 和 `idOf()`；用户自己的改动用 `prepend()` / `remove()` / `replace()`。界面用 `ui/widget/PagedItems.kt` 的 `pagedItems()` 和 `LoadState.kt` 里的 `LoadMoreTrigger`、`ErrorRetry`。
 - `core/util/`：`devLog()`、容错读取 JSON 的 `JsonRead.kt`、时间和计数的格式化 `Format.kt`。
 - `data/api/WeiboApi.kt`：所有端点都集中在这里。新增端点时写成 `WeiboApi` 的方法，读用 `getJson()` / `getPage()`，写用 `postForm()`。当前用户从 weibo.com 首页内嵌的 `window.$CONFIG` 解析得到（`PageConfig.kt`，`/ajax/config` 不存在）。

@@ -2,6 +2,7 @@ package io.github.leonfox28.maxbo.core.settings
 
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
@@ -27,6 +28,7 @@ class DataStoreSettingsStorage(private val store: DataStore<Preferences>) : Sett
                     ImageQuality::key,
                     defaults.imageQuality,
                 ),
+            autoplayLivePhotos = prefs[autoplayLive] ?: defaults.autoplayLivePhotos,
             imageCacheLimitMb =
                 if (limit in AppSettings.imageCacheLimitChoices) limit!!
                 else defaults.imageCacheLimitMb,
@@ -38,6 +40,7 @@ class DataStoreSettingsStorage(private val store: DataStore<Preferences>) : Sett
             it[theme] = settings.themeMode.key
             it[textSize] = settings.textSize.key
             it[quality] = settings.imageQuality.key
+            it[autoplayLive] = settings.autoplayLivePhotos
             it[cacheLimit] = settings.imageCacheLimitMb
         }
     }
@@ -49,6 +52,7 @@ class DataStoreSettingsStorage(private val store: DataStore<Preferences>) : Sett
         val theme = stringPreferencesKey("settings.theme")
         val textSize = stringPreferencesKey("settings.textSize")
         val quality = stringPreferencesKey("settings.imageQuality")
+        val autoplayLive = booleanPreferencesKey("settings.autoplayLivePhotos")
         val cacheLimit = intPreferencesKey("settings.imageCacheLimitMb")
     }
 }
