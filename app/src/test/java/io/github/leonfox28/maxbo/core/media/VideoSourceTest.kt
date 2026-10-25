@@ -1,6 +1,7 @@
 package io.github.leonfox28.maxbo.core.media
 
 import io.github.leonfox28.maxbo.core.net.WeiboApiException
+import io.github.leonfox28.maxbo.data.model.PicInfo
 import io.github.leonfox28.maxbo.data.model.Status
 import io.github.leonfox28.maxbo.data.model.VideoInfo
 import io.github.leonfox28.maxbo.support.FakeWeibo
@@ -115,6 +116,87 @@ class VideoSourceTest {
 
         assertTrue(resolveVideoUrl(web.api(), "1", index = 1).url.contains("/second/"))
     }
+
+    @Test
+    fun `a live photo uses its own URL while it is fresh, without a request`() = runTest {
+        val pic = livePhoto(expires = 2000000000)
+
+        val source = resolveLivePhotoUrl(web.api(), pic, "1", now = expiry - Duration.ofHours(1))
+
+        assertFalse(source.fetched)
+        assertEquals(pic.liveVideo, source.url)
+        assertTrue(web.requests.isEmpty())
+    }
+
+    @Test
+    fun `an expired live photo takes the same picture's URL from its status fetched again`() =
+        runTest {
+            web.respond = {
+                json(
+                    statusJson(
+                            pics =
+                                listOf(
+                                    picJson("other", type = "livephoto", expires = 2100000000),
+                                    picJson("p1", type = "livephoto", expires = 2100000000),
+                                )
+                        )
+                        .toString()
+                )
+            }
+
+            val source =
+                resolveLivePhotoUrl(web.api(), livePhoto(), "5000000000000001", now = expiry)
+
+            assertTrue(source.fetched)
+            assertTrue(source.url.contains("p1.mov&Expires=2100000000"))
+            val url = web.requests.single().url
+            assertEquals("/ajax/statuses/show", url.encodedPath)
+            assertEquals("5000000000000001", url.queryParameter("id"))
+        }
+
+    @Test
+    fun `finds a live photo among a post's mixed media`() = runTest {
+        web.respond = {
+            json(
+                statusJson(
+                        extra =
+                            mixedMediaFields(
+                                listOf(
+                                    videoPageInfo(),
+                                    picJson("p1", type = "livephoto", expires = 2100000000),
+                                )
+                            )
+                    )
+                    .toString()
+            )
+        }
+
+        val source = resolveLivePhotoUrl(web.api(), livePhoto(), "1", refresh = true)
+
+        assertTrue(source.url.contains("p1.mov&Expires=2100000000"))
+    }
+
+    @Test
+    fun `a live photo of no known status keeps its own URL`() = runTest {
+        val source = resolveLivePhotoUrl(web.api(), livePhoto(), null, refresh = true, now = expiry)
+
+        assertTrue(source.url.contains("Expires=2000000000"))
+        assertTrue(web.requests.isEmpty())
+    }
+
+    @Test
+    fun `reports a live photo its status no longer has`() = runTest {
+        web.respond = { json(statusJson(pics = listOf(picJson("p1"))).toString()) }
+
+        val failure = runCatching {
+            resolveLivePhotoUrl(web.api(), livePhoto(), "1", now = expiry)
+        }
+            .exceptionOrNull()
+        assertTrue(failure is WeiboApiException)
+    }
+
+    private fun livePhoto(expires: Long = 2000000000) =
+        PicInfo.tryFromJson(picJson("p1", type = "livephoto", expires = expires))!!
 
     @Test
     fun `reports a status that has no playable video`() = runTest {

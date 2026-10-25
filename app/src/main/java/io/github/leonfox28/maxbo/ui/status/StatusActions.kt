@@ -28,8 +28,8 @@ fun rememberStatusCardActions(): StatusCardActions {
 
         fun openStatus(status: Status) = navigator.push(Route.StatusDetail(status.id, status))
 
-        fun viewPictures(pics: List<PicInfo>, index: Int) =
-            navigator.push(Route.Viewer(pics, index))
+        fun viewPictures(pics: List<PicInfo>, index: Int, status: Status? = null) =
+            navigator.push(Route.Viewer(pics, index, status?.id))
 
         StatusCardActions(
             onOpen = ::openStatus,

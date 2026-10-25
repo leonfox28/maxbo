@@ -111,7 +111,7 @@ app/src/androidTest/            # 设备测试（读 WebView 的 HttpOnly Cookie
 **媒体**
 - 所有 `*.sinaimg.cn` 图片和 `*.weibocdn.com` 视频请求都带 `Referer: https://weibo.com/`；表情资源 `face.t.sinajs.cn` 不需要。
 - 头像链接带约 3 小时有效的签名参数，缓存 key 要去掉这些签名参数。
-- 配图按质量设置选择尺寸：列表用 `orj360` 或 `bmiddle`，查看器用 `mw2000` 或 `large`；gif 取 `original`；实况照片 v1 只显示静图并加角标。
+- 配图按质量设置选择尺寸：列表用 `orj360` 或 `bmiddle`，查看器用 `mw2000` 或 `large`；gif 取 `original`；实况照片先显示静图并加角标，在查看器里点「实况」或长按图片时才下载并播放动态（2026-10-25 起，见第 8 节「实况照片实测结论」）。
 - 视频地址选择顺序：`mp4_720p_mp4` > `mp4_hd_url` > `mp4_sd_url` > `playback_list` 中最好的非 DASH 条目。地址下发时是 `http://`，两端默认都拦截明文请求，统一改成 `https://`。播放前检查 `Expires` 参数，过期（或 5 分钟内过期）就重新请求 `statuses/show` 换取新地址；CDN 拒绝时也会换一次。
 
 **正文渲染**
@@ -276,6 +276,12 @@ app/src/androidTest/            # 设备测试（读 WebView 的 HttpOnly Cookie
 - **做法**：`WebViewSessionRenewer`（`core/session/SessionRenewer.kt`）用与登录页相同的 UA，在不挂到界面上的 WebView 里打开 weibo.com，每次主框架加载完成或失败都读一次 Cookie。出现没试过的 `SUB` 就交给 `SessionController`，用首页 `$CONFIG` 核对是不是同一个 uid。以下情况算失败：续期途中微博写入的 `SUB` 不是这个账号的（即游客），或者 20 秒内没有结果。结束后载入 `about:blank`，免得 weibo.com 的页面在后台继续轮询。
 - **合规**：这和浏览器打开 weibo.com 完全一样。跑的是微博自己的脚本（包括风控脚本），我们不构造也不伪造任何参数。只在用户操作触发的请求被拒时才续期，不轮询。也不做提前刷新：`SUB` 有效时 weibo.com 不经过续期页面，也没找到能提前换新 `SUB` 的接口。
 
+**实况照片实测结论（2026-10-25，诊断页的临时探针，只读，只记字段名和地址的形态）：**
+
+- **字段**：`pic_infos` 里实况照片那一项的 `type` 是 `livephoto`，比普通图片多两个字段：`video`（字符串）和 `fid`；各档尺寸（`thumbnail` 到 `largest`，另有 `largecover`）与普通图片相同。微博本身没有别的实况字段。这次首页第 1 页 25 条里有一条转发带两张，都在 `retweeted_status` 里。
+- **地址**：`video` 是 `https://video.weibo.com/media/play?livephoto=<us.sinaimg.cn 上的 .mov>&Expires=…&ssig=…&KID=…`，和视频一样带签名，**约 60 分钟后过期**。`statuses/show` 里同一张图给的是新签的地址（与时间线里的不同，同样是 60 分钟）。
+- **下载**：只带 weibo.com 的 Referer、不带 Cookie 就能取到：先 302 到 `livephoto.us.sinaimg.cn/<同名>.mov?Expires=…&ssig=…&KID=…`，Range 请求返回 206。`Content-Type` 是 `application/octet-stream`，两张分别约 5.1 MB 和 5.6 MB，容器是 QuickTime（`ftyp` 为 `qt  `）。ExoPlayer 能直接播（模拟器上用的是 H.264 解码器），也会自己跟随跳转。
+
 ## 9. 分发
 
 - **Android**：GitHub Releases 发布一个通用 APK `maxbo-vX.Y.Z.apk`（`./gradlew assembleRelease`；v0.11.0 及以前的 Flutter 版按 ABI 拆成三个）。签名密钥不进 git：本地密钥库是 `~/.config/maxbo/release.jks`（别名 `maxbo`），密码在仓库根目录的 `key.properties`（已 gitignore，Flutter 时期在 `android/key.properties`）；CI 用的副本存在 GitHub 仓库 `release` 环境的 Secrets 里（见下方 CI）。Secrets 写入后读不回来，不能当备份。证书 SHA-256 是 `A1:7A:66:0B:CA:65:D7:BB:89:D6:F3:07:AB:A4:61:06:F3:F8:AF:CB:90:F5:D0:B3:EC:40:EB:28:6D:71:79:E2`。**密钥丢了，已安装的用户就无法覆盖升级**，这两个文件要另外备份。没有 `key.properties` 时 release 包退回调试密钥签名。调试版的包名带 `.debug` 后缀，名称是「maxbo debug」，和 release 版可以同时安装。国行手机通常没有 GMS，暂不受 Google 开发者验证影响；2027 年该政策全球生效后再评估。
@@ -295,7 +301,7 @@ app/src/androidTest/            # 设备测试（读 WebView 的 HttpOnly Cookie
 - **平板/折叠屏不做列表加详情的双栏**（2026-10-16 用户决定，10-17 调整）：不做左边列表、右边详情的双栏布局。10-17 改为：导航用悬浮胶囊放在右下角（去掉左侧导航栏）；详情页在 expanded 档把正文和评论/转发左右并排；首页时间线不做瀑布流（会打乱时间顺序），改为卡片加宽、媒体放到正文右侧。
 - **不再支持 iOS**（2026-10-22 用户决定）：第三方微博客户端几乎不可能上架 App Store（审核条款 5.2.2 要求第三方服务的授权，国区还要 ICP 备案），只能发无签名 IPA 让用户自签，用免费 Apple ID 签的每 7 天要重签，门槛很高；而且 iOS 一直只验证过能编译和启动。删掉了 `ios/` 工程、CI 和 `release.yml` 的 iOS 构建、侧载文档，以及只对 iOS 有用的代码（Keychain 残留登录态的清理、选图的 `requestFullMetadata`、iOS 的页面转场配置和对应测试）。v0.11.0 是最后一个带 IPA 的版本。框架仍是 Flutter，是否改用 Kotlin 原生还在讨论。
 
-## 11. 进度与交接（更新于 2026-10-24，换成 Kotlin 之后）
+## 11. 进度与交接（更新于 2026-10-25，换成 Kotlin 之后）
 
 下表 v0.11.0 及以前的各行写的是 Flutter 版的实现（`lib/` 下的文件名、provider 等），行为在 Kotlin 版里照样保留；Kotlin 版的对应文件见 KOTLIN_MIGRATION.md §4，当前代码的结构见 CLAUDE.md「架构速览」和下方「已有的基础设施」。
 
@@ -354,6 +360,7 @@ app/src/androidTest/            # 设备测试（读 WebView 的 HttpOnly Cookie
 | v0.12.4 | ✅ 2026-10-24 发布（Pre-release，`maxbo-v0.12.4.apk`，versionCode 5026）：通知页签在调大的字号下不再折行，评论、转发、发微博的输入框与其他文字一样大，属于修复，所以升 patch 版本。修复提交、版本提交的 CI 和 `release.yml` 都一次通过。下载后核对过校验值、证书指纹、包名和版本号，能在 emulator-5554 上覆盖安装 release 版 0.12.3（未登录），关于页显示 0.12.4。还没在用户的手机上看过通知页 | `007c279`，见 `v0.12.4` 标签 |
 | 预测性返回照系统动画 | ✅ 完成（v0.12.5 发布）：用户 10-24 问预测性返回是否符合官方建议。原来手势期间页面按进度线性缩到 0.9、偏移屏宽的 1/20（缩完贴住屏幕边缘），下面的页不动。官方有两套说法：设计指南里「全屏页面」的规格是进度 35% 时当前页完全淡出、下面的页从 110% 淡入，与 v0.12.1 修的「手指没松开页面就不见了」冲突；系统自己在两个 Activity 之间的返回动画（AOSP `DefaultCrossActivityBackAnimation`）符合指南里给了数值的部分。用户选了后者。现在照它的源码：进度先经 `(0.1, 0.1, 0, 1)`；当前页缩到 90%，从左缘滑时右移到离右边 8dp，从右缘滑时居中；手指上下移动时跟着偏移（减速，离边缘至少 8dp）；两页都有屏幕圆角；下面的页左移 96dp、跟着缩小，上面盖黑色遮罩（浅色 20%、深色 80%，按应用的主题）。松手后 450 ms：当前页在前约 130 ms 淡出并右移，下面的页用完整的 emphasized 曲线回到全屏，遮罩消失；甩得快时两页再缩一点后弹回（只照了 Android 16 的速度换算）。Navigation 3 只能按进度推进一个转场，表达不了「跟手」和「松手后」两段，所以 `PageStack` 用 NavDisplay 的低层接口拿到它自己的手势状态（页面自己处理的返回不算），`PredictiveBack` 逐帧摆放两页；NavDisplay 的预测性返回转场只负责让两页留在界面上。这个转场要有值在变才有时长（从 1 变到 1 的淡出等于 0 ms，松手瞬间旧页就没了），而淡出会让页面整个离屏绘制，所以用缩到 99.99% 的 `scaleOut` 撑 700 ms；松手后旧页还能留 (1 − 进度) × 700 ms，滑过屏幕八成以上再松手时淡不完。移动中的页面整个画进离屏层再缩放，与系统缩放窗口一致，文字不随缩放比例重新栅格化。没照的：页面下移时系统改状态栏图标颜色。`TransitionsTest` 量了页面的边界（90%、8dp、上下偏移、右缘居中）、遮罩、松手后淡出和下面的页变大、取消、按返回键。emulator-5554（Android 16）上注入手势量过：滑到右边时页面 972×2182（正好 90%），离右边 21 px（8dp），遮罩处背景从 (251,248,255) 变成 (201,198,204)；上下跟手的偏移与公式一致；松手回到「我」页签，滑回边缘取消 | 见 git log |
 | v0.12.5 | ✅ 2026-10-24 发布（Pre-release，`maxbo-v0.12.5.apk`，versionCode 5027）：侧滑返回的动画改成和系统在两个 Activity 之间的返回一样，已有手势的外观改变、没有新功能，所以升 patch 版本。修改提交、版本提交的 CI 和 `release.yml` 都一次通过。下载后核对过校验值、证书指纹、包名和版本号，能在 emulator-5554 上覆盖安装 release 版 0.12.4（未登录），关于页显示 0.12.5；release 包里从关于页滑到右侧按住时页面 972 px 宽、离右边 21 px，遮罩 20%，松手回到设置页 | `b8f5729`，见 `v0.12.5` 标签 |
+| 实况照片播放 | ✅ 完成（未发布）：用户 10-25 提出实况照片只显示「实况」角标、不能播放。现在看图页里，实况照片底部的「实况」是个按钮，点它或长按图片，就在静图上原地播放一遍动态（带声音），播完淡回静图；播放中再点按钮停止，点图片照常关闭看图页；换页、退到后台时停止。动态只在用户点了之后才下载，整个看图页共用一个播放器（第一次播放时才创建），最近播过的那张留在缓冲里，再播不重新下载。地址快过期（不到 5 分钟）或被拒时，像视频一样按图片所属的微博重新请求一次 `statuses/show` 换新地址，为此 `Route.Viewer` 和卡片的 `onPicture` 带上了微博（评论里的图没有，只用自己的地址）；仍然失败时按钮变成「实况加载失败，点击重试」。没有视频地址的实况照片照旧只显示角标。格式见 §8「实况照片实测结论」。emulator-5554 的真实会话上核对过：点按钮、长按图片都能播，加载时按钮转圈、静图一直在；第一次从点按到开始播放约 4 秒（模拟器的网络），第二张第一次播放约 7 MB 流量，同一张再播 0 KB；播完回到静图；播放中点图片关闭看图页（视频层原先会挡住下面图片的点按，现在自己处理点按）。`ImageViewerPageTest` 覆盖按钮、没有视频时只有角标、过期地址按微博重新请求和重试，`VideoSourceTest` 覆盖换地址的各种情况 | 见 git log |
 
 ### 已有的基础设施
 
@@ -372,7 +379,7 @@ app/src/androidTest/            # 设备测试（读 WebView 的 HttpOnly Cookie
 - **模型**（`data/model/`）：`Status`、`WeiboUser`、`PicInfo`、`VideoInfo`、`PageCard`、`UrlEntity`、`FeedPage`、`Comment`、`Paged<T>`、`UserProfile`、`HotSearch`、`Topic`、`Notice` 等，都用 `tryFromJson`/`fromJson` 容错解析，读字段用 `core/util/JsonRead.kt`。时间、计数、时长的格式化在 `core/util/Format.kt`。`picsOf(json)` 解析任何带 `pic_ids`/`pic_infos` 的对象。
 - **分页列表**：`PagedController<T>`（`core/paging/`）实现首屏、`loadMore()`、去重和过期结果丢弃（刷新、换账号后，之前发出的翻页结果作废），子类只需写 `fetchPage(cursor)` 和 `idOf(item)`，游标是字符串（`max_id` 或页码）。用户自己的改动用 `prepend()`、`remove()`、`replace()` 直接改列表（同时调整 `total`）。界面用 `pagedItems()`（`ui/widget/PagedItems.kt`：加载中、错误重试、空列表、页脚）和 `LoadMoreTrigger`（离末尾不到 800dp 时加载下一页）。示例见 `ui/comments/CommentControllers.kt`。
 - **图片**：`weiboImageLoader()`（`core/media/WeiboImage.kt`）是全应用共用的 Coil `ImageLoader`（`AppGraph.imageLoader`），带 Referer，http 改成 https，内存和磁盘缓存的 key 都去掉签名参数；列表尺寸用 `PicInfo.variantFor(像素)` 选，像素由 `ImageQuality.listPixels()` 算，查看器用 `ImageQuality.viewerVariant(pic)`。
-- **视频**：`core/media/VideoSource.kt` 的 `resolveVideoUrl()` 负责选地址、判断过期、必要时重新请求 `statuses/show`；播放请求带 `VideoHttpHeaders`。播放出错时换一次新地址，从原位置接着播。
+- **视频**：`core/media/VideoSource.kt` 的 `resolveVideoUrl()` 负责选地址、判断过期、必要时重新请求 `statuses/show`；播放请求带 `VideoHttpHeaders`。播放出错时换一次新地址，从原位置接着播。实况照片的动态（`PicInfo.liveVideo`）同样处理：`resolveLivePhotoUrl()` 按图片 id 在重新取到的微博里找同一张；看图页的 `LivePhotoPlayer`（`ui/media/LivePhoto.kt`）共用一个播放器。
 - **路由与入口**：`Route`（`ui/navigation/Route.kt`）：`StatusDetail`、`Comments`（楼中楼）、`Video`、`Viewer`、`Profile`、`ProfileByName`（@ 用）、`SearchResults`、`Web`（应用内 WebView，`onClose` 用于「去验证」后重试）、`Compose`、`Settings`、`TextSize`、`About`、`Licenses`、`Diagnostics`，可以带上上一页已有的数据（`initial`）。卡片和评论上的各种点击统一走 `rememberStatusCardActions()`（`ui/status/StatusActions.kt`）：点卡片和「展开」进详情，图片进查看器，视频进播放页，头像和昵称进主页，@ 按昵称进主页，话题打开搜索结果页（`openSearchResults()`），网页链接用外部浏览器打开（`openExternally()`）。只想改其中一项时用 `copy()`（例如主页里点这个用户自己的头像、话题页里点这个话题都不再跳转）。
 - **应用内 WebView**：`Route.Web(url)`（`ui/webview/WebPage.kt`）。它与登录页共用 WebView 的 Cookie 存储，UA 也相同，只放行 http(s)（http 会改成 https），可以后退、刷新或用外部浏览器打开。网页版搜索结果的地址用 `weiboSearchUrl(query)`。
 - **验证码**：`ErrorRetry` 和列表页脚遇到 `CaptchaRequiredException` 时显示「去验证」，用户在应用内 WebView 里自己完成验证，返回后自动重试一次。
@@ -401,6 +408,7 @@ app/src/androidTest/            # 设备测试（读 WebView 的 HttpOnly Cookie
 - **发微博的已知局限**：没有表情面板、@ 补全、话题、定位、视频、投票、定时发布、编辑；不显示字数（超长时显示服务端的错误）；图片不压缩、不带水印；上传中途不能取消。
 - **转发的已知局限**：没有「快转」，不能带图（网页版可以）；时间线卡片上的转发数不会因为转发而变化（只有详情页本地 +1）；勾了「同时评论」时，详情页的评论数和评论列表要刷新后才更新；刚转发出的那条里，原微博按接口返回的样子显示（视频变成链接卡片），刷新后正常；不显示字数，超长时显示服务端的错误。
 - **还没做的小项**：`mymblog` 的 `bottom_tips_text` 没有显示（还没见到实例）；验证码的「去验证」还没遇到真实验证码，不知道验证完成后要不要把 WebView 的 Cookie 同步回 API。
+- **实况照片的已知局限**：不自动播放，只在点「实况」或长按时播放，免得翻图时每张都下载约 5 MB；时间线卡片里不动；只缓冲最近播过的一张，回到看过的另一张要重新下载；没有静音开关；第一次播放要先缓冲一部分，网络慢时要等几秒。地址过期后换新只由单元测试覆盖，没有在真实会话上等到过期再点。
 - **未在真机上验证的部分**：双击放大、长图、GIF 和实况照片；「原图」画质下特别大的长图的内存占用（模拟器上「原图」看一张截图长图时进程约 208 MB）。
 - **流畅度**：Kotlin 版只在模拟器上看过。模拟器的 GPU 是软件仿真（`ro.hardware.egl=emulation`），benchmark 包的时间线 p50 约 38 ms，连纯文字的开源许可列表也是 44 ms，测不出应用自己的问题。用户 10-23 决定发 v0.12.0 后在自己的手机上用着看，有问题再出补丁版。Baseline Profile 没有做。
 - **通知页**：没见过的格式还有回复我的评论（`reply_comment`，显示为通知下方的引用）、赞的是评论（`comment`）、@我的微博；按网页版的写法处理，见到后用诊断页「通知结构」核对。精简版的微博（赞列表里 22 个字段的那种）目前只在一条已删除的微博上见过。私信没有做。

@@ -101,6 +101,23 @@ class StatusTest {
     }
 
     @Test
+    fun `reads the video of a live photo, over https`() {
+        fun pic(json: JsonObject) = parse(statusJson(pics = listOf(json))).pics.single()
+
+        val live = pic(picJson("a", type = "livephoto"))
+        assertTrue(live.liveVideo!!.startsWith("https://video.weibo.com/media/play?livephoto="))
+        assertTrue(live.liveVideo!!.contains("Expires=2000000000"))
+        val http = "http://video.weibo.com/media/play?livephoto=http%3A%2F%2Fus.sinaimg.cn%2Fa.mov"
+        assertEquals(
+            "https://video.weibo.com/media/play?livephoto=http%3A%2F%2Fus.sinaimg.cn%2Fa.mov",
+            pic(picJson("a", type = "livephoto", video = false) + mapOf("video" to http)).liveVideo,
+        )
+        // Only a live photo moves; without its video, one stays still.
+        assertNull(pic(picJson("a", video = true)).liveVideo)
+        assertNull(pic(picJson("a", type = "livephoto", video = false)).liveVideo)
+    }
+
+    @Test
     fun `labels ads by any known marker, and never drops them`() {
         fun isAd(extra: Map<String, Any?>) = parse(statusJson(extra = extra)).isAd
         assertTrue(isAd(mapOf("isAd" to true)))

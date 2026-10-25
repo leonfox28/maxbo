@@ -109,7 +109,10 @@ class StatusCardWideTest {
         val opened = mutableListOf<String>()
         show(
             statusJson(id = 1, text = "配图的微博", pics = listOf(picJson("a"), picJson("b"))),
-            StatusCardActions(onPicture = { _, i -> pictures += i }, onOpen = { opened += it.id }),
+            StatusCardActions(
+                onPicture = { _, i, _ -> pictures += i },
+                onOpen = { opened += it.id },
+            ),
         )
 
         compose.onAllNodesWithTag("media", useUnmergedTree = true)[0].performClick()

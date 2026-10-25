@@ -26,6 +26,11 @@ data class PicInfo(
     val variants: List<PicVariant>,
     /** The full-size picture, which may be many megabytes; only for viewing. */
     val largest: PicVariant? = null,
+    /**
+     * The moving part of a live photo: a signed URL that, like a video's, expires about an hour
+     * after the status loaded (PLAN §8).
+     */
+    val liveVideo: String? = null,
 ) {
     /** Width over height of the picture, if known. */
     val aspectRatio: Float?
@@ -85,14 +90,15 @@ data class PicInfo(
             // Without sizes (comment pictures), keep the smallest-first key order.
             if (variants.all { it.width > 0 }) variants = variants.sortedBy { it.width }
             if (picId == null || variants.isEmpty()) return null
+            val type =
+                when (readString(map["type"])) {
+                    "gif" -> PicType.Gif
+                    "livephoto" -> PicType.LivePhoto
+                    else -> PicType.Pic
+                }
             return PicInfo(
                 id = picId,
-                type =
-                    when (readString(map["type"])) {
-                        "gif" -> PicType.Gif
-                        "livephoto" -> PicType.LivePhoto
-                        else -> PicType.Pic
-                    },
+                type = type,
                 variants = variants,
                 largest =
                     fullVariants
@@ -100,6 +106,8 @@ data class PicInfo(
                         .fold(null as PicVariant?) { best, v ->
                             if (best == null || v.width > best.width) v else best
                         },
+                liveVideo =
+                    readUrl(map["video"])?.takeIf { type == PicType.LivePhoto }?.let(::https),
             )
         }
 
@@ -121,6 +129,10 @@ data class PicInfo(
                 largest = variant("woriginal"),
             )
         }
+
+        // Android refuses plain http; Weibo's video hosts serve https too.
+        private fun https(url: String) =
+            if (url.startsWith("http://")) "https://${url.substring(7)}" else url
 
         private fun crc32(s: String): Long {
             val crc = java.util.zip.CRC32()

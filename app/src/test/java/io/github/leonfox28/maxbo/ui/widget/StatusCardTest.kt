@@ -212,7 +212,7 @@ class StatusCardTest {
     @Test
     fun `shows the pictures and videos of a retweeted mixed post`() {
         var video: Pair<Status, Int?>? = null
-        var picture: Pair<List<PicInfo>, Int>? = null
+        var picture: Triple<List<PicInfo>, Int, Status?>? = null
         show(
             statusJson(
                 text = "转发",
@@ -232,7 +232,7 @@ class StatusCardTest {
             ),
             StatusCardActions(
                 onVideo = { status, index -> video = status to index },
-                onPicture = { pics, index -> picture = pics to index },
+                onPicture = { pics, index, status -> picture = Triple(pics, index, status) },
             ),
         )
 
@@ -244,6 +244,8 @@ class StatusCardTest {
         compose.onAllNodesWithTag("media")[1].performClick()
         assertEquals(listOf("p1"), picture?.first?.map { it.id })
         assertEquals(0, picture?.second)
+        // The pictures' own post, where the viewer refreshes a live photo.
+        assertEquals("2", picture?.third?.id)
     }
 
     @Test
@@ -395,15 +397,16 @@ class StatusCardTest {
 
     @Test
     fun `tapping a picture reports the pictures and index`() {
-        var tapped: Pair<List<PicInfo>, Int>? = null
+        var tapped: Triple<List<PicInfo>, Int, Status?>? = null
         show(
-            statusJson(pics = listOf(picJson("a"), picJson("b"), picJson("c"))),
-            StatusCardActions(onPicture = { pics, i -> tapped = pics to i }),
+            statusJson(id = 3, pics = listOf(picJson("a"), picJson("b"), picJson("c"))),
+            StatusCardActions(onPicture = { pics, i, status -> tapped = Triple(pics, i, status) }),
         )
 
         compose.onAllNodesWithTag("media")[1].performClick()
 
         assertEquals(listOf("a", "b", "c"), tapped?.first?.map { it.id })
         assertEquals(1, tapped?.second)
+        assertEquals("3", tapped?.third?.id)
     }
 }

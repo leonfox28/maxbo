@@ -199,8 +199,11 @@ private suspend fun probeReads(graph: AppGraph, log: (String) -> Unit) {
         val page = api.fetchHomeTimeline(uid)
         first = page.statuses.firstOrNull()
         val statuses = page.statuses
+        val pics =
+            statuses.flatMap { listOfNotNull(it, it.retweeted) }.flatMap { it.pics + it.mixedPics }
         "${statuses.size} statuses (${statuses.count { it.pics.isNotEmpty() }} with pictures, " +
             "${statuses.count { it.video != null }} videos, " +
+            "${pics.count { it.liveVideo != null }} live photos, " +
             "${statuses.count { it.retweeted != null }} reposts), more=${page.nextCursor != null}"
     }
     first?.let { status ->

@@ -117,7 +117,7 @@ class CommentTileTest {
         var tapped: List<PicInfo>? = null
         show(
             commentJson(urlStruct = listOf(commentPicJson("p1"))),
-            actions = StatusCardActions(onPicture = { pics, _ -> tapped = pics }),
+            actions = StatusCardActions(onPicture = { pics, _, _ -> tapped = pics }),
         )
 
         compose.onNodeWithTag("media").performClick()

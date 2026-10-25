@@ -79,6 +79,10 @@ data class Status(
     /** Who can see it. Others' posts are public as far as the viewer knows. */
     val visibility: StatusVisibility = StatusVisibility.Public,
 ) {
+    /** The pictures of a post mixing pictures and videos, in order. */
+    val mixedPics: List<PicInfo>
+        get() = mixedMedia.filterIsInstance<MixedMedia.Pic>().map { it.pic }
+
     /** The videos of a post mixing pictures and videos, in order. */
     val mixedVideos: List<VideoInfo>
         get() = mixedMedia.filterIsInstance<MixedMedia.Video>().map { it.video }

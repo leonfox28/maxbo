@@ -123,7 +123,7 @@ fun CommentTile(
             }
             if (comment.pics.isNotEmpty()) {
                 Spacer(Modifier.height(6.dp))
-                Pictures(comment.pics, onPicture?.let { { i: Int -> it(comment.pics, i) } })
+                Pictures(comment.pics, onPicture?.let { { i: Int -> it(comment.pics, i, null) } })
             }
             Spacer(Modifier.height(6.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {

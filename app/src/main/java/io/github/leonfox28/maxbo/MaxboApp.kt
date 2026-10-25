@@ -112,7 +112,7 @@ private val pages: (Route) -> NavEntry<Route> = entryProvider {
     entry<Route.StatusDetail> { StatusDetailPage(it.id, it.initial) }
     entry<Route.Comments> { CommentRepliesPage(it.thread) }
     entry<Route.Viewer>(metadata = DialogSceneStrategy.dialog(FullScreenDialog)) {
-        KeepTextSize { ImageViewerPage(it.pics, it.index) }
+        KeepTextSize { ImageViewerPage(it.pics, it.index, it.statusId) }
     }
     entry<Route.Video> { VideoPlayerPage(it.id, it.index, it.initial) }
     entry<Route.Profile> { ProfilePage(uid = it.uid, initial = it.initial) }

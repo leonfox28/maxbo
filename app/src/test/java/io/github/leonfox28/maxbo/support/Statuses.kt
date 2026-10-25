@@ -16,7 +16,15 @@ fun userJson(id: Long = 1001, name: String = "示例用户"): JsonObject =
         "verified_type" to -1,
     )
 
-fun picJson(pid: String, type: String = "pic", width: Int = 1200, height: Int = 900): JsonObject {
+/** A `pic_infos` entry; a live photo's carries the URL of its [video], signed until [expires]. */
+fun picJson(
+    pid: String,
+    type: String = "pic",
+    width: Int = 1200,
+    height: Int = 900,
+    video: Boolean = type == "livephoto",
+    expires: Long = 2000000000,
+): JsonObject {
     fun variant(size: String, w: Int) =
         obj(
             "url" to "https://wx1.sinaimg.cn/$size/$pid.jpg",
@@ -32,6 +40,13 @@ fun picJson(pid: String, type: String = "pic", width: Int = 1200, height: Int = 
         "mw2000" to variant("mw2000", if (width < 2000) width else 2000),
         "original" to variant("orj1080", 1080),
         "largest" to variant("large", width),
+        if (video) {
+            "video" to
+                "https://video.weibo.com/media/play?livephoto=https%3A%2F%2Fus.sinaimg.cn%2F" +
+                    "$pid.mov&Expires=$expires&ssig=x&KID=unistore,video"
+        } else {
+            null
+        },
     )
 }
 

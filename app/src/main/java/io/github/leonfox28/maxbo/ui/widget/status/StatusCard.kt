@@ -82,7 +82,11 @@ data class StatusCardActions(
     val onUser: ((WeiboUser) -> Unit)? = null,
     /** "展开" on a truncated long post. */
     val onExpand: ((Status) -> Unit)? = null,
-    val onPicture: ((pics: List<PicInfo>, index: Int) -> Unit)? = null,
+    /**
+     * A picture, among [pics]; the status they belong to (none for a comment's) is where the viewer
+     * gets a live photo's video afresh once its URL has expired.
+     */
+    val onPicture: ((pics: List<PicInfo>, index: Int, status: Status?) -> Unit)? = null,
     /**
      * A video; the index picks one in a post mixing pictures and videos, as `Status.videoAt` does.
      */
@@ -358,7 +362,7 @@ private fun Media(status: Status, actions: StatusCardActions) {
             PicGrid(
                 status.pics.map { MixedMedia.Pic(it) },
                 total = status.picCount,
-                onClick = onPicture?.let { { i: Int -> it(status.pics, i) } },
+                onClick = onPicture?.let { { i: Int -> it(status.pics, i, status) } },
             )
         status.mixedMedia.isNotEmpty() -> MixedGrid(status, actions)
         video != null -> VideoCover(video, onVideo?.let { { it(status, null) } })
@@ -371,12 +375,15 @@ private fun Media(status: Status, actions: StatusCardActions) {
 @Composable
 private fun MixedGrid(status: Status, actions: StatusCardActions) {
     val items = status.mixedMedia
-    val pics = items.filterIsInstance<MixedMedia.Pic>().map { it.pic }
     PicGrid(items, total = status.picCount) { i ->
         val before = items.take(i)
         when (items[i]) {
             is MixedMedia.Pic ->
-                actions.onPicture?.invoke(pics, before.count { it is MixedMedia.Pic })
+                actions.onPicture?.invoke(
+                    status.mixedPics,
+                    before.count { it is MixedMedia.Pic },
+                    status,
+                )
             is MixedMedia.Video ->
                 actions.onVideo?.invoke(status, before.count { it is MixedMedia.Video })
         }
